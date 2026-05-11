@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, MapPin, Filter, Plus, TrendingUp, Search, Map, FileText, Lightbulb, BarChart3 } from 'lucide-react';
-const calacaMap = '/placeholder.png';
+const calacaMap = '/images/calaca-map.png';
 
 export function OutbreakMonitoring() {
   const [selectedDisease, setSelectedDisease] = useState('all');
@@ -142,7 +142,7 @@ export function OutbreakMonitoring() {
         <div className="flex gap-6 items-start mb-6">
           <div className="relative bg-gray-50 rounded-xl overflow-hidden flex-shrink-0" style={{ maxWidth: '600px' }}>
             <img 
-              src={calacaMap} 
+              src={calacaMap} onError={(e) => { e.currentTarget.src = ''; e.currentTarget.style.display='none'; }} 
               alt="Map of Calaca" 
               className="w-full h-auto"
             />

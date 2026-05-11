@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Phone, Lock, User, MapPin, Home, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
-const cityHallBg = "/city-hall-bg.jpg";
+const cityHallBg = '/images/city-hall-bg.jpg';
 import { fetchCalacaBarangays, CALACA_BARANGAYS_FALLBACK } from '../utils/barangays';
 
 
@@ -253,7 +253,7 @@ export function SignUp() {
       <div className="min-h-screen flex items-center justify-center relative overflow-hidden py-8">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${cityHallBg})` }}
+          style={{ backgroundImage: `url(${cityHallBg}), linear-gradient(135deg, #1a3a6e, #2B5EA6)` }}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#2B5EA6]/90 via-[#3d7ac7]/85 to-[#60A85C]/80" />
         </div>
@@ -290,7 +290,7 @@ export function SignUp() {
       <div className="min-h-screen flex items-center justify-center relative overflow-hidden py-8">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${cityHallBg})` }}
+          style={{ backgroundImage: `url(${cityHallBg}), linear-gradient(135deg, #1a3a6e, #2B5EA6)` }}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#2B5EA6]/90 via-[#3d7ac7]/85 to-[#60A85C]/80" />
         </div>
@@ -388,7 +388,7 @@ export function SignUp() {
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden py-8">
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url(${cityHallBg})` }}
+        style={{ backgroundImage: `url(${cityHallBg}), linear-gradient(135deg, #1a3a6e, #2B5EA6)` }}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-[#2B5EA6]/90 via-[#3d7ac7]/85 to-[#60A85C]/80" />
       </div>

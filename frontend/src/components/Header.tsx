@@ -1,6 +1,6 @@
 import { LogOut, Bell, Server, CheckCircle, UserCircle2, Settings, Menu } from 'lucide-react';
 import type { User } from '../App';
-const logoImage = '/logo.svg';
+const logoImage = '/images/city-seal.png';
 
 interface HeaderProps {
   user: User;
@@ -25,7 +25,7 @@ export function Header({ user, onLogout, onMenuClick }: HeaderProps) {
               </button>
             )}
             
-            <img src={logoImage} alt="Calaca City Logo" className="w-14 h-14 drop-shadow-lg" />
+            <img src={logoImage} alt="Calaca City Logo" onError={(e) => { e.currentTarget.style.opacity='0'; }} className="w-14 h-14 drop-shadow-lg" />
             <div className="flex flex-col">
               <h1 className="text-xl font-bold text-white drop-shadow-md">NASaAlaga</h1>
               <p className="text-xs text-blue-100 hidden sm:block">Veterinary Management System</p>

@@ -130,7 +130,7 @@ function buildPlanHTML(d: DeploymentSuggestion): string {
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Deployment Plan – ${d.id.toUpperCase()}</title>
+  <title>Deployment Plan – ${(d.id ?? '').toUpperCase()}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
@@ -209,7 +209,7 @@ function buildPlanHTML(d: DeploymentSuggestion): string {
     </div>
   </div>
   <div class="plan-meta">
-    <div class="plan-id">PLAN-${d.id.toUpperCase()}</div>
+    <div class="plan-id">PLAN-${(d.id ?? '').toUpperCase()}</div>
     <div class="plan-date">Generated: ${nowStr()}</div>
   </div>
 </div>
@@ -290,7 +290,7 @@ ${
 
 <div class="footer">
   <p>NASaAlaga Veterinary Management System · City of Calaca, Batangas</p>
-  <p>OFFICIAL DOCUMENT — PLAN-${d.id.toUpperCase()} · ${nowStr()}</p>
+  <p>OFFICIAL DOCUMENT — PLAN-${(d.id ?? '').toUpperCase()} · ${nowStr()}</p>
 </div>
 
 </body>
@@ -303,7 +303,7 @@ function downloadPlan(d: DeploymentSuggestion) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Deployment_Plan_${d.id.toUpperCase()}_${d.barangay.replace(/\s+/g, "_")}.html`;
+  a.download = `Deployment_Plan_${(d.id ?? '').toUpperCase()}_${(d.barangay ?? '').replace(/\s+/g, "_")}.html`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -595,7 +595,7 @@ function ModifyModal({
                 Modify Deployment Plan
               </p>
               <p className="text-white/70 text-xs">
-                {d.id.toUpperCase()} · {d.barangay}
+                {(d.id ?? '').toUpperCase()} · {d.barangay}
               </p>
             </div>
           </div>
@@ -1022,7 +1022,7 @@ export function ResourceDeployment() {
     );
     pushNotif(
       `✅ Mission Complete — ${d.barangay}`,
-      `Deployment ${d.id.toUpperCase()} has been marked as completed.`,
+      `Deployment ${(d.id ?? '').toUpperCase()} has been marked as completed.`,
       "complete",
     );
   };
@@ -1033,7 +1033,7 @@ export function ResourceDeployment() {
     );
     pushNotif(
       `📝 Plan Updated — ${updated.barangay}`,
-      `Deployment plan ${updated.id.toUpperCase()} has been modified and saved.`,
+      `Deployment plan ${(updated.id ?? '').toUpperCase()} has been modified and saved.`,
       "info",
     );
   };

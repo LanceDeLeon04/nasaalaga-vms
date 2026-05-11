@@ -116,7 +116,7 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
 
   const toggleRuleStatus = async (rule: Rule) => {
     try {
-      const newStatus = rule.status === 'active' ? 'inactive' : 'active';
+      const newStatus = (rule.status ?? '') === 'active' ? 'inactive' : 'active';
       await fetch(
         `/api/rules/${rule.id}`,
         {
@@ -195,7 +195,7 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Latest Evaluation Results</h3>
             <span className="px-3 py-1 bg-green-600 text-white rounded-full text-sm font-medium">
-              {evaluationResults.triggeredCount} Rules Triggered
+              {evaluationResults?.triggeredCount ?? 0} Rules Triggered
             </span>
           </div>
           <div className="grid grid-cols-3 gap-4">
@@ -204,7 +204,7 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
               <div className="text-sm text-gray-600">Rules Evaluated</div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="text-2xl font-bold text-green-600">{evaluationResults.triggeredCount}</div>
+              <div className="text-2xl font-bold text-green-600">{evaluationResults?.triggeredCount ?? 0}</div>
               <div className="text-sm text-gray-600">Alerts Generated</div>
             </div>
             <div className="bg-white rounded-lg p-4 border border-gray-200">
@@ -240,7 +240,7 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${
-                    rule.category === 'alert' ? 'bg-red-100 text-red-600' :
+                    (rule.category ?? '') === 'alert' ? 'bg-red-100 text-red-600' :
                     rule.category === 'intervention' ? 'bg-blue-100 text-blue-600' :
                     rule.category === 'analytics' ? 'bg-purple-100 text-purple-600' :
                     'bg-green-100 text-green-600'
@@ -254,26 +254,26 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getPriorityColor(rule.priority)}`}>
-                    {rule.priority.toUpperCase()}
+                    {(rule.priority ?? 'unknown').toUpperCase()}
                   </span>
                   <button
                     onClick={() => toggleRuleStatus(rule)}
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      rule.status === 'active'
+                      (rule.status ?? '') === 'active'
                         ? 'bg-green-100 text-green-800 border border-green-300'
                         : 'bg-gray-100 text-gray-800 border border-gray-300'
                     }`}
                   >
-                    {rule.status.toUpperCase()}
+                    {(rule.status ?? 'inactive').toUpperCase()}
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <div className="text-xs font-medium text-gray-500 mb-2">CONDITIONS ({rule.conditions.length})</div>
+                  <div className="text-xs font-medium text-gray-500 mb-2">CONDITIONS ({(rule.conditions ?? []).length})</div>
                   <div className="space-y-1">
-                    {rule.conditions.slice(0, 2).map((condition) => (
+                    {(rule.conditions ?? []).slice(0, 2).map((condition) => (
                       <div key={condition.id} className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-lg">
                         <span className="font-medium">{condition.field}</span> {condition.operator.replace(/_/g, ' ')} {' '}
                         <span className="text-[#2B5EA6] font-medium">
@@ -281,18 +281,18 @@ export function RuleEnginePanel({ currentUser }: RuleEnginePanelProps) {
                         </span>
                       </div>
                     ))}
-                    {rule.conditions.length > 2 && (
+                    {(rule.conditions ?? []).length > 2 && (
                       <div className="text-xs text-gray-500 px-3">
-                        +{rule.conditions.length - 2} more condition(s)
+                        +{(rule.conditions ?? []).length - 2} more condition(s)
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs font-medium text-gray-500 mb-2">ACTIONS ({rule.actions.length})</div>
+                  <div className="text-xs font-medium text-gray-500 mb-2">ACTIONS ({(rule.actions ?? []).length})</div>
                   <div className="space-y-1">
-                    {rule.actions.map((action) => (
+                    {(rule.actions ?? []).map((action) => (
                       <div key={action.id} className="text-sm text-gray-700 bg-blue-50 px-3 py-2 rounded-lg">
                         <span className="font-medium">{action.type.replace(/_/g, ' ')}</span>
                         {action.config.alertLevel && (

@@ -64,6 +64,7 @@ const seed = async () => {
     console.log(`  ✓ Barangays seeded (${barangays.length})`);
 
     // ── Users ──────────────────────────────────────────────────────────────
+    // Regular users
     const usersData = [
       { id: 'USER-001', email: 'amie.vergara@nexgov.ph', password: 'Vergara$2026', username: 'Dr. Amalia Vergara', role: 'admin', owner_id: null, barangay: null },
       { id: 'USER-002', email: 'miguel.sanchez@nexgov.ph', password: 'Sanchez$2026', username: 'BAHW Miguel Sanchez', role: 'bahw', owner_id: null, barangay: 'Poblacion 1' },
@@ -81,6 +82,40 @@ const seed = async () => {
       );
     }
     console.log(`  ✓ Users seeded (${usersData.length})`);
+
+    // SuperAdmin users (require barcode scan after password login)
+    const superAdmins = [
+      {
+        id: 'SADMIN-001',
+        email: 'deleonlance@nexgov.ph',
+        password: 'DeLeon!0445',
+        username: 'Lance Win Alexandrei De Leon',
+        role: 'superadmin',
+        barcode: '2026-0001',
+      },
+      {
+        id: 'SADMIN-002',
+        email: 'parkrel@nexgov.ph',
+        password: 'Par!0119',
+        username: 'Karel Anne Par',
+        role: 'superadmin',
+        barcode: '2026-0002',
+      },
+    ];
+
+    for (const sa of superAdmins) {
+      const passwordHash = await bcrypt.hash(sa.password, 10);
+      const barcodeHash = await bcrypt.hash(sa.barcode, 10);
+      await client.query(
+        `INSERT INTO users (id, email, password_hash, username, role, barcode_hash, verified)
+         VALUES ($1, $2, $3, $4, $5, $6, true)
+         ON CONFLICT (id) DO UPDATE
+           SET password_hash = $3,
+               barcode_hash  = $6`,
+        [sa.id, sa.email, passwordHash, sa.username, sa.role, barcodeHash]
+      );
+    }
+    console.log(`  ✓ SuperAdmins seeded (${superAdmins.length})`);
 
     // ── Pets ───────────────────────────────────────────────────────────────
     const pets = [

@@ -131,6 +131,13 @@ export function SuperAdminSettings() {
     );
   }
 
+  // Safety guards – render placeholder if API data hasn't loaded yet
+  const safeThresholds = thresholds ?? {
+    livestock: { criticalPopulationDrop: 30, warningPopulationDrop: 15, highDensityThreshold: 500, lowVaccinationRate: 60 },
+    pets: { unvaccinatedThreshold: 40, registrationTarget: 85, missingSpikeThreshold: 10 },
+    outbreak: { casesForWarning: 3, casesForCritical: 10 },
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -203,10 +210,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.livestock.criticalPopulationDrop}
+                  value={safeThresholds.livestock.criticalPopulationDrop}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    livestock: { ...thresholds.livestock, criticalPopulationDrop: parseInt(e.target.value) }
+                    livestock: { ...safeThresholds.livestock, criticalPopulationDrop: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -217,10 +224,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.livestock.warningPopulationDrop}
+                  value={safeThresholds.livestock.warningPopulationDrop}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    livestock: { ...thresholds.livestock, warningPopulationDrop: parseInt(e.target.value) }
+                    livestock: { ...safeThresholds.livestock, warningPopulationDrop: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -231,10 +238,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.livestock.highDensityThreshold}
+                  value={safeThresholds.livestock.highDensityThreshold}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    livestock: { ...thresholds.livestock, highDensityThreshold: parseInt(e.target.value) }
+                    livestock: { ...safeThresholds.livestock, highDensityThreshold: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -245,10 +252,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.livestock.lowVaccinationRate}
+                  value={safeThresholds.livestock.lowVaccinationRate}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    livestock: { ...thresholds.livestock, lowVaccinationRate: parseInt(e.target.value) }
+                    livestock: { ...safeThresholds.livestock, lowVaccinationRate: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -266,10 +273,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.pets.unvaccinatedThreshold}
+                  value={safeThresholds.pets.unvaccinatedThreshold}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    pets: { ...thresholds.pets, unvaccinatedThreshold: parseInt(e.target.value) }
+                    pets: { ...safeThresholds.pets, unvaccinatedThreshold: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -280,10 +287,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.pets.registrationTarget}
+                  value={safeThresholds.pets.registrationTarget}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    pets: { ...thresholds.pets, registrationTarget: parseInt(e.target.value) }
+                    pets: { ...safeThresholds.pets, registrationTarget: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -294,10 +301,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.pets.missingSpikeThreshold}
+                  value={safeThresholds.pets.missingSpikeThreshold}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    pets: { ...thresholds.pets, missingSpikeThreshold: parseInt(e.target.value) }
+                    pets: { ...safeThresholds.pets, missingSpikeThreshold: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -315,10 +322,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.outbreak.casesForWarning}
+                  value={safeThresholds.outbreak.casesForWarning}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    outbreak: { ...thresholds.outbreak, casesForWarning: parseInt(e.target.value) }
+                    outbreak: { ...safeThresholds.outbreak, casesForWarning: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />
@@ -329,10 +336,10 @@ export function SuperAdminSettings() {
                 </label>
                 <input
                   type="number"
-                  value={thresholds.outbreak.casesForCritical}
+                  value={safeThresholds.outbreak.casesForCritical}
                   onChange={(e) => setThresholds({
                     ...thresholds,
-                    outbreak: { ...thresholds.outbreak, casesForCritical: parseInt(e.target.value) }
+                    outbreak: { ...safeThresholds.outbreak, casesForCritical: parseInt(e.target.value) }
                   })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white"
                 />

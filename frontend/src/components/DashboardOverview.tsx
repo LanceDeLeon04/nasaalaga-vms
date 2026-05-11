@@ -728,7 +728,7 @@ export function DashboardOverview() {
               </div>
             </div>
 
-            {/* Pet Survey Chart - NEW */}
+            {/* Pet Survey Chart */}
             <PetSurveyChart />
 
             {/* Active Disease Alerts */}

@@ -266,9 +266,9 @@ export function WildlifeTracking() {
 
   const filteredAnimals = wildAnimals.filter(animal => 
     searchQuery === '' ||
-    animal.species.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    animal.commonName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    animal.location.toLowerCase().includes(searchQuery.toLowerCase())
+    (animal.species ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (animal.commonName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (animal.location ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const renderTracking = () => (

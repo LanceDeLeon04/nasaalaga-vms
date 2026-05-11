@@ -37,6 +37,6 @@ export const requireRole = (...roles: string[]) => {
   };
 };
 
-export const signToken = (payload: object) => {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+export const signToken = (payload: object, expiresIn: string = '7d') => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn } as any);
 };

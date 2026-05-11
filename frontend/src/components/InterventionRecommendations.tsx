@@ -222,7 +222,7 @@ function printReport(iv: Intervention) {
       </div>
     </div>
     <div class="report-meta">
-      <div class="report-id">RPT-${iv.id.toUpperCase()}</div>
+      <div class="report-id">RPT-${(iv.id ?? '').toUpperCase()}</div>
       <div class="report-date">Generated: ${now()}</div>
     </div>
   </div>

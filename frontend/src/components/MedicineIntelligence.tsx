@@ -199,7 +199,7 @@ function InvestigateModal({
                 Investigate Alert
               </p>
               <p className="text-white/60 text-xs">
-                {med.id.toUpperCase()}
+                {(med.id ?? '').toUpperCase()}
               </p>
             </div>
           </div>

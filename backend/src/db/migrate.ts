@@ -22,9 +22,15 @@ const createTables = async () => {
         barangay VARCHAR(255),
         address TEXT,
         verified BOOLEAN DEFAULT true,
+        barcode_hash VARCHAR(255),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    // Add barcode_hash column if upgrading from old schema
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS barcode_hash VARCHAR(255);
     `);
 
     // OTP store table

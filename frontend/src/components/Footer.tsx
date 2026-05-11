@@ -10,7 +10,7 @@ export function Footer() {
           <div>
             <div className="flex items-center gap-3 mb-4">
               <img
-                src={logoImage}
+                src={logoImage} onError={(e) => { e.currentTarget.style.opacity="0"; }}
                 alt="Calaca City Seal"
                 className="w-16 h-16"
               />
