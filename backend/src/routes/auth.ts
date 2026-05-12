@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '../db';
 import { signToken } from '../middleware/auth';
+import { sendOtpEmail } from '../services/email';
 
 const router = Router();
 
@@ -112,47 +113,46 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
 // ── Send OTP ───────────────────────────────────────────────────────────────
 router.post('/send-otp', async (req: Request, res: Response) => {
   try {
-    const { email, phone } = req.body;
-    if (!email && !phone) return res.status(400).json({ error: 'Email or phone required' });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email address is required' });
+    }
 
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Block superadmin emails from signing up
+    const existingUser = await query('SELECT role FROM users WHERE email = $1', [normalizedEmail]);
+    if (existingUser.rows[0]?.role === 'superadmin') {
+      return res.status(403).json({ error: 'This email cannot be used for self-registration.' });
+    }
+
+    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    const key = email ? email.toLowerCase() : phone;
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
+    // Store OTP in database
     await query(
       `INSERT INTO otp_store (key, otp, expires_at, method, verified)
-       VALUES ($1, $2, $3, $4, false)
-       ON CONFLICT (key) DO UPDATE SET otp=$2, expires_at=$3, verified=false, created_at=NOW()`,
-      [key, otp, expiresAt, email ? 'email' : 'phone']
+       VALUES ($1, $2, $3, 'email', false)
+       ON CONFLICT (key) DO UPDATE
+         SET otp = $2, expires_at = $3, verified = false, created_at = NOW()`,
+      [normalizedEmail, otp, expiresAt]
     );
 
-    const BREVO_KEY = process.env.BREVO_API_KEY;
-    let otpSent = false;
-
-    if (BREVO_KEY && email) {
-      try {
-        const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
-          method: 'POST',
-          headers: { 'accept': 'application/json', 'api-key': BREVO_KEY, 'content-type': 'application/json' },
-          body: JSON.stringify({
-            sender: { name: 'NASaAlaga - Calaca CVO', email: 'noreply@nasaalaga.com' },
-            to: [{ email, name: email.split('@')[0] }],
-            subject: 'NASaAlaga – Email Verification Code',
-            htmlContent: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px"><div style="background:linear-gradient(135deg,#2B5EA6,#60A85C);padding:30px;border-radius:10px 10px 0 0;text-align:center"><h1 style="color:white;margin:0">NASaAlaga</h1></div><div style="background:white;padding:40px;border-radius:0 0 10px 10px"><h2 style="color:#2B5EA6">Verify Your Email</h2><div style="background:#f0f7ff;border-left:4px solid #2B5EA6;padding:20px;margin:30px 0;text-align:center"><p style="margin:0;font-size:42px;font-weight:bold;color:#2B5EA6;letter-spacing:8px;font-family:monospace">${otp}</p></div><p style="color:#666;font-size:14px">This code expires in <strong>10 minutes</strong>.</p></div></div>`
-          })
-        });
-        otpSent = resp.ok;
-      } catch { otpSent = false; }
-    }
+    // Send via Gmail
+    const result = await sendOtpEmail(normalizedEmail, otp);
 
     return res.json({
       success: true,
-      message: otpSent ? `OTP sent to ${email}` : '⚠️ Email service unavailable. Use code below for testing.',
-      fallbackMode: !otpSent,
-      otp: !otpSent ? otp : undefined,
+      message: result.sent
+        ? `Verification code sent to ${normalizedEmail}. Check your inbox.`
+        : '⚠️ Email not configured — use the code shown below (development mode only).',
+      fallbackMode: result.fallbackMode,
+      otp: result.fallbackMode ? result.otp : undefined, // only expose in dev fallback
       expiresAt: expiresAt.toISOString(),
     });
   } catch (err: any) {
+    console.error('[send-otp]', err);
     return res.status(500).json({ error: err.message });
   }
 });

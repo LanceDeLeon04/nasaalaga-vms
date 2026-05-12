@@ -4,6 +4,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth';
+import { verifyEmailConnection } from './services/email';
 import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
@@ -52,10 +53,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n🐾 NASaAlaga API running on port ${PORT}`);
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   Health check: http://localhost:${PORT}/api/health\n`);
+  console.log(`   Health check: http://localhost:${PORT}/api/health`);
+  await verifyEmailConnection();
+  console.log('');
 });
 
 export default app;

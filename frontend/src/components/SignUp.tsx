@@ -1,7 +1,7 @@
 import api from '../lib/api';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Phone, Lock, User, MapPin, Home, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Home, CreditCard, ArrowLeft, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 const cityHallBg = '/images/city-hall-bg.jpg';
 import { fetchCalacaBarangays, CALACA_BARANGAYS_FALLBACK } from '../utils/barangays';
@@ -20,13 +20,12 @@ export function SignUp() {
     middleName: '',
     lastName: '',
     email: '',
-    phone: '',
     password: '',
     confirmPassword: '',
     barangay: '',
     address: '',
     temporaryId: '',
-    verificationMethod: 'email' as 'email' | 'phone'
+    verificationMethod: 'email' as 'email'
   });
 
   const [otp, setOtp] = useState('');
@@ -85,8 +84,7 @@ export function SignUp() {
       toast.error('Please enter your email address');
       return;
     }
-    if (formData.verificationMethod === 'phone' && !formData.phone.trim()) {
-      toast.error('Please enter your phone number');
+    if (false) { // phone removed — email only
       return;
     }
     if (!formData.password) {
@@ -114,7 +112,7 @@ export function SignUp() {
       setIsLoading(true);
       const payload = formData.verificationMethod === 'email' 
         ? { email: formData.email }
-        : { phone: formData.phone };
+        : { email: formData.email };
 
       console.log('📤 Sending OTP request:', payload);
 
@@ -150,7 +148,7 @@ export function SignUp() {
       } else {
         setFallbackMode(false);
         setDisplayedOTP('');
-        toast.success(`Verification code sent! Check your ${formData.verificationMethod === 'email' ? 'email inbox (including spam folder)' : 'phone messages'}.`);
+        toast.success('Verification code sent! Check your email inbox (including spam folder).');
       }
 
       setStep('otp');
@@ -172,7 +170,7 @@ export function SignUp() {
       setIsLoading(true);
       const payload = formData.verificationMethod === 'email'
         ? { email: formData.email, otp: otp }
-        : { phone: formData.phone, otp: otp };
+        : { email: formData.email, otp };
 
       console.log('📤 Verifying OTP:', payload);
 
@@ -220,7 +218,7 @@ export function SignUp() {
           },
           body: JSON.stringify({
             email: formData.email,
-            phone: formData.phone || undefined,
+
             password: formData.password,
             username,
             barangay: formData.barangay,
@@ -310,13 +308,13 @@ export function SignUp() {
 
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-800 mb-3">
-              Verify Your {formData.verificationMethod === 'email' ? 'Email' : 'Phone'}
+              Verify Your Email
             </h2>
             <p className="text-gray-600 text-lg mb-4">
               We've sent a 6-digit verification code to:
             </p>
             <p className="text-xl font-bold text-[#2B5EA6] mb-6">
-              {formData.verificationMethod === 'email' ? formData.email : formData.phone}
+              {formData.email}
             </p>
             
             {fallbackMode && displayedOTP ? (
@@ -337,7 +335,7 @@ export function SignUp() {
             ) : (
               <div className="bg-blue-50 border-2 border-[#2B5EA6] rounded-lg p-4">
                 <p className="text-sm text-gray-700">
-                  📧 Check your {formData.verificationMethod === 'email' ? 'email inbox (and spam folder)' : 'phone messages'} for the OTP code
+                  📧 Check your email inbox (and spam folder) for the OTP code
                 </p>
               </div>
             )}
@@ -456,7 +454,7 @@ export function SignUp() {
           {/* VERIFICATION METHOD */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Verification Method <span className="text-red-500">*</span>
+              Verification Method (Email only) <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -470,18 +468,6 @@ export function SignUp() {
               >
                 <Mail className="w-5 h-5 inline mr-2" />
                 Email
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, verificationMethod: 'phone' })}
-                className={`py-3 px-4 rounded-lg border-2 font-medium transition-all ${
-                  formData.verificationMethod === 'phone'
-                    ? 'border-[#2B5EA6] bg-blue-50 text-[#2B5EA6]'
-                    : 'border-gray-300 text-gray-600 hover:border-gray-400'
-                }`}
-              >
-                <Phone className="w-5 h-5 inline mr-2" />
-                Phone
               </button>
             </div>
           </div>
@@ -502,25 +488,6 @@ export function SignUp() {
               />
             </div>
           </div>
-
-          {/* PHONE (if selected) */}
-          {formData.verificationMethod === 'phone' && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Phone Number <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full pl-11 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] focus:border-transparent"
-                  placeholder="09171234567"
-                />
-              </div>
-            </div>
-          )}
 
           {/* PASSWORD */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
