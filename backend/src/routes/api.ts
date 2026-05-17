@@ -65,6 +65,24 @@ router.get('/schedules', async (req, res) => {
   }
 });
 
+router.put('/schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, registered, notes } = req.body;
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let i = 1;
+    if (status !== undefined)     { sets.push(`status=$${i++}`);     vals.push(status); }
+    if (registered !== undefined) { sets.push(`registered=$${i++}`); vals.push(registered); }
+    if (notes !== undefined)      { sets.push(`notes=$${i++}`);      vals.push(notes); }
+    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    vals.push(req.params.id);
+    const result = await query(`UPDATE vaccination_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
+    return res.json({ schedule: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/schedules', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;

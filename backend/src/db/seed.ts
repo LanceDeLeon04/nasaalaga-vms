@@ -214,13 +214,21 @@ const seed = async () => {
 
     // ── Vaccination Schedules ──────────────────────────────────────────────
     const schedules = [
-      { id: 'SCH-001', barangay: 'Poblacion 1', date: '2025-05-15', time_start: '08:00', time_end: '12:00', venue: 'Barangay Hall', capacity: 50, registered: 12, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-002', barangay: 'Poblacion 3', date: '2025-05-20', time_start: '09:00', time_end: '13:00', venue: 'Community Center', capacity: 40, registered: 8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-003', barangay: 'Balimbing', date: '2025-05-22', time_start: '08:00', time_end: '11:00', venue: 'Sitio Covered Court', capacity: 30, registered: 5, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-004', barangay: 'Bambang', date: '2025-05-25', time_start: '13:00', time_end: '17:00', venue: 'Multi-Purpose Hall', capacity: 35, registered: 7, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-005', barangay: 'Poblacion 5', date: '2025-06-05', time_start: '08:00', time_end: '12:00', venue: 'Health Center Compound', capacity: 60, registered: 22, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-006', barangay: 'Quisumbing', date: '2025-04-10', time_start: '08:00', time_end: '11:00', venue: 'Barangay Plaza', capacity: 25, registered: 25, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-007', barangay: 'Salong', date: '2025-04-12', time_start: '09:00', time_end: '12:00', venue: 'Elementary School Grounds', capacity: 30, registered: 28, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-001', barangay: 'Poblacion 1',      date: '2025-05-15', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 50, registered: 12, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-002', barangay: 'Poblacion 3',      date: '2025-05-20', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Community Center',           capacity: 40, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-003', barangay: 'Balimbing',        date: '2025-05-22', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Sitio Covered Court',        capacity: 30, registered:  5, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-004', barangay: 'Bambang',          date: '2025-05-25', time_start: '01:00 PM', time_end: '05:00 PM', venue: 'Multi-Purpose Hall',         capacity: 35, registered:  7, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-005', barangay: 'Poblacion 5',      date: '2025-06-05', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Health Center Compound',    capacity: 60, registered: 22, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-006', barangay: 'Quisumbing',       date: '2025-04-10', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Plaza',             capacity: 25, registered: 25, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-007', barangay: 'Salong',           date: '2025-04-12', time_start: '09:00 AM', time_end: '12:00 PM', venue: 'Elementary School Grounds', capacity: 30, registered: 28, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-008', barangay: 'Dacanlao',         date: '2025-05-28', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  4, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-009', barangay: 'Bisaya',           date: '2025-05-29', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Covered Court',             capacity: 25, registered:  6, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-010', barangay: 'Cahil',            date: '2025-06-02', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Multi-Purpose Hall',        capacity: 20, registered:  3, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-011', barangay: 'Talisay',          date: '2025-06-07', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Plaza',            capacity: 40, registered: 11, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-012', barangay: 'San Rafael',       date: '2025-06-10', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-013', barangay: 'Sinisian',         date: '2025-06-12', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Purok 2 Covered Court',    capacity: 25, registered:  2, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-014', barangay: 'Poblacion 2',      date: '2025-04-05', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Covered Basketball Court', capacity: 45, registered: 45, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-015', barangay: 'Putting Bato East',date: '2025-04-18', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Hall',             capacity: 20, registered: 17, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
     ];
 
     for (const s of schedules) {

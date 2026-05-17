@@ -81,6 +81,10 @@ const createTables = async () => {
     `);
 
 
+    // Patch vaccination_schedules notes column
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
+
     // Patch new pet columns (safe to run multiple times)
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS is_spayed BOOLEAN DEFAULT false`);
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS is_neutered BOOLEAN DEFAULT false`);

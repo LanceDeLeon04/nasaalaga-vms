@@ -106,29 +106,229 @@ function fmtDate(iso?: string) {
   return new Date(iso).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 }
 
-function matchScore(lost: LFReport, found: LFReport): number {
-  let score = 0;
-  if (lost.species?.toLowerCase() === found.species?.toLowerCase()) score += 40;
-  if (lost.breed && found.breed) {
-    if (lost.breed.toLowerCase().includes(found.breed.toLowerCase().split(" ")[0]) ||
-        found.breed.toLowerCase().includes(lost.breed.toLowerCase().split(" ")[0])) score += 25;
-  }
-  if (lost.color && found.color) {
-    const lw = lost.color.toLowerCase().split(/[\s\/,]+/);
-    const fw = found.color.toLowerCase().split(/[\s\/,]+/);
-    if (lw.some(w => fw.includes(w))) score += 20;
-  }
-  if (lost.barangay === found.barangay) score += 15;
-  return score;
+// ── Smart Matching Engine ─────────────────────────────────────────────────
+// Multi-factor weighted algorithm with full breakdown per criterion
+
+interface MatchFactor {
+  label: string;
+  points: number;
+  max: number;
+  matched: boolean;
+  detail: string;
+  icon: string;
 }
 
-function getMatches(report: LFReport, all: LFReport[]) {
+interface MatchResult {
+  report: LFReport;
+  score: number;           // 0–100 normalised
+  rawScore: number;        // raw weighted sum
+  confidence: "High" | "Medium" | "Low";
+  factors: MatchFactor[];
+}
+
+// Levenshtein distance for fuzzy string comparison
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({length: m+1}, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] :
+        1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+function fuzzyMatch(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const al = a.toLowerCase().trim(), bl = b.toLowerCase().trim();
+  if (al === bl) return 1.0;
+  if (al.includes(bl) || bl.includes(al)) return 0.85;
+  const dist = levenshtein(al, bl);
+  const maxLen = Math.max(al.length, bl.length);
+  const similarity = 1 - dist / maxLen;
+  return similarity > 0.6 ? similarity : 0;
+}
+
+function colorOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const tokenize = (s: string) => s.toLowerCase().split(/[\s/,+&]+/).filter(w => w.length > 2);
+  const wa = tokenize(a), wb = tokenize(b);
+  if (!wa.length || !wb.length) return 0;
+  let hits = 0;
+  for (const w of wa) {
+    if (wb.some(x => fuzzyMatch(w, x) > 0.75)) hits++;
+  }
+  return hits / Math.max(wa.length, wb.length);
+}
+
+function keywordOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const stopWords = new Set(["the","a","an","and","or","in","at","on","near","with","was","is","very","small","medium","large"]);
+  const tokenize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+     .filter(w => w.length > 3 && !stopWords.has(w));
+  const wa = tokenize(a), wb = tokenize(b);
+  if (!wa.length || !wb.length) return 0;
+  let hits = 0;
+  for (const w of wa) if (wb.some(x => fuzzyMatch(w, x) > 0.7)) hits++;
+  return hits / Math.max(wa.length, wb.length);
+}
+
+function daysBetween(a?: string, b?: string): number | null {
+  if (!a || !b) return null;
+  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / (1000 * 60 * 60 * 24);
+}
+
+function adjacentBarangay(a: string, b: string): boolean {
+  // Approximate adjacency for Calaca barangays by zone
+  const zones: Record<string, string> = {
+    "Baclas":"North","Balimbing":"North","Bambang":"North","Bisaya":"North",
+    "Madalunot":"North","Matipok":"North","Munting Coral":"North","Niyugan":"North","Tamayo":"North",
+    "Bagong Tubig":"West","Cahil":"West","Calantas":"West","Coral Ni Lopez":"West",
+    "Dacanlao":"West","Loma":"West","Makina":"West","Pantay":"West","Taklang Anak":"West","Timbain":"West",
+    "Caluangan":"East","Coral Ni Bacal":"East","Dila":"East","Lumbang Na Bata":"East",
+    "Lumbang Na Matanda":"East","Poblacion 1":"East","Poblacion 2":"East","Poblacion 3":"East",
+    "Poblacion 4":"East","Poblacion 6":"East",
+    "Camastilisan":"Red","Lumbang Calzada":"Red","Poblacion 5":"Red","Putting Bato East":"Red",
+    "Putting Bato West":"Red","Quisumbing":"Red","Salong":"Red","San Rafael":"Red",
+    "Sinisian":"Red","Talisay":"Red",
+  };
+  return zones[a] !== undefined && zones[a] === zones[b];
+}
+
+function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
+  const factors: MatchFactor[] = [];
+  const lostDate = lost.date_reported || lost.dateReported;
+  const foundDate = found.date_reported || found.dateReported;
+  const days = daysBetween(lostDate, foundDate);
+
+  // 1. Species — hard gate (40 pts)
+  const speciesMatch = (lost.species||"").toLowerCase() === (found.species||"").toLowerCase();
+  factors.push({
+    label: "Species",
+    points: speciesMatch ? 40 : 0,
+    max: 40,
+    matched: speciesMatch,
+    detail: speciesMatch
+      ? `Both are ${lost.species}`
+      : `Lost: ${lost.species || "?"} · Found: ${found.species || "?"}`,
+    icon: "🐾",
+  });
+
+  // 2. Breed — fuzzy (20 pts)
+  const breedSim = fuzzyMatch(lost.breed||"", found.breed||"");
+  const breedPts = Math.round(breedSim * 20);
+  factors.push({
+    label: "Breed",
+    points: breedPts,
+    max: 20,
+    matched: breedPts >= 10,
+    detail: breedPts >= 20
+      ? `Exact match: ${lost.breed}`
+      : breedPts >= 10
+      ? `Similar: "${lost.breed}" ≈ "${found.breed}" (${Math.round(breedSim*100)}%)`
+      : `Different: "${lost.breed||"?"}" vs "${found.breed||"?"}"`  ,
+    icon: "🔬",
+  });
+
+  // 3. Color — token overlap (15 pts)
+  const colorSim = colorOverlap(lost.color||"", found.color||"");
+  const colorPts = Math.round(colorSim * 15);
+  factors.push({
+    label: "Color / Markings",
+    points: colorPts,
+    max: 15,
+    matched: colorPts >= 8,
+    detail: colorPts >= 15
+      ? `Colors match: ${lost.color}`
+      : colorPts >= 8
+      ? `Partial color overlap: "${lost.color}" / "${found.color}"`
+      : `Colors differ: "${lost.color||"?"}" vs "${found.color||"?"}"`,
+    icon: "🎨",
+  });
+
+  // 4. Location — same barangay (10 pts) or adjacent zone (5 pts)
+  const sameBarangay = lost.barangay === found.barangay;
+  const nearbyBarangay = !sameBarangay && adjacentBarangay(lost.barangay, found.barangay);
+  const locPts = sameBarangay ? 10 : nearbyBarangay ? 5 : 0;
+  factors.push({
+    label: "Location",
+    points: locPts,
+    max: 10,
+    matched: locPts > 0,
+    detail: sameBarangay
+      ? `Same barangay: ${lost.barangay}`
+      : nearbyBarangay
+      ? `Adjacent zone: ${lost.barangay} ↔ ${found.barangay}`
+      : `Different areas: ${lost.barangay} / ${found.barangay}`,
+    icon: "📍",
+  });
+
+  // 5. Date proximity — within 3 days (10 pts), 7 days (6 pts), 14 days (3 pts)
+  let datePts = 0;
+  let dateDetail = "No dates to compare";
+  if (days !== null) {
+    if (days <= 3) { datePts = 10; dateDetail = `Found ${Math.round(days)}d after lost — very close`; }
+    else if (days <= 7) { datePts = 6; dateDetail = `${Math.round(days)} days apart — plausible`; }
+    else if (days <= 14) { datePts = 3; dateDetail = `${Math.round(days)} days apart — possible`; }
+    else { datePts = 0; dateDetail = `${Math.round(days)} days apart — unlikely but possible`; }
+  }
+  factors.push({
+    label: "Date Proximity",
+    points: datePts,
+    max: 10,
+    matched: datePts >= 3,
+    detail: dateDetail,
+    icon: "📅",
+  });
+
+  // 6. Description keyword overlap (5 pts)
+  const kwSim = keywordOverlap(lost.description||"", found.description||"");
+  const kwPts = Math.round(kwSim * 5);
+  factors.push({
+    label: "Description Keywords",
+    points: kwPts,
+    max: 5,
+    matched: kwPts >= 2,
+    detail: kwPts >= 4
+      ? "Strong keyword overlap in descriptions"
+      : kwPts >= 2
+      ? "Some shared keywords in descriptions"
+      : "No significant keyword overlap",
+    icon: "📝",
+  });
+
+  return factors;
+}
+
+function computeMatchResult(lost: LFReport, found: LFReport): MatchResult {
+  const factors = analyzeMatch(lost, found);
+  const rawScore = factors.reduce((s, f) => s + f.points, 0);
+  const maxPossible = factors.reduce((s, f) => s + f.max, 0);
+  const score = Math.round((rawScore / maxPossible) * 100);
+
+  // Species mismatch = automatic disqualification
+  if (!factors[0].matched) return { report: found, score: 0, rawScore: 0, confidence: "Low", factors };
+
+  const confidence: "High" | "Medium" | "Low" =
+    score >= 70 ? "High" : score >= 45 ? "Medium" : "Low";
+
+  return { report: found, score, rawScore, confidence, factors };
+}
+
+function getMatches(report: LFReport, all: LFReport[]): MatchResult[] {
   const opp = report.type === "Lost" ? "Found" : "Lost";
-  return all
-    .filter(r => r.type === opp && r.status === "Open" && r.id !== report.id)
-    .map(r => ({ report: r, score: report.type === "Lost" ? matchScore(report, r) : matchScore(r, report) }))
-    .filter(m => m.score >= 25)
-    .sort((a, b) => b.score - a.score);
+  const candidates = all.filter(r => r.type === opp && r.status === "Open" && r.id !== report.id);
+
+  return candidates
+    .map(candidate => {
+      const [lost, found] = report.type === "Lost" ? [report, candidate] : [candidate, report];
+      const result = computeMatchResult(lost, found);
+      return { ...result, report: candidate };
+    })
+    .filter(r => r.score >= 20 && r.factors[0].matched) // species must match, min 20%
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5); // top 5 matches
 }
 
 const INPUT = "w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] focus:border-transparent bg-white transition-all";
@@ -590,67 +790,369 @@ function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>vo
 
 // ─── LOST/FOUND MODAL ────────────────────────────────────────────────────────
 
-function LostFoundModal({ report, all, pets, onClose, onResolve }: { report:LFReport; all:LFReport[]; pets:Pet[]; onClose:()=>void; onResolve:(id:string,matchId:string)=>void }) {
+function ConfidenceBadge({ c }: { c: "High"|"Medium"|"Low" }) {
+  const cfg = {
+    High:   { bg:"bg-green-100",  text:"text-green-700",  dot:"bg-green-500",  label:"High Confidence"   },
+    Medium: { bg:"bg-amber-100",  text:"text-amber-700",  dot:"bg-amber-500",  label:"Medium Confidence" },
+    Low:    { bg:"bg-orange-100", text:"text-orange-700", dot:"bg-orange-500", label:"Low Confidence"    },
+  }[c];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>
+      {cfg.label}
+    </span>
+  );
+}
+
+function FactorBar({ factor }: { factor: MatchFactor }) {
+  const pct = factor.max > 0 ? (factor.points / factor.max) * 100 : 0;
+  return (
+    <div className={`rounded-xl p-3 border ${factor.matched ? "bg-green-50 border-green-100" : "bg-gray-50 border-gray-100"}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <span className="text-base">{factor.icon}</span>
+          <span className="text-xs font-bold text-gray-700">{factor.label}</span>
+        </div>
+        <span className={`text-xs font-black ${factor.matched ? "text-green-600" : "text-gray-400"}`}>
+          {factor.points}/{factor.max}
+        </span>
+      </div>
+      <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1.5">
+        <div
+          className={`h-full rounded-full transition-all ${factor.matched ? "bg-green-500" : "bg-gray-300"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-gray-500 leading-snug">{factor.detail}</p>
+    </div>
+  );
+}
+
+function LostFoundModal({ report, all, pets, onClose, onResolve }: {
+  report: LFReport; all: LFReport[]; pets: Pet[];
+  onClose: () => void; onResolve: (id: string, matchId: string) => void;
+}) {
   const matches = getMatches(report, all);
-  const linkedPet = pets.find(p => p.id === (report.pet_id||report.petId));
+  const linkedPet = pets.find(p => p.id === (report.pet_id || report.petId));
+  const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className={`px-6 py-5 flex items-center justify-between sticky top-0 ${report.type==="Lost"?"bg-gradient-to-r from-red-600 to-orange-500":"bg-gradient-to-r from-green-600 to-emerald-500"}`}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className={`px-6 py-5 flex items-center justify-between shrink-0 ${
+          report.type === "Lost"
+            ? "bg-gradient-to-r from-red-600 to-orange-500"
+            : "bg-gradient-to-r from-green-600 to-emerald-500"
+        }`}>
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 bg-white/25 text-white text-xs font-bold rounded-full">{report.type.toUpperCase()}</span>
-              <span className="text-white/70 text-xs">{report.id}</span>
+              <span className="px-2 py-0.5 bg-white/25 text-white text-xs font-bold rounded-full">
+                {report.type.toUpperCase()} REPORT
+              </span>
+              <span className="text-white/60 text-xs">{report.id}</span>
             </div>
-            <h3 className="text-xl font-bold text-white">{report.pet_name||report.petName}</h3>
-            <p className="text-white/80 text-sm">{report.species} · {report.breed} · {report.color}</p>
+            <h3 className="text-xl font-bold text-white">{report.pet_name || report.petName}</h3>
+            <p className="text-white/80 text-sm">
+              {report.species} · {report.breed} · {report.color}
+            </p>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
+          <button onClick={onClose} className="text-white/70 hover:text-white p-1">
+            <X className="w-5 h-5"/>
+          </button>
         </div>
-        <div className="p-6 space-y-5">
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-5">
+          {/* Report info */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Reported By</p><p className="text-sm font-semibold">{report.reported_by||report.reportedBy}</p></div>
-            <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Contact</p><p className="text-sm font-semibold">{report.contact_number||report.contactNumber||"—"}</p></div>
-            <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Last Seen</p><p className="text-sm font-semibold">{report.last_seen_location||report.lastSeenLocation||"—"}</p></div>
-            <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Barangay</p><p className="text-sm font-semibold">{report.barangay}</p></div>
-            <div className="col-span-2 bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Description</p><p className="text-sm">{report.description||"—"}</p></div>
+            {[
+              ["Reported By",  report.reported_by || report.reportedBy || "—"],
+              ["Contact",      report.contact_number || report.contactNumber || "—"],
+              ["Last Seen",    report.last_seen_location || report.lastSeenLocation || "—"],
+              ["Barangay",     report.barangay],
+              ["Date Reported",fmtDate(report.date_reported || report.dateReported)],
+              ["Status",       report.status],
+            ].map(([k, v]) => (
+              <div key={k} className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{k}</p>
+                <p className="text-sm font-semibold text-gray-800">{v}</p>
+              </div>
+            ))}
+            <div className="col-span-2 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Description</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{report.description || "—"}</p>
+            </div>
           </div>
+
+          {/* Linked pet record */}
           {linkedPet && (
             <div className="border border-blue-200 bg-blue-50 rounded-xl p-4">
-              <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2 flex items-center gap-1"><Tag className="w-3 h-3"/>Linked Pet Record</p>
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5"/>Linked Pet Record
+              </p>
               <div className="flex items-center gap-3">
-                {petPhoto(linkedPet)?<img src={petPhoto(linkedPet)} className="w-12 h-12 rounded-lg object-cover" alt=""/>:<div className="w-12 h-12 rounded-lg bg-blue-200 flex items-center justify-center"><PawPrint className="w-6 h-6 text-blue-600"/></div>}
-                <div><p className="font-semibold text-blue-800">{pn(linkedPet)} ({linkedPet.id})</p><p className="text-sm text-blue-600">Owner: {on(linkedPet)} · {linkedPet.contact_number||linkedPet.ownerContact}</p></div>
+                {petPhoto(linkedPet)
+                  ? <img src={petPhoto(linkedPet)} className="w-14 h-14 rounded-xl object-cover border border-blue-200" alt=""/>
+                  : <div className="w-14 h-14 rounded-xl bg-blue-200 flex items-center justify-center">
+                      <PawPrint className="w-7 h-7 text-blue-600"/>
+                    </div>
+                }
+                <div>
+                  <p className="font-bold text-blue-800 text-sm">{pn(linkedPet)} <span className="text-blue-500 font-mono text-xs">({linkedPet.id})</span></p>
+                  <p className="text-sm text-blue-600">Owner: {on(linkedPet)}</p>
+                  <p className="text-xs text-blue-500">{linkedPet.contact_number || linkedPet.ownerContact}</p>
+                </div>
               </div>
             </div>
           )}
+
+          {/* Smart Match Engine */}
           <div>
-            <div className="flex items-center gap-2 mb-3"><Zap className="w-4 h-4 text-amber-500"/><p className="font-bold text-gray-800 text-sm">Smart Matches</p>{matches.length>0&&<span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-semibold">{matches.length} match{matches.length>1?"es":""}</span>}</div>
-            {matches.length===0
-              ? <div className="bg-gray-50 rounded-xl p-4 text-center"><AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2"/><p className="text-sm text-gray-500">No matches found yet.</p></div>
-              : <div className="space-y-3">
-                  {matches.map(({report:m,score})=>(
-                    <div key={m.id} className="border border-amber-200 bg-amber-50 rounded-xl p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${m.type==="Found"?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{m.type}</span>
-                          <p className="font-bold text-gray-800 mt-1">{m.pet_name||m.petName} · {m.breed}</p>
-                          <p className="text-sm text-gray-600">{m.color} · {m.barangay}</p>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
+                <Zap className="w-4 h-4 text-amber-600"/>
+              </div>
+              <p className="font-bold text-gray-900">Smart Match Engine</p>
+              {matches.length > 0 && (
+                <span className="ml-auto px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-bold rounded-full">
+                  {matches.length} candidate{matches.length > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+
+            {matches.length === 0 ? (
+              <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center">
+                <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <AlertCircle className="w-7 h-7 text-gray-300"/>
+                </div>
+                <p className="text-sm font-semibold text-gray-500">No matches found yet</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  New reports are automatically scored when added
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {matches.map((m) => (
+                  <div key={m.report.id}
+                    className={`rounded-2xl border-2 overflow-hidden transition-all ${
+                      m.confidence === "High"   ? "border-green-300 shadow-green-100 shadow-md" :
+                      m.confidence === "Medium" ? "border-amber-200 shadow-amber-50 shadow-sm" :
+                                                  "border-gray-200"
+                    }`}
+                  >
+                    {/* Match header */}
+                    <div className={`px-5 py-4 flex items-center justify-between ${
+                      m.confidence === "High"   ? "bg-gradient-to-r from-green-50 to-emerald-50" :
+                      m.confidence === "Medium" ? "bg-gradient-to-r from-amber-50 to-yellow-50" :
+                                                  "bg-gray-50"
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        {/* Score ring */}
+                        <div className="relative w-14 h-14 shrink-0">
+                          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+                            <circle cx="28" cy="28" r="24" fill="none" stroke="#e5e7eb" strokeWidth="5"/>
+                            <circle cx="28" cy="28" r="24" fill="none"
+                              stroke={m.confidence==="High"?"#16a34a":m.confidence==="Medium"?"#d97706":"#f97316"}
+                              strokeWidth="5"
+                              strokeDasharray={`${2*Math.PI*24}`}
+                              strokeDashoffset={`${2*Math.PI*24*(1-m.score/100)}`}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className={`text-sm font-black leading-none ${
+                              m.confidence==="High"?"text-green-700":m.confidence==="Medium"?"text-amber-700":"text-orange-600"
+                            }`}>{m.score}%</span>
+                          </div>
                         </div>
-                        <div className="text-right shrink-0 ml-3">
-                          <div className={`text-lg font-black ${score>=70?"text-green-600":score>=50?"text-amber-600":"text-orange-500"}`}>{score}%</div>
-                          <div className="text-xs text-gray-400">match</div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${
+                              m.report.type==="Found"?"bg-green-100 text-green-700":"bg-red-100 text-red-700"
+                            }`}>{m.report.type}</span>
+                            <span className="text-xs text-gray-400 font-mono">{m.report.id}</span>
+                            <ConfidenceBadge c={m.confidence}/>
+                          </div>
+                          <p className="font-bold text-gray-900 text-sm">
+                            {m.report.pet_name || m.report.petName || "Unknown"}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {m.report.breed} · {m.report.color} · {m.report.barangay}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Reported by {m.report.reported_by || m.report.reportedBy} · {m.report.contact_number || m.report.contactNumber || "—"}
+                          </p>
                         </div>
                       </div>
-                      {report.status==="Open"&&<button onClick={()=>{onResolve(report.id,m.id);onClose();}} className="mt-1 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 flex items-center gap-1"><CheckCircle className="w-3 h-3"/>Mark Resolved</button>}
                     </div>
-                  ))}
-                </div>
-            }
+
+                    {/* Factor breakdown toggle */}
+                    <div className="px-5 py-3 border-t border-gray-100 bg-white">
+                      <button
+                        onClick={() => setExpandedMatch(expandedMatch === m.report.id ? null : m.report.id)}
+                        className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5"/>
+                          Factor Breakdown · {m.factors.filter(f=>f.matched).length}/{m.factors.length} criteria matched
+                        </span>
+                        <ChevronRight className={`w-4 h-4 transition-transform ${expandedMatch===m.report.id?"rotate-90":""}`}/>
+                      </button>
+
+                      {expandedMatch === m.report.id && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {m.factors.map(f => <FactorBar key={f.label} factor={f}/>)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    {report.status === "Open" && (
+                      <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex gap-2">
+                        <button
+                          onClick={() => { onResolve(report.id, m.report.id); onClose(); }}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-xl hover:bg-green-700 transition-colors"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5"/>Mark as Reunited
+                        </button>
+                        <a
+                          href={`tel:${m.report.contact_number || m.report.contactNumber || ""}`}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-100 text-blue-700 text-xs font-bold rounded-xl hover:bg-blue-200 transition-colors"
+                        >
+                          <Phone className="w-3.5 h-3.5"/>Contact Reporter
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex justify-between items-center pt-2 border-t">
-            <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${report.status==="Open"?"bg-yellow-100 text-yellow-800":"bg-gray-100 text-gray-600"}`}>{report.status}</span>
-            {report.status==="Open"&&<button onClick={()=>{onResolve(report.id,"");onClose();}} className="text-sm text-gray-500 hover:text-gray-800 underline">Mark Resolved (no match)</button>}
+
+          {/* Footer actions */}
+          <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+            <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${
+              report.status === "Open" ? "bg-yellow-100 text-yellow-800" : "bg-gray-100 text-gray-500"
+            }`}>{report.status}</span>
+            {report.status === "Open" && (
+              <button
+                onClick={() => { onResolve(report.id, ""); onClose(); }}
+                className="text-sm text-gray-400 hover:text-gray-700 underline transition-colors"
+              >
+                Mark resolved (no match)
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── SCHEDULE MANAGE MODAL ───────────────────────────────────────────────────
+function ScheduleManageModal({ schedule, onClose, onSave }: {
+  schedule: BarangaySchedule;
+  onClose: () => void;
+  onSave: (id: string, data: any) => Promise<void>;
+}) {
+  const [status,     setStatus]     = useState(schedule.status);
+  const [registered, setRegistered] = useState(String(schedule.registered || schedule.registeredPets || 0));
+  const [notes,      setNotes]      = useState((schedule as any).notes || "");
+  const [saving,     setSaving]     = useState(false);
+
+  const reg     = Math.max(0, parseInt(registered) || 0);
+  const fillPct = schedule.capacity > 0 ? Math.min((reg / schedule.capacity) * 100, 100) : 0;
+  const STATUS_OPTS  = ["Scheduled","Upcoming","Completed","Cancelled"];
+  const STATUS_COLOR: Record<string,string> = {
+    Scheduled:"bg-blue-100 text-blue-700", Upcoming:"bg-indigo-100 text-indigo-700",
+    Completed:"bg-green-100 text-green-700", Cancelled:"bg-red-100 text-red-700",
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(schedule.id, { status, registered: reg, notes });
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-5 flex items-center justify-between">
+          <div>
+            <p className="font-bold text-white text-lg">{schedule.barangay}</p>
+            <p className="text-white/70 text-xs">{fmtDate(schedule.date)} · {schedule.time_start || schedule.time || "—"}</p>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white p-1"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["Venue",    schedule.venue || schedule.location || "—"],
+              ["Capacity", String(schedule.capacity) + " slots"],
+              ["ID",       schedule.id],
+              ["Date",     fmtDate(schedule.date)],
+            ].map(([k,v]) => (
+              <div key={k} className="bg-gray-50 rounded-xl p-3">
+                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{k}</p>
+                <p className="text-sm font-semibold text-gray-800">{v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Status */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Status</label>
+            <div className="flex gap-2 flex-wrap">
+              {STATUS_OPTS.map(s => (
+                <button key={s} onClick={() => setStatus(s)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                    status === s
+                      ? (STATUS_COLOR[s] + " border-current scale-105")
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}>{s}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Registered count */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+              Registered Pets
+            </label>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setRegistered(r => String(Math.max(0, (parseInt(r)||0) - 1)))}
+                className="w-9 h-9 rounded-xl border border-gray-200 text-gray-600 text-xl font-bold hover:bg-gray-50 flex items-center justify-center">−</button>
+              <input type="number" min="0" max={schedule.capacity} value={registered}
+                onChange={e => setRegistered(e.target.value)}
+                className="flex-1 text-center border border-gray-200 rounded-xl py-2 text-xl font-black text-gray-900 outline-none focus:ring-2 focus:ring-[#2B5EA6]"/>
+              <button onClick={() => setRegistered(r => String(Math.min(schedule.capacity, (parseInt(r)||0) + 1)))}
+                className="w-9 h-9 rounded-xl border border-gray-200 text-gray-600 text-xl font-bold hover:bg-gray-50 flex items-center justify-center">+</button>
+              <span className="text-sm text-gray-400 shrink-0">/ {schedule.capacity}</span>
+            </div>
+            <div className="mt-2 w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${fillPct>=90?"bg-red-400":fillPct>=60?"bg-amber-400":"bg-[#60A85C]"}`}
+                style={{ width: `${fillPct}%` }}/>
+            </div>
+            <p className="text-xs text-gray-400 mt-1 text-right">{fillPct.toFixed(0)}% full</p>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              placeholder="Remarks, attendance notes…"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#2B5EA6] resize-none"/>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-60 flex items-center justify-center gap-2">
+              {saving ? <><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</> : "Save Changes"}
+            </button>
           </div>
         </div>
       </div>
@@ -660,70 +1162,233 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: { report:LFRe
 
 // ─── SCHEDULE CALENDAR ───────────────────────────────────────────────────────
 
-function ScheduleCalendar({ schedules, onAdd, onManage }: { schedules:BarangaySchedule[]; onAdd:()=>void; onManage:(s:BarangaySchedule)=>void }) {
+function ScheduleCalendar({ schedules, onAdd, onManage, onStatusChange }: {
+  schedules: BarangaySchedule[];
+  onAdd: () => void;
+  onManage: (s: BarangaySchedule) => void;
+  onStatusChange: (id: string, status: string) => void;
+}) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const firstDay=new Date(viewYear,viewMonth,1).getDay();
-  const daysInMonth=new Date(viewYear,viewMonth+1,0).getDate();
-  const schedulesThisMonth=schedules.filter(s=>{const d=new Date(s.date);return d.getFullYear()===viewYear&&d.getMonth()===viewMonth;});
-  const getForDay=(day:number)=>schedules.filter(s=>{const d=new Date(s.date);return d.getFullYear()===viewYear&&d.getMonth()===viewMonth&&d.getDate()===day;});
-  const statusColor:Record<string,string>={Upcoming:"bg-[#2B5EA6]",Completed:"bg-green-500",Cancelled:"bg-red-400"};
+  const [filterBrgy, setFilterBrgy] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const allThisMonth = schedules.filter(s => {
+    const d = new Date(s.date);
+    return d.getFullYear() === viewYear && d.getMonth() === viewMonth;
+  });
+
+  const filteredThisMonth = allThisMonth.filter(s =>
+    (filterBrgy === "all" || s.barangay === filterBrgy) &&
+    (filterStatus === "all" || s.status === filterStatus)
+  );
+
+  const getForDay = (day: number) =>
+    schedules.filter(s => {
+      const d = new Date(s.date);
+      return d.getFullYear() === viewYear && d.getMonth() === viewMonth && d.getDate() === day;
+    });
+
+  const STATUS_CFG: Record<string, { bg: string; text: string; dot: string; calBg: string }> = {
+    Scheduled:  { bg:"bg-blue-50",   text:"text-blue-700",  dot:"bg-blue-500",  calBg:"bg-[#2B5EA6]"  },
+    Upcoming:   { bg:"bg-indigo-50", text:"text-indigo-700",dot:"bg-indigo-500",calBg:"bg-indigo-500"  },
+    Completed:  { bg:"bg-green-50",  text:"text-green-700", dot:"bg-green-500", calBg:"bg-green-500"   },
+    Cancelled:  { bg:"bg-red-50",    text:"text-red-700",   dot:"bg-red-400",   calBg:"bg-red-400"     },
+  };
+
+  const getCfg = (status: string) => STATUS_CFG[status] || STATUS_CFG["Scheduled"];
+
+  // Summary stats
+  const upcoming  = allThisMonth.filter(s => s.status === "Scheduled" || s.status === "Upcoming").length;
+  const completed = allThisMonth.filter(s => s.status === "Completed").length;
+  const totalCap  = allThisMonth.reduce((a, s) => a + (s.capacity || 0), 0);
+  const totalReg  = allThisMonth.reduce((a, s) => a + (s.registered || s.registeredPets || 0), 0);
+
   return (
     <div className="space-y-4">
+      {/* Month summary */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label:"Scheduled",  value: upcoming,   color:"text-blue-600",  bg:"bg-blue-50",   border:"border-blue-200"  },
+          { label:"Completed",  value: completed,  color:"text-green-600", bg:"bg-green-50",  border:"border-green-200" },
+          { label:"Total Slots",value: totalCap,   color:"text-gray-700",  bg:"bg-gray-50",   border:"border-gray-200"  },
+          { label:"Registered", value: totalReg,   color:"text-purple-600",bg:"bg-purple-50", border:"border-purple-200"},
+        ].map(s => (
+          <div key={s.label} className={`${s.bg} border ${s.border} rounded-xl p-3 text-center`}>
+            <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-4 flex items-center justify-between">
-          <button onClick={()=>{if(viewMonth===0){setViewMonth(11);setViewYear(y=>y-1);}else setViewMonth(m=>m-1);}} className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30"><ChevronLeft className="w-4 h-4 text-white"/></button>
-          <div className="text-center"><p className="text-white font-bold text-lg">{MONTHS[viewMonth]} {viewYear}</p><p className="text-white/60 text-xs">{schedulesThisMonth.length} schedule{schedulesThisMonth.length!==1?"s":""}</p></div>
-          <button onClick={()=>{if(viewMonth===11){setViewMonth(0);setViewYear(y=>y+1);}else setViewMonth(m=>m+1);}} className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30"><ChevronRight className="w-4 h-4 text-white"/></button>
+          <button
+            onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); } else setViewMonth(m => m-1); }}
+            className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-colors"
+          ><ChevronLeft className="w-5 h-5 text-white"/></button>
+          <div className="text-center">
+            <p className="text-white font-bold text-xl">{MONTHS[viewMonth]} {viewYear}</p>
+            <p className="text-white/60 text-xs">{allThisMonth.length} schedule{allThisMonth.length !== 1 ? "s" : ""} this month</p>
+          </div>
+          <button
+            onClick={() => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }}
+            className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-colors"
+          ><ChevronRight className="w-5 h-5 text-white"/></button>
         </div>
         <div className="p-4">
-          <div className="grid grid-cols-7 mb-2">{DAYS.map(d=><div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>)}</div>
+          <div className="grid grid-cols-7 mb-2">
+            {DAYS.map(d => <div key={d} className="text-center text-xs font-bold text-gray-400 py-1">{d}</div>)}
+          </div>
           <div className="grid grid-cols-7 gap-1">
-            {Array.from({length:firstDay},(_,i)=><div key={`e${i}`}/>)}
-            {Array.from({length:daysInMonth},(_,i)=>{
-              const day=i+1;const ds=getForDay(day);
-              const isToday=today.getFullYear()===viewYear&&today.getMonth()===viewMonth&&today.getDate()===day;
+            {Array.from({length: firstDay}, (_, i) => <div key={`e${i}`}/>)}
+            {Array.from({length: daysInMonth}, (_, i) => {
+              const day = i + 1;
+              const ds = getForDay(day);
+              const isToday = today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === day;
+              const isPast  = new Date(viewYear, viewMonth, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
               return (
-                <div key={day} className={`min-h-[52px] rounded-xl p-1.5 border transition-colors ${isToday?"border-[#2B5EA6] bg-blue-50":ds.length?"border-transparent bg-gray-50 hover:bg-gray-100":"border-transparent hover:bg-gray-50"}`}>
-                  <p className={`text-xs font-bold mb-1 ${isToday?"text-[#2B5EA6]":"text-gray-600"}`}>{day}</p>
-                  {ds.map(s=><button key={s.id} onClick={()=>onManage(s)} className={`w-full text-left px-1 py-0.5 rounded text-white text-[9px] font-semibold truncate block mb-0.5 ${statusColor[s.status]||"bg-gray-400"} hover:opacity-80`}>{s.barangay.replace("Barangay ","Brgy ").replace("Poblacion","Pob.")}</button>)}
+                <div key={day} className={`min-h-[60px] rounded-xl p-1.5 border transition-colors ${
+                  isToday ? "border-[#2B5EA6] bg-blue-50 ring-2 ring-[#2B5EA6]/20" :
+                  ds.length ? "border-gray-200 bg-white hover:bg-gray-50" :
+                  isPast ? "border-transparent bg-gray-50/50" :
+                  "border-transparent hover:bg-gray-50"
+                }`}>
+                  <p className={`text-xs font-bold mb-1 ${isToday ? "text-[#2B5EA6]" : isPast ? "text-gray-300" : "text-gray-600"}`}>{day}</p>
+                  {ds.map(s => {
+                    const cfg = getCfg(s.status);
+                    return (
+                      <button key={s.id} onClick={() => onManage(s)}
+                        className={`w-full text-left px-1.5 py-0.5 rounded-md text-white text-[9px] font-bold truncate block mb-0.5 ${cfg.calBg} hover:opacity-90 transition-opacity`}
+                        title={`${s.barangay} — ${s.status}`}
+                      >
+                        {s.barangay.replace("Poblacion","Pob.").replace("Putting Bato","PB").replace("Lumbang","Lmb")}
+                      </button>
+                    );
+                  })}
                 </div>
               );
             })}
           </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
+            {Object.entries(STATUS_CFG).map(([status, cfg]) => (
+              <div key={status} className="flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`}/>
+                <span className="text-xs text-gray-500">{status}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Schedule list */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-        <div className="px-5 py-4 border-b flex items-center justify-between">
-          <p className="font-bold text-gray-800">Schedules in {MONTHS[viewMonth]}</p>
-          <button onClick={onAdd} className="flex items-center gap-2 px-3 py-1.5 bg-[#2B5EA6] text-white rounded-lg text-sm font-semibold hover:bg-[#234a85]"><Plus className="w-3.5 h-3.5"/>Add Schedule</button>
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+          <p className="font-bold text-gray-800 flex-1">Schedules — {MONTHS[viewMonth]} {viewYear}</p>
+          <select value={filterBrgy} onChange={e => setFilterBrgy(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none">
+            <option value="all">All Barangays</option>
+            {CALACA_BARANGAYS.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none">
+            <option value="all">All Status</option>
+            <option value="Scheduled">Scheduled</option>
+            <option value="Upcoming">Upcoming</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+          <button onClick={onAdd}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl text-xs font-bold hover:bg-[#234a85] transition-colors">
+            <Plus className="w-3.5 h-3.5"/>Add Schedule
+          </button>
         </div>
-        {schedulesThisMonth.length===0
-          ? <div className="p-8 text-center"><Calendar className="w-10 h-10 text-gray-200 mx-auto mb-2"/><p className="text-gray-400 text-sm">No schedules this month</p></div>
-          : <div className="divide-y">
-              {schedulesThisMonth.sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()).map(s=>{
-                const reg=s.registered||s.registeredPets||0;
+
+        {filteredThisMonth.length === 0 ? (
+          <div className="p-10 text-center">
+            <Calendar className="w-10 h-10 text-gray-200 mx-auto mb-2"/>
+            <p className="text-gray-400 text-sm">No schedules match your filters</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {filteredThisMonth
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map(s => {
+                const cfg = getCfg(s.status);
+                const reg = s.registered || s.registeredPets || 0;
+                const fillPct = s.capacity > 0 ? Math.min((reg / s.capacity) * 100, 100) : 0;
                 return (
-                  <div key={s.id} className="px-5 py-4 flex items-center justify-between hover:bg-gray-50">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center text-white ${statusColor[s.status]||"bg-gray-400"}`}>
-                        <p className="text-xs font-bold leading-none">{MONTHS[new Date(s.date).getMonth()].slice(0,3).toUpperCase()}</p>
-                        <p className="text-lg font-black leading-none">{new Date(s.date).getDate()}</p>
+                  <div key={s.id} className="px-5 py-4 hover:bg-gray-50/60 transition-colors">
+                    <div className="flex items-start gap-4">
+                      {/* Date badge */}
+                      <div className={`${cfg.calBg} w-14 h-14 rounded-2xl flex flex-col items-center justify-center text-white shrink-0 shadow-sm`}>
+                        <p className="text-[10px] font-bold leading-none opacity-80">
+                          {MONTHS[new Date(s.date).getMonth()].slice(0,3).toUpperCase()}
+                        </p>
+                        <p className="text-2xl font-black leading-tight">{new Date(s.date).getDate()}</p>
+                        <p className="text-[9px] font-semibold opacity-70 leading-none">
+                          {new Date(s.date).toLocaleDateString("en",{weekday:"short"}).toUpperCase()}
+                        </p>
                       </div>
-                      <div><p className="font-bold text-gray-800">{s.barangay}</p><p className="text-sm text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3"/>{s.time_start||s.time}</p><p className="text-xs text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{s.venue||s.location}</p></div>
-                    </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-2 mb-1"><div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden"><div className="h-full bg-[#60A85C] rounded-full" style={{width:`${(reg/s.capacity)*100}%`}}/></div><span className="text-xs text-gray-600">{reg}/{s.capacity}</span></div>
-                      <button onClick={()=>onManage(s)} className="text-xs text-[#2B5EA6] hover:underline font-semibold">Manage →</button>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="font-bold text-gray-900 text-sm">{s.barangay}</p>
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${cfg.bg} ${cfg.text}`}>
+                            {s.status}
+                          </span>
+                          <span className="text-xs text-gray-400 font-mono">{s.id}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3"/>{s.time_start || s.time || "—"}</span>
+                          <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/>{s.venue || s.location || "—"}</span>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${fillPct>=90?"bg-red-400":fillPct>=60?"bg-amber-400":"bg-[#60A85C]"}`}
+                              style={{ width: `${fillPct}%` }}/>
+                          </div>
+                          <span className="text-xs text-gray-500 shrink-0">{reg}/{s.capacity} slots</span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        <button onClick={() => onManage(s)}
+                          className="px-3 py-1.5 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#234a85] transition-colors">
+                          Manage
+                        </button>
+                        {s.status !== "Completed" && s.status !== "Cancelled" && (
+                          <button onClick={() => onStatusChange(s.id, "Completed")}
+                            className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-lg hover:bg-green-200 transition-colors">
+                            Complete
+                          </button>
+                        )}
+                        {s.status !== "Cancelled" && s.status !== "Completed" && (
+                          <button onClick={() => onStatusChange(s.id, "Cancelled")}
+                            className="px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold rounded-lg hover:bg-red-100 transition-colors">
+                            Cancel
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-        }
+              })
+            }
+          </div>
+        )}
       </div>
     </div>
   );
@@ -903,6 +1568,13 @@ export function PetRegistration() {
       setShowScheduleAdd(false);
     } catch(e:any) { alert("Error: " + e.message); }
     setSaving(false);
+  };
+
+  const handleStatusChange = async (id: string, status: string) => {
+    try {
+      await api.updateSchedule(id, { status });
+      setSchedules(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+    } catch(e: any) { alert("Error: " + e.message); }
   };
 
   const handleExportPets = () => {
@@ -1102,7 +1774,7 @@ export function PetRegistration() {
 
       {/* ══ SCHEDULE */}
       {activeTab==="schedule" && (
-        <ScheduleCalendar schedules={schedules} onAdd={()=>setShowScheduleAdd(true)} onManage={s=>setManageSchedule(s)}/>
+        <ScheduleCalendar schedules={schedules} onAdd={()=>setShowScheduleAdd(true)} onManage={s=>setManageSchedule(s)} onStatusChange={handleStatusChange}/>
       )}
 
       {/* ══ MODALS ══ */}
@@ -1273,27 +1945,17 @@ export function PetRegistration() {
       {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}}/>}
       {viewReport && <LostFoundModal report={viewReport} all={reports} pets={pets} onClose={()=>setViewReport(null)} onResolve={handleResolve}/>}
       {manageSchedule && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-4 flex items-center justify-between">
-              <p className="font-bold text-white">Manage Schedule — {manageSchedule.id}</p>
-              <button onClick={()=>setManageSchedule(null)} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="col-span-2"><p className="text-xs font-semibold text-gray-600 mb-1">Barangay</p><p className="font-bold text-gray-800">{manageSchedule.barangay}</p></div>
-                <div><p className="text-xs font-semibold text-gray-600 mb-1">Date</p><p className="font-semibold text-gray-700">{fmtDate(manageSchedule.date)}</p></div>
-                <div><p className="text-xs font-semibold text-gray-600 mb-1">Venue</p><p className="font-semibold text-gray-700">{manageSchedule.venue||manageSchedule.location||"—"}</p></div>
-                <div><p className="text-xs font-semibold text-gray-600 mb-1">Registered</p><p className="font-semibold text-gray-700">{manageSchedule.registered||manageSchedule.registeredPets||0} / {manageSchedule.capacity}</p></div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-600 mb-1">Status</p>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${manageSchedule.status==="Upcoming"?"bg-blue-100 text-blue-700":manageSchedule.status==="Completed"?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{manageSchedule.status}</span>
-                </div>
-              </div>
-              <button onClick={()=>setManageSchedule(null)} className="w-full py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Close</button>
-            </div>
-          </div>
-        </div>
+        <ScheduleManageModal
+          schedule={manageSchedule}
+          onClose={() => setManageSchedule(null)}
+          onSave={async (id, data) => {
+            try {
+              await api.updateSchedule(id, data);
+              setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+              setManageSchedule(null);
+            } catch(e: any) { alert("Error: " + e.message); }
+          }}
+        />
       )}
       {showVaccinate && vaccinatePet && <VaccinateModal pet={vaccinatePet} onConfirm={p=>{handleVaccinate(p);}} onClose={()=>{setShowVaccinate(false);setVaccinatePet(null);}}/>}
     </div>
