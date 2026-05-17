@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 import {
   Package,
   Users,
@@ -34,7 +36,6 @@ import { MedicineIntelligence } from "./MedicineIntelligence";
 import { InterventionEffectiveness } from "./InterventionEffectiveness";
 import { ResourceDeployment } from "./ResourceDeployment";
 import { PetSurveyChart } from "./PetSurveyChart";
-import { useState } from "react";
 import {
   Tabs,
   TabsContent,
@@ -91,6 +92,26 @@ const PieTooltip = ({ active, payload }: any) => {
 
 export function DashboardOverview() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [lsData, setLsData] = useState<any[]>([]);
+  const [tData, setTData] = useState<any[]>([]);
+  const [bData, setBData] = useState<any[]>([]);
+  const [petSurvey, setPetSurvey] = useState<any>(null);
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      api.getLivestockStats(),
+      api.getVaccinationTrends(),
+      api.getBudget(),
+      api.getPetSurveyData(),
+    ]).then(([lsRes, tRes, bRes, psRes]) => {
+      if (lsRes.data?.length) setLsData(lsRes.data.map((r: any) => ({ barangay: r.barangay, cattle: r.cattle, swine: r.swine, poultry: r.poultry, goats: r.goats })));
+      if (tRes.data?.length) setTData(tRes.data.map((r: any) => ({ month: r.month, vaccination: r.vaccination_rate, diseases: r.diseases })));
+      if (bRes.data?.length) setBData(bRes.data.map((r: any) => ({ name: r.category, value: parseFloat(r.amount), color: r.color })));
+      if (psRes) setPetSurvey(psRes);
+      setDbReady(true);
+    }).catch(e => { console.error(e); setDbReady(true); });
+  }, []);
 
   const livestockData = [
     {
@@ -145,6 +166,11 @@ export function DashboardOverview() {
     { name: "Training", value: 150000, color: "#f59e0b" },
     { name: "Operations", value: 350000, color: "#ef4444" },
   ];
+
+  // Use DB data if available, else use hardcoded fallbacks
+  const effectiveLivestock = lsData.length > 0 ? lsData : livestockData;
+  const effectiveTrend = tData.length > 0 ? tData : trendData;
+  const effectiveBudget = bData.length > 0 ? bData : budgetData;
 
   const stats = [
     {
@@ -510,7 +536,7 @@ export function DashboardOverview() {
               </div>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart
-                  data={livestockData}
+                  data={effectiveLivestock}
                   barSize={10}
                   barGap={2}
                 >
@@ -593,7 +619,7 @@ export function DashboardOverview() {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={trendData}>
+                <LineChart data={effectiveTrend}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="#f1f5f9"
@@ -662,7 +688,7 @@ export function DashboardOverview() {
                 <ResponsiveContainer width="55%" height={220}>
                   <PieChart>
                     <Pie
-                      data={budgetData}
+                      data={effectiveBudget}
                       cx="50%"
                       cy="50%"
                       innerRadius={55}
@@ -670,7 +696,7 @@ export function DashboardOverview() {
                       paddingAngle={3}
                       dataKey="value"
                     >
-                      {budgetData.map((entry, i) => (
+                      {effectiveBudget.map((entry, i) => (
                         <Cell
                           key={i}
                           fill={entry.color}
@@ -682,7 +708,7 @@ export function DashboardOverview() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-3">
-                  {budgetData.map((item, i) => {
+                  {effectiveBudget.map((item, i) => {
                     const pct = Math.round(
                       (item.value /
                         budgetData.reduce(

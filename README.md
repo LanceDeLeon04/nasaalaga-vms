@@ -1,207 +1,53 @@
-# 🐾 NASaAlaga — Calaca City Veterinary Management System
+# NASaAlaga VMS — Updated Build
 
-A full-stack web application for the City Veterinarian's Office (CVO) of Calaca, Batangas. It manages pet registrations, livestock records, vaccination schedules, lost & found reports, and multi-role dashboards for Admin, BAHW officers, and pet owners.
+## What's New in This Build
 
----
+### ✅ Database-Backed Everything
+- **Deployments** are now fully persistent in PostgreSQL — changes survive page reloads
+- **Dashboard** loads live data (livestock stats, vaccination trends, budget) from DB
+- **Settings, thresholds, recommendations, rules** all stored in DB
+- **Barangays** aligned to the 40 real barangays of Calaca, Batangas
 
-## 🚀 Quick Deploy to Railway
+### ✅ Inventory Page (New)
+- Three tabs: **Overview**, **Medicine & Vitamins Inventory**, **Supplies Inventory**
+- Barcode search/scan support (type or scan barcode to find items)
+- Medicine fields: Name, Generic Name, Lot Number, Expiry Date, Manufacture Date, Manufacturer, Barcode, Category, Type, Storage Condition, Unit Cost
+- Supplies fields: Name, Barcode, Category, Type, Quantity, Supplier, Last Restocked
+- Data visualizations: bar chart (medicines by category), pie chart (supplies by category)
+- Alerts for expired items, expiring-soon items, and out-of-stock items
+- Seeded with 8 medicines and 8 supplies
 
-### 1. Create a GitHub Repository
+### ✅ SuperAdmin Panel (Fully Unlocked)
+- **Maintenance Mode**: toggle switch — when ON, non-superadmin users see a beautiful animated maintenance page and cannot log in. SuperAdmins are unaffected.
+- **Clear Records**: delete pet records, livestock records, or all animal records — requires OTP verification
+  - `deleonlance@nexgov.ph` → OTP sent to `deleonlancewinalexandrei@gmail.com`
+  - `parkarel@nexgov.ph` → OTP sent to `__karelannepar@gmail.com`
+- **Alert Thresholds**: configure all system alert limits, stored in DB
+- **Recommendations**: full CRUD, stored in DB
+- **Rules Engine**: real algorithms evaluating live DB data
+- **System Settings**: all settings persisted to DB
+- Admins cannot access the SuperAdmin panel
 
-```bash
-git init
-git add .
-git commit -m "Initial commit – NASaAlaga VMS"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/nasaalaga-vms.git
-git push -u origin main
-```
+### ✅ Maintenance Mode
+- Beautiful animated maintenance page with status cards and gradient design
+- Checked on every app load via `/api/system/maintenance`
+- Login also blocked server-side for non-superadmins during maintenance
 
-### 2. Deploy on Railway
+### ✅ Decision Support (Real Algorithms)
+- Rules engine evaluates actual pet/livestock counts from DB
+- Detects overdue vaccinations, low vaccination rates, ASF outbreak thresholds
+- ResourceDeployment persists all deployments to DB
 
-1. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo**
-2. Select your `nasaalaga-vms` repo
-3. Railway will auto-detect the `railway.toml` config
+## Database Tables Added
+- `system_settings` — maintenance mode and global settings
+- `admin_settings` — general system config
+- `admin_thresholds` — alert threshold values
+- `recommendations` — action items
+- `rules` — rule engine definitions
+- `deployments` — persistent deployment records
+- `medicine_inventory` — medicines and vitamins with lot/expiry tracking
+- `supplies_inventory` — veterinary supplies with barcode
+- `inventory_transactions` — audit log for inventory changes
 
-### 3. Add a PostgreSQL Database
-
-In your Railway project:
-1. Click **+ New** → **Database** → **Add PostgreSQL**
-2. Railway will automatically inject `DATABASE_URL` into your app
-
-### 4. Set Environment Variables
-
-In Railway → your service → **Variables**, add:
-
-| Variable | Value |
-|---|---|
-| `NODE_ENV` | `production` |
-| `JWT_SECRET` | A long random string (run `openssl rand -hex 64`) |
-| `FRONTEND_URL` | Your Railway app URL (e.g. `https://nasaalaga.up.railway.app`) |
-| `BREVO_API_KEY` | *(Optional)* Your [Brevo](https://brevo.com) API key for OTP emails |
-
-> `DATABASE_URL` is injected automatically when you add the PostgreSQL service.
-
-### 5. Run Database Migrations & Seed
-
-After first deploy, open Railway's **Shell** tab in your service and run:
-
-```bash
-npm run db:migrate
-npm run db:seed
-```
-
-Or trigger it via the DebugEnv panel in the Admin dashboard.
-
----
-
-## 💻 Local Development
-
-### Prerequisites
-
-- Node.js 20+
-- PostgreSQL 15+ (local or via [Railway local](https://docs.railway.app/develop/cli))
-
-### Setup
-
-```bash
-# Clone and install
-git clone https://github.com/YOUR_USERNAME/nasaalaga-vms.git
-cd nasaalaga-vms
-npm install
-
-# Configure environment
-cp .env.example .env
-# Edit .env — set DATABASE_URL to your local PostgreSQL connection string
-
-# Migrate and seed the database
-npm run db:migrate
-npm run db:seed
-
-# Start both frontend and backend
-npm run dev
-```
-
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001/api/health
-
----
-
-## 🔑 Demo Accounts (created by seed)
-
-| Role | Email | Password |
-|---|---|---|
-| **Admin (CVO)** | amie.vergara@nexgov.ph | Vergara$2026 |
-| **BAHW Officer** | miguel.sanchez@nexgov.ph | Sanchez$2026 |
-| **Pet Owner** | cyrus.cruz@gmail.com | Cruz$2026 |
-| **Livestock Owner** | aeden.aranez@gmail.com | Aranez$2026 |
-
----
-
-## 🏗️ Project Structure
-
-```
-nasaalaga/
-├── backend/                  # Express + TypeScript API
-│   ├── src/
-│   │   ├── db/
-│   │   │   ├── index.ts      # PostgreSQL pool
-│   │   │   ├── migrate.ts    # Creates all tables
-│   │   │   └── seed.ts       # Seeds all real data
-│   │   ├── middleware/
-│   │   │   └── auth.ts       # JWT middleware
-│   │   ├── routes/
-│   │   │   ├── auth.ts       # Login, signup, OTP
-│   │   │   ├── pets.ts       # Pets + pre-registration
-│   │   │   ├── livestock.ts  # Livestock CRUD
-│   │   │   ├── lostFound.ts  # Lost & found reports
-│   │   │   └── api.ts        # Barangays, schedules, stats
-│   │   └── index.ts          # Express server entry
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── frontend/                 # React + Vite + Tailwind
-│   ├── src/
-│   │   ├── components/       # All UI components
-│   │   ├── lib/
-│   │   │   └── api.ts        # Typed API client
-│   │   ├── styles/           # Tailwind + global CSS
-│   │   ├── App.tsx
-│   │   ├── routes.tsx
-│   │   └── main.tsx
-│   ├── package.json
-│   └── vite.config.ts
-│
-├── .env.example              # Environment variable template
-├── .gitignore
-├── railway.toml              # Railway deployment config
-├── nixpacks.toml             # Build instructions
-└── package.json              # Monorepo root
-```
-
----
-
-## 🧩 Features
-
-### Admin (CVO)
-- Dashboard overview with live stats
-- Pet & livestock management across all barangays
-- Pre-registration validation (approve / deny)
-- Vaccination schedule management
-- Disease alerts & outbreak monitoring
-- Lost & found tracking
-- Audit logs & user management
-- Comparative analytics & reports
-
-### BAHW Officers
-- Barangay-level pet & livestock registry
-- Vaccination drive scheduling
-- Lost & found reporting
-- Intervention recommendations
-
-### Pet / Livestock Owners
-- Online pet pre-registration (no account needed)
-- View registered pets & vaccination status
-- Report lost pets
-- View nearby vaccination schedules
-
-### Guest
-- Public view of vaccination schedules
-- Lost & found board
-
----
-
-## 📡 API Reference
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/api/auth/login` | — | Login |
-| POST | `/api/auth/signup` | — | Register new owner |
-| POST | `/api/auth/send-otp` | — | Send OTP |
-| POST | `/api/auth/verify-otp` | — | Verify OTP |
-| GET | `/api/barangays` | — | All Calaca barangays |
-| GET | `/api/pets` | — | List pets (filter by ownerId) |
-| POST | `/api/pets` | JWT | Create pet |
-| PUT | `/api/pets/:id` | JWT | Update pet |
-| POST | `/api/pets/pre-register` | — | Pet pre-registration |
-| GET | `/api/pets/pre-registered` | JWT | List pre-registrations |
-| POST | `/api/pets/validate/:id` | JWT | Approve/deny pre-reg |
-| GET | `/api/livestock` | — | List livestock |
-| POST | `/api/livestock` | JWT | Add livestock |
-| GET | `/api/lost-found` | — | List lost & found |
-| POST | `/api/lost-found` | — | File report |
-| GET | `/api/schedules` | — | Vaccination schedules |
-| POST | `/api/schedules` | JWT | Create schedule |
-| GET | `/api/statistics/*` | — | Analytics endpoints |
-| GET | `/api/health` | — | Health check |
-
----
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS v4, Recharts, Radix UI
-- **Backend:** Node.js, Express, TypeScript
-- **Database:** PostgreSQL (via `pg` driver)
-- **Auth:** JWT (jsonwebtoken) + bcrypt
-- **Email:** Brevo (Sendinblue) API *(optional)*
-- **Deployment:** Railway (monorepo)
+## Migrations
+Run `npm run db:migrate` then `npm run db:seed` for new tables and initial data.

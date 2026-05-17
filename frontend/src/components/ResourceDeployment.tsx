@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Users,
   Package,
@@ -26,6 +26,7 @@ import {
   Circle,
   CircleDot,
 } from "lucide-react";
+import { api } from "../lib/api";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -843,127 +844,43 @@ function ModifyModal({
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export function ResourceDeployment() {
-  const [deployments, setDeployments] = useState<
-    DeploymentSuggestion[]
-  >([
-    {
-      id: "deploy-001",
-      barangay: "Bagong Tubig",
-      priority: 1,
-      urgency: "Immediate",
-      reason:
-        "Active ASF outbreak with high disease transmission rate",
-      staffNeeded: 6,
-      medicineEstimate: {
-        vaccines: 150,
-        antibiotics: 80,
-        vitamins: 200,
-      },
-      equipmentNeeded: [
-        "Blood sampling kits",
-        "Quarantine markers",
-        "PPE sets (10)",
-        "Disinfectant spray",
-      ],
-      estimatedDuration: "3-5 days",
-      targetAnimals: 450,
-      riskScore: 95,
-      status: "pending",
-    },
-    {
-      id: "deploy-002",
-      barangay: "Balimbing",
-      priority: 2,
-      urgency: "Immediate",
-      reason:
-        "Critical vaccination gap (45%) with avian flu in neighboring area",
-      staffNeeded: 4,
-      medicineEstimate: {
-        vaccines: 800,
-        antibiotics: 40,
-        vitamins: 150,
-      },
-      equipmentNeeded: [
-        "Vaccination guns",
-        "Bird handling equipment",
-        "Cooler boxes",
-        "Registration forms",
-      ],
-      estimatedDuration: "2-3 days",
-      targetAnimals: 1800,
-      riskScore: 88,
-      status: "pending",
-    },
-    {
-      id: "deploy-003",
-      barangay: "Poblacion 2",
-      priority: 3,
-      urgency: "Within 3 Days",
-      reason:
-        "Abnormal swine mortality spike requiring investigation",
-      staffNeeded: 3,
-      medicineEstimate: {
-        vaccines: 60,
-        antibiotics: 120,
-        vitamins: 180,
-      },
-      equipmentNeeded: [
-        "Diagnostic kits",
-        "Sample collection materials",
-        "Treatment supplies",
-      ],
-      estimatedDuration: "2 days",
-      targetAnimals: 280,
-      riskScore: 72,
-      status: "pending",
-    },
-    {
-      id: "deploy-004",
-      barangay: "Cahil",
-      priority: 4,
-      urgency: "Within 1 Week",
-      reason:
-        "Low rabies vaccination coverage (62%) with recent cases",
-      staffNeeded: 3,
-      medicineEstimate: {
-        vaccines: 250,
-        antibiotics: 20,
-        vitamins: 100,
-      },
-      equipmentNeeded: [
-        "Rabies vaccines",
-        "Pet restraint equipment",
-        "Registration tablets",
-      ],
-      estimatedDuration: "1-2 days",
-      targetAnimals: 380,
-      riskScore: 65,
-      status: "pending",
-    },
-    {
-      id: "deploy-005",
-      barangay: "Bambang",
-      priority: 5,
-      urgency: "Within 1 Week",
-      reason:
-        "Antibiotic usage spike suggests potential infection outbreak",
-      staffNeeded: 2,
-      medicineEstimate: {
-        vaccines: 40,
-        antibiotics: 150,
-        vitamins: 120,
-      },
-      equipmentNeeded: [
-        "Water testing kit",
-        "Biosecurity assessment forms",
-        "Education materials",
-      ],
-      estimatedDuration: "1 day",
-      targetAnimals: 190,
-      riskScore: 58,
-      status: "pending",
-    },
-  ]);
+  const [deployments, setDeployments] = useState<DeploymentSuggestion[]>([]);
+  const [dbLoading, setDbLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDeployments = async () => {
+      try {
+        const res = await api.getDeployments();
+        if (res.success && res.deployments.length > 0) {
+          // Map DB fields to component shape
+          const mapped = res.deployments.map((d: any) => ({
+            id: d.id,
+            barangay: d.barangay,
+            priority: d.priority,
+            urgency: d.urgency,
+            reason: d.reason || '',
+            staffNeeded: d.staff_needed || 1,
+            deployedStaff: d.deployed_staff || [],
+            medicineEstimate: {
+              vaccines: d.medicine_vaccines || 0,
+              antibiotics: d.medicine_antibiotics || 0,
+              vitamins: d.medicine_vitamins || 0,
+            },
+            equipmentNeeded: d.equipment || [],
+            estimatedDuration: d.estimated_duration || '1 day',
+            targetAnimals: d.target_animals || 0,
+            riskScore: d.risk_score || 0,
+            status: d.status || 'pending',
+            deployedAt: d.deployed_at,
+            completedAt: d.completed_at,
+          }));
+          setDeployments(mapped);
+        }
+      } catch(e) { console.error('Failed to load deployments:', e); }
+      setDbLoading(false);
+    };
+    loadDeployments();
+  }, []);
 
   const [notifs, setNotifs] = useState<NotifMsg[]>([]);
   const [deployTarget, setDeployTarget] =
@@ -1027,7 +944,10 @@ export function ResourceDeployment() {
     );
   };
 
-  const handleModifySave = (updated: DeploymentSuggestion) => {
+  const handleModifySave = async (updated: DeploymentSuggestion) => {
+    try {
+      await api.updateDeployment(updated.id!, { status: updated.status, notes: (updated as any).notes });
+    } catch(e) { console.error('DB sync error:', e); }
     setDeployments((p) =>
       p.map((x) => (x.id === updated.id ? updated : x)),
     );
@@ -1047,12 +967,13 @@ export function ResourceDeployment() {
     );
   };
 
-  const handleScheduleAllHigh = () => {
+  const handleScheduleAllHigh = async () => {
     const highs = deployments.filter(
       (d) =>
         d.urgency === "Immediate" && d.status === "pending",
     );
-    highs.forEach((d) => {
+    for (const d of highs) {
+      try { await api.updateDeployment(d.id!, { status: 'deployed', deployedStaff: SAMPLE_STAFF.slice(0, d.staffNeeded) }); } catch(e) { console.error(e); }
       setDeployments((p) =>
         p.map((x) =>
           x.id === d.id
@@ -1068,7 +989,7 @@ export function ResourceDeployment() {
             : x,
         ),
       );
-    });
+    }
     pushNotif(
       `🚨 ${highs.length} High Priority Teams Deployed`,
       `All Immediate deployments have been scheduled and staff notified.`,

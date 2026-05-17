@@ -26,6 +26,18 @@ router.post('/login', async (req: Request, res: Response) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
+    // ── Maintenance Mode check: block non-superadmins ──────────────────────
+    if (user.role !== 'superadmin') {
+      try {
+        const maintResult = await query("SELECT value FROM system_settings WHERE key = 'maintenance_mode'");
+        if (maintResult.rows[0]?.value === 'true') {
+          return res.status(503).json({ error: 'maintenance', message: 'System is currently under maintenance. Please try again later.' });
+        }
+      } catch (_maintErr) {
+        // system_settings table not yet migrated — skip check, allow login
+      }
+    }
+
     // ── SuperAdmin path: password OK → require barcode scan ────────────────
     if (user.role === 'superadmin') {
       // Issue a short-lived pending token (5 minutes) — not a full session
@@ -47,6 +59,7 @@ router.post('/login', async (req: Request, res: Response) => {
       username: user.username,
       role: user.role,
       ownerId: user.owner_id,
+      email: user.email,
     };
 
     return res.json({ user: payload, token: signToken(payload) });
@@ -97,6 +110,7 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       role: user.role,
+      email: user.email,
     };
 
     return res.json({
@@ -120,10 +134,19 @@ router.post('/send-otp', async (req: Request, res: Response) => {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Block superadmin emails from signing up
+    // OTP email remapping for superadmin accounts:
+    // nexgov email → personal email (where the OTP is actually sent)
+    const OTP_EMAIL_REMAP: Record<string, string> = {
+      'deleonlance@nexgov.ph': 'deleonlancewinalexandrei@gmail.com',
+      'parkarel@nexgov.ph': '__karelannepar@gmail.com',
+    };
+    const deliveryEmail = OTP_EMAIL_REMAP[normalizedEmail] || normalizedEmail;
+    const otpKey = normalizedEmail; // OTP stored under the original email key
+
+    // Block superadmin emails from signing up (but allow OTP for clear-records flow)
     const existingUser = await query('SELECT role FROM users WHERE email = $1', [normalizedEmail]);
     if (existingUser.rows[0]?.role === 'superadmin') {
-      return res.status(403).json({ error: 'This email cannot be used for self-registration.' });
+      // Still allow OTP send (for clear-records verification) - don't block
     }
 
     // Generate 6-digit OTP
@@ -136,16 +159,16 @@ router.post('/send-otp', async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, 'email', false)
        ON CONFLICT (key) DO UPDATE
          SET otp = $2, expires_at = $3, verified = false, created_at = NOW()`,
-      [normalizedEmail, otp, expiresAt]
+      [otpKey, otp, expiresAt]
     );
 
-    // Send via Gmail
-    const result = await sendOtpEmail(normalizedEmail, otp);
+    // Send via Gmail (to deliveryEmail, not the nexgov email)
+    const result = await sendOtpEmail(deliveryEmail, otp);
 
     return res.json({
       success: true,
       message: result.sent
-        ? `Verification code sent to ${normalizedEmail}. Check your inbox.`
+        ? `Verification code sent to ${deliveryEmail}. Check your inbox.`
         : '⚠️ Email not configured — use the code shown below (development mode only).',
       fallbackMode: result.fallbackMode,
       otp: result.fallbackMode ? result.otp : undefined, // only expose in dev fallback

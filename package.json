@@ -17,14 +17,6 @@
     "db:seed": "npm run db:seed --workspace=backend"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "concurrently": "^8.2.2",
-    "typescript": "^6.0.3"
-  },
-  "dependencies": {
-    "@types/nodemailer": "^8.0.0",
-    "nodemailer": "^8.0.7",
-    "psql": "^0.0.1"
+    "concurrently": "^8.2.2"
   }
 }
