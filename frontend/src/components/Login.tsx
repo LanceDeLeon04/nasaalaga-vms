@@ -66,8 +66,8 @@ const STYLES = `
 
   .bg-honeycomb {
     position:absolute; inset:0; pointer-events:none; z-index:0;
-    opacity:.07;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='138'%3E%3Cpolygon points='60,4 116,34 116,104 60,134 4,104 4,34' fill='none' stroke='%23ffffff' stroke-width='1.6'/%3E%3C/svg%3E");
+    opacity:.03;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='92'%3E%3Cpolygon points='40,3 77,23 77,69 40,89 3,69 3,23' fill='none' stroke='%23ffffff' stroke-width='1.4'/%3E%3C/svg%3E");' fill='none' stroke='%23ffffff' stroke-width='1.6'/%3E%3C/svg%3E");
     background-size: 120px 138px;
     animation: hexDrift 28s ease-in-out infinite;
   }

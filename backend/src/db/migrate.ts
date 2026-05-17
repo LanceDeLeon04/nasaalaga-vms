@@ -57,7 +57,7 @@ const createTables = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS pets (
         id VARCHAR(50) PRIMARY KEY,
-        owner_id VARCHAR(100) NOT NULL,
+        owner_id VARCHAR(100),
         pet_name VARCHAR(255) NOT NULL,
         species VARCHAR(100) NOT NULL,
         breed VARCHAR(255),
@@ -84,6 +84,9 @@ const createTables = async () => {
     // Patch vaccination_schedules notes column
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
+
+    // Make owner_id nullable (pets registered by admin may not have a portal user)
+    await client.query(`ALTER TABLE pets ALTER COLUMN owner_id DROP NOT NULL`);
 
     // Patch new pet columns (safe to run multiple times)
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS is_spayed BOOLEAN DEFAULT false`);
@@ -122,7 +125,7 @@ const createTables = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS livestock (
         id VARCHAR(50) PRIMARY KEY,
-        owner_id VARCHAR(100) NOT NULL,
+        owner_id VARCHAR(100),
         animal_type VARCHAR(100) NOT NULL,
         breed VARCHAR(255),
         quantity INTEGER DEFAULT 1,
