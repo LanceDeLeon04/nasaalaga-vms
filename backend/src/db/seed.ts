@@ -179,19 +179,86 @@ const seed = async () => {
 
     // ── Livestock ──────────────────────────────────────────────────────────
     const livestock = [
-      { id: 'LS-001', owner_id: 'OWNER-002', animal_type: 'Cattle', breed: 'Brahman', quantity: 5, owner_name: 'Aeden Aranez', contact_number: '0918-234-5678', barangay: 'Poblacion 5', farm_address: 'Farm Road, Barangay 5', health_status: 'Healthy', last_checkup_date: '2025-02-01', vaccination_status: 'Vaccinated', registration_date: '2024-05-10' },
-      { id: 'LS-002', owner_id: 'OWNER-002', animal_type: 'Swine', breed: 'Large White', quantity: 15, owner_name: 'Aeden Aranez', contact_number: '0918-234-5678', barangay: 'Poblacion 5', farm_address: 'Farm Road, Barangay 5', health_status: 'Healthy', last_checkup_date: '2025-01-25', vaccination_status: 'Vaccinated', registration_date: '2024-07-15' },
+      { id:'LS-001', owner_id:'OWNER-002', animal_type:'Cattle',  breed:'Brahman',       quantity:5,   gender:'Mixed', age:'3-5 years', purpose:'Dairy/Beef', color_markings:'Gray',       owner_name:'Aeden Aranez',      contact_number:'0918-234-5678', barangay:'Poblacion 5',       farm_address:'Farm Road, Brgy 5',       health_status:'Healthy',    last_checkup_date:'2025-02-01', vaccination_status:'Vaccinated',     tag_number:'CTL-0001', registration_date:'2024-05-10' },
+      { id:'LS-002', owner_id:'OWNER-002', animal_type:'Swine',   breed:'Large White',   quantity:15,  gender:'Mixed', age:'6-18 months',purpose:'Meat',       color_markings:'Pink/White', owner_name:'Aeden Aranez',      contact_number:'0918-234-5678', barangay:'Poblacion 5',       farm_address:'Farm Road, Brgy 5',       health_status:'Healthy',    last_checkup_date:'2025-01-25', vaccination_status:'Vaccinated',     tag_number:'SWN-0015', registration_date:'2024-07-15' },
+      { id:'LS-003', owner_id:null,        animal_type:'Carabao', breed:'Native',        quantity:3,   gender:'Male',  age:'4-6 years',  purpose:'Draft',      color_markings:'Gray/Black', owner_name:'Jose Dela Cruz',    contact_number:'0919-345-6789', barangay:'Balimbing',         farm_address:'Sitio Kaingin, Balimbing',health_status:'Healthy',    last_checkup_date:'2025-01-10', vaccination_status:'Vaccinated',     tag_number:'CAR-0003', registration_date:'2024-03-22' },
+      { id:'LS-004', owner_id:null,        animal_type:'Poultry', breed:'Native/Broiler',quantity:350, gender:'Mixed', age:'2-6 months', purpose:'Egg/Meat',   color_markings:'Mixed',      owner_name:'Maria Santos',      contact_number:'0920-456-7890', barangay:'Bambang',           farm_address:'Purok 3, Bambang',        health_status:'Healthy',    last_checkup_date:'2025-02-05', vaccination_status:'Vaccinated',     tag_number:null,       registration_date:'2024-06-01' },
+      { id:'LS-005', owner_id:null,        animal_type:'Swine',   breed:'Landrace',      quantity:22,  gender:'Mixed', age:'4-12 months',purpose:'Meat',       color_markings:'White',      owner_name:'Pedro Reyes',       contact_number:'0921-567-8901', barangay:'Bisaya',            farm_address:'Zone 2, Bisaya',          health_status:'Quarantine', last_checkup_date:'2025-01-28', vaccination_status:'Not Vaccinated', tag_number:'SWN-0022', registration_date:'2024-08-10', quarantine_date:'2025-01-28', quarantine_reason:'ASF suspect - pending confirmation' },
+      { id:'LS-006', owner_id:null,        animal_type:'Goats',   breed:'Anglo-Nubian',  quantity:12,  gender:'Mixed', age:'1-3 years',  purpose:'Dairy/Meat', color_markings:'Brown/White',owner_name:'Ana Garcia',        contact_number:'0922-678-9012', barangay:'Cahil',             farm_address:'Purok 1, Cahil',          health_status:'Healthy',    last_checkup_date:'2025-01-15', vaccination_status:'Vaccinated',     tag_number:'GT-0012',  registration_date:'2024-04-18' },
+      { id:'LS-007', owner_id:null,        animal_type:'Cattle',  breed:'Crossbreed',    quantity:8,   gender:'Mixed', age:'2-4 years',  purpose:'Beef',       color_markings:'Brown',      owner_name:'Roberto Cruz',      contact_number:'0923-789-0123', barangay:'Dacanlao',          farm_address:'Farm Lot, Dacanlao',      health_status:'Healthy',    last_checkup_date:'2025-02-08', vaccination_status:'Vaccinated',     tag_number:'CTL-0008', registration_date:'2024-05-25' },
+      { id:'LS-008', owner_id:null,        animal_type:'Poultry', breed:'Rhode Island Red',quantity:200,gender:'Mixed', age:'1-12 months',purpose:'Egg',        color_markings:'Red/Brown',  owner_name:'Elena Flores',      contact_number:'0924-890-1234', barangay:'Dila',              farm_address:'Sitio Pulo, Dila',        health_status:'Healthy',    last_checkup_date:'2025-01-20', vaccination_status:'Vaccinated',     tag_number:null,       registration_date:'2024-07-08' },
+      { id:'LS-009', owner_id:null,        animal_type:'Swine',   breed:'Duroc',         quantity:8,   gender:'Mixed', age:'3-8 months', purpose:'Meat',       color_markings:'Red',        owner_name:'Carlos Mendoza',    contact_number:'0925-901-2345', barangay:'Loma',              farm_address:'Zone 3, Loma',            health_status:'Sick',       last_checkup_date:'2025-02-01', vaccination_status:'Not Vaccinated', tag_number:'SWN-0008', registration_date:'2024-09-12' },
+      { id:'LS-010', owner_id:null,        animal_type:'Goats',   breed:'Native',        quantity:18,  gender:'Mixed', age:'1-4 years',  purpose:'Meat',       color_markings:'Black/Brown',owner_name:'Gloria Navarro',    contact_number:'0926-012-3456', barangay:'Lumbang Calzada',   farm_address:'Purok 6, Lmbg Calzada',   health_status:'Healthy',    last_checkup_date:'2025-01-30', vaccination_status:'Vaccinated',     tag_number:'GT-0018',  registration_date:'2024-06-14' },
+      { id:'LS-011', owner_id:null,        animal_type:'Cattle',  breed:'Brahman Cross', quantity:6,   gender:'Mixed', age:'3-5 years',  purpose:'Beef',       color_markings:'Spotted',    owner_name:'Hector Santos',     contact_number:'0927-123-4567', barangay:'Matipok',           farm_address:'Farm Rd, Matipok',        health_status:'Healthy',    last_checkup_date:'2025-01-12', vaccination_status:'Vaccinated',     tag_number:'CTL-0006', registration_date:'2024-04-05' },
+      { id:'LS-012', owner_id:null,        animal_type:'Poultry', breed:'Leghorn',       quantity:500, gender:'Mixed', age:'1-18 months',purpose:'Egg',        color_markings:'White',      owner_name:'Imelda Torres',     contact_number:'0928-234-5678', barangay:'Munting Coral',     farm_address:'Phase 2, Munting Coral',  health_status:'Healthy',    last_checkup_date:'2025-02-10', vaccination_status:'Vaccinated',     tag_number:null,       registration_date:'2024-05-30' },
+      { id:'LS-013', owner_id:null,        animal_type:'Carabao', breed:'Murrah',        quantity:2,   gender:'Female','age':'5-7 years', purpose:'Dairy/Draft',color_markings:'Black',      owner_name:'Jaime Aquino',      contact_number:'0929-345-6789', barangay:'Niyugan',           farm_address:'Sitio 2, Niyugan',        health_status:'Healthy',    last_checkup_date:'2025-01-22', vaccination_status:'Vaccinated',     tag_number:'CAR-0002', registration_date:'2024-08-18' },
+      { id:'LS-014', owner_id:null,        animal_type:'Swine',   breed:'Large White',   quantity:30,  gender:'Mixed', age:'2-10 months',purpose:'Meat',       color_markings:'Pink',       owner_name:'Karen Bautista',    contact_number:'0930-456-7890', barangay:'Pantay',            farm_address:'Zone 1, Pantay',          health_status:'Healthy',    last_checkup_date:'2025-02-03', vaccination_status:'Vaccinated',     tag_number:'SWN-0030', registration_date:'2024-07-22' },
+      { id:'LS-015', owner_id:null,        animal_type:'Goats',   breed:'Boer',          quantity:7,   gender:'Mixed', age:'1-2 years',  purpose:'Meat',       color_markings:'White/Brown',owner_name:'Lorenzo Garcia',    contact_number:'0931-567-8901', barangay:'Quisumbing',        farm_address:'Sitio 4, Quisumbing',     health_status:'Healthy',    last_checkup_date:'2025-01-18', vaccination_status:'Vaccinated',     tag_number:'GT-0007',  registration_date:'2024-09-05' },
+      { id:'LS-016', owner_id:null,        animal_type:'Poultry', breed:'Native',        quantity:150, gender:'Mixed', age:'Mixed',       purpose:'Egg/Meat',   color_markings:'Mixed',      owner_name:'Marilou Dela Rosa', contact_number:'0932-678-9012', barangay:'San Rafael',        farm_address:'Purok 8, San Rafael',     health_status:'Healthy',    last_checkup_date:'2025-01-08', vaccination_status:'Not Vaccinated', tag_number:null,       registration_date:'2024-06-20' },
+      { id:'LS-017', owner_id:null,        animal_type:'Cattle',  breed:'Sahiwal',       quantity:4,   gender:'Female','age':'3-6 years', purpose:'Dairy',      color_markings:'Red/Brown',  owner_name:'Napoleon Reyes',    contact_number:'0933-789-0123', barangay:'Sinisian',          farm_address:'Zone 2, Sinisian',        health_status:'Healthy',    last_checkup_date:'2025-02-06', vaccination_status:'Vaccinated',     tag_number:'CTL-0004', registration_date:'2024-04-28' },
+      { id:'LS-018', owner_id:null,        animal_type:'Swine',   breed:'Berkshire',     quantity:12,  gender:'Mixed', age:'4-9 months', purpose:'Meat',       color_markings:'Black/White',owner_name:'Olivia Cruz',       contact_number:'0934-890-1234', barangay:'Talisay',           farm_address:'Purok 9, Talisay',        health_status:'Healthy',    last_checkup_date:'2025-01-14', vaccination_status:'Vaccinated',     tag_number:'SWN-0012', registration_date:'2024-08-02' },
+      { id:'LS-019', owner_id:null,        animal_type:'Goats',   breed:'Native Cross',  quantity:14,  gender:'Mixed', age:'1-3 years',  purpose:'Meat/Dairy', color_markings:'Brown',      owner_name:'Pablo Santos',      contact_number:'0935-901-2345', barangay:'Tamayo',            farm_address:'Sitio 5, Tamayo',         health_status:'Healthy',    last_checkup_date:'2025-01-26', vaccination_status:'Vaccinated',     tag_number:'GT-0014',  registration_date:'2024-07-10' },
+      { id:'LS-020', owner_id:null,        animal_type:'Poultry', breed:'Broiler',       quantity:800, gender:'Mixed', age:'1-3 months', purpose:'Meat',       color_markings:'White',      owner_name:'Queenie Ramos',     contact_number:'0936-012-3456', barangay:'Timbain',           farm_address:'Zone 4, Timbain',         health_status:'Healthy',    last_checkup_date:'2025-02-12', vaccination_status:'Vaccinated',     tag_number:null,       registration_date:'2024-09-18' },
     ];
 
     for (const l of livestock) {
       await client.query(
-        `INSERT INTO livestock (id, owner_id, animal_type, breed, quantity, owner_name, contact_number, barangay, farm_address, health_status, last_checkup_date, vaccination_status, registration_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO livestock (id, owner_id, animal_type, breed, quantity, gender, age, color_markings, purpose, owner_name, contact_number, barangay, farm_address, health_status, last_checkup_date, vaccination_status, tag_number, registration_date, quarantine_date, quarantine_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          ON CONFLICT (id) DO NOTHING`,
-        [l.id, l.owner_id, l.animal_type, l.breed, l.quantity, l.owner_name, l.contact_number, l.barangay, l.farm_address, l.health_status, l.last_checkup_date, l.vaccination_status, l.registration_date]
+        [l.id, l.owner_id, l.animal_type, l.breed, l.quantity, l.gender, l.age,
+         l.color_markings, l.purpose, l.owner_name, l.contact_number, l.barangay,
+         l.farm_address, l.health_status, l.last_checkup_date, l.vaccination_status,
+         l.tag_number || null, l.registration_date,
+         (l as any).quarantine_date || null, (l as any).quarantine_reason || null]
       );
     }
     console.log(`  ✓ Livestock seeded (${livestock.length})`);
+
+    // ── Health Records ─────────────────────────────────────────────────────
+    const healthRecs = [
+      { livestock_id:'LS-001', record_type:'Vaccination', date:'2025-02-01', diagnosis:null, treatment:'FMD + HS Vaccine', medicine_used:'Bi-Valent FMD Vaccine', veterinarian:'Dr. Amalia Vergara', next_due_date:'2026-02-01', notes:'Annual booster. Animal in good condition.', created_by:'Dr. Amalia Vergara' },
+      { livestock_id:'LS-002', record_type:'Vaccination', date:'2025-01-25', diagnosis:null, treatment:'Hog Cholera Vaccine', medicine_used:'Lapinized Hog Cholera Vaccine', veterinarian:'Dr. Amalia Vergara', next_due_date:'2025-07-25', notes:'Semi-annual booster administered.', created_by:'Dr. Amalia Vergara' },
+      { livestock_id:'LS-005', record_type:'Checkup',     date:'2025-01-28', diagnosis:'ASF Suspect - Symptoms: high fever, skin discoloration', treatment:'Isolation, Supportive therapy', medicine_used:'Electrolytes, Vitamins', veterinarian:'Dr. Amalia Vergara', next_due_date:'2025-02-04', notes:'Samples sent to RVL for confirmation. Farm quarantined.', created_by:'Dr. Amalia Vergara' },
+      { livestock_id:'LS-009', record_type:'Treatment',   date:'2025-02-01', diagnosis:'Respiratory infection - suspected PED', treatment:'Antibiotic therapy', medicine_used:'Amoxicillin 500mg + Vitamin B Complex', veterinarian:'Dr. Amalia Vergara', next_due_date:'2025-02-08', notes:'3 animals showing symptoms. Treatment started.', created_by:'Dr. Amalia Vergara' },
+      { livestock_id:'LS-003', record_type:'Vaccination', date:'2025-01-10', diagnosis:null, treatment:'HS + BQ Vaccine', medicine_used:'HS-BQ Bivalent Vaccine', veterinarian:'Dr. Amalia Vergara', next_due_date:'2026-01-10', notes:'Annual vaccination completed.', created_by:'BAHW Miguel Sanchez' },
+    ];
+    for (const h of healthRecs) {
+      await client.query(
+        `INSERT INTO health_records (livestock_id, record_type, date, diagnosis, treatment, medicine_used, veterinarian, next_due_date, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
+        [h.livestock_id, h.record_type, h.date, h.diagnosis, h.treatment, h.medicine_used, h.veterinarian, h.next_due_date, h.notes, h.created_by]
+      );
+    }
+    console.log(`  ✓ Health records seeded (${healthRecs.length})`);
+
+    // ── Livestock Disease Events ────────────────────────────────────────────
+    const diseaseEvents = [
+      { id:'DE-001', animal_type:'Swine',   disease:'African Swine Fever (ASF)', barangay:'Bisaya',     cases:22, deaths:0, status:'Active',   date_reported:'2025-01-28', notes:'Quarantine enforced. Pending RVL confirmation.', created_by:'Dr. Amalia Vergara' },
+      { id:'DE-002', animal_type:'Poultry', disease:'Newcastle Disease',          barangay:'Bambang',    cases:80, deaths:15,status:'Active',   date_reported:'2025-01-15', notes:'Mass vaccination of nearby farms ordered.', created_by:'Dr. Amalia Vergara' },
+      { id:'DE-003', animal_type:'Cattle',  disease:'Foot and Mouth Disease',    barangay:'Dacanlao',   cases:4,  deaths:0, status:'Resolved', date_reported:'2024-11-10', notes:'All cases treated. Farm cleared Dec 2024.', created_by:'Dr. Amalia Vergara' },
+    ];
+    for (const de of diseaseEvents) {
+      await client.query(
+        `INSERT INTO livestock_disease_events (id, animal_type, disease, barangay, cases, deaths, status, date_reported, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
+        [de.id, de.animal_type, de.disease, de.barangay, de.cases, de.deaths, de.status, de.date_reported, de.notes, de.created_by]
+      );
+    }
+    console.log(`  ✓ Disease events seeded (${diseaseEvents.length})`);
+
+    // ── Livestock Mortality ─────────────────────────────────────────────────
+    const mortality = [
+      { livestock_id:'LS-009', animal_type:'Swine', breed:'Duroc', owner_name:'Carlos Mendoza', barangay:'Loma', quantity:2, cause:'Respiratory infection (suspected PED)', date_reported:'2025-02-02', investigation_status:'Ongoing', notes:'Two pigs found dead. Samples collected for lab.', created_by:'Dr. Amalia Vergara' },
+    ];
+    for (const m of mortality) {
+      await client.query(
+        `INSERT INTO livestock_mortality (livestock_id, animal_type, breed, owner_name, barangay, quantity, cause, date_reported, investigation_status, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
+        [m.livestock_id, m.animal_type, m.breed, m.owner_name, m.barangay, m.quantity, m.cause, m.date_reported, m.investigation_status, m.notes, m.created_by]
+      );
+    }
+    console.log(`  ✓ Mortality records seeded (${mortality.length})`);
 
     // ── Lost & Found ───────────────────────────────────────────────────────
     const lostFound = [

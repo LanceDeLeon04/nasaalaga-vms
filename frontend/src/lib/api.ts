@@ -54,14 +54,34 @@ export const api = {
   validatePreRegistration: (preRegNumber: string, data: any) =>
     request('/pets/validate/' + preRegNumber, { method: 'POST', body: JSON.stringify(data) }),
   getPetSurveyData: () => request('/pets/survey-data'),
-  getLivestock: (ownerId?: string) =>
-    request('/livestock' + (ownerId ? '?ownerId=' + ownerId : '')),
+  getLivestock: (params?: { ownerId?: string; barangay?: string; type?: string; status?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.ownerId)  p.set('ownerId',  params.ownerId);
+    if (params?.barangay) p.set('barangay', params.barangay);
+    if (params?.type)     p.set('type',     params.type);
+    if (params?.status)   p.set('status',   params.status);
+    const qs = p.toString();
+    return request('/livestock' + (qs ? '?' + qs : ''));
+  },
+  getLivestockSummary: () => request('/livestock/summary'),
   createLivestock: (data: any) =>
     request('/livestock', { method: 'POST', body: JSON.stringify(data) }),
   updateLivestock: (id: string, data: any) =>
     request('/livestock/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteLivestock: (id: string) =>
     request('/livestock/' + id, { method: 'DELETE' }),
+  getHealthRecords: (livestockId: string) =>
+    request('/livestock/' + livestockId + '/health-records'),
+  addHealthRecord: (livestockId: string, data: any) =>
+    request('/livestock/' + livestockId + '/health-records', { method: 'POST', body: JSON.stringify(data) }),
+  getMortality: () => request('/livestock/mortality/all'),
+  addMortality: (data: any) =>
+    request('/livestock/mortality', { method: 'POST', body: JSON.stringify(data) }),
+  getDiseaseEvents: () => request('/livestock/disease-events/all'),
+  addDiseaseEvent: (data: any) =>
+    request('/livestock/disease-events', { method: 'POST', body: JSON.stringify(data) }),
+  updateDiseaseEvent: (id: string, data: any) =>
+    request('/livestock/disease-events/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   getLostFound: (type?: string, ownerId?: string) => {
     const params = new URLSearchParams();
     if (type) params.set('type', type);

@@ -1,280 +1,473 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import type { UserRole } from "../App";
 
+/* ──────────────────────────────────────────────────────────────
+   SLIDES
+────────────────────────────────────────────────────────────── */
+
+const SLIDES = [
+  {
+    tag: "🐾 Veterinary Digital Platform",
+    tagColor: "#F39C3A",
+    headline: "Modern Pet & Animal\nHealthcare Records",
+    sub: "Digitally manage vaccination records, consultations, treatment history, animal profiling, and owner information through a centralized veterinary management platform.",
+    pills: ["Vaccination Logs", "Pet Profiles", "Medical History", "Digital Records"],
+    bg: "linear-gradient(150deg,#1b2d4a 0%,#2B5EA6 55%,#1a3d72 100%)",
+  },
+  {
+    tag: "💉 Vaccination Monitoring",
+    tagColor: "#60A85C",
+    headline: "Track Vaccines,\nSchedules & Alerts",
+    sub: "Automated reminders and real-time monitoring for anti-rabies, deworming, vaccination campaigns, and animal health management across the city veterinary office.",
+    pills: ["Rabies Monitoring", "Vaccination Alerts", "Health Tracking", "Pet Monitoring"],
+    bg: "linear-gradient(150deg,#162018 0%,#295b36 55%,#1d3d27 100%)",
+  },
+  {
+    tag: "🏛️ LGU Veterinary Operations",
+    tagColor: "#E85D3B",
+    headline: "Smart City Veterinary\nManagement System",
+    sub: "Empowering the City Veterinary Office with analytics, reports, census tracking, treatment monitoring, and secure government-grade digital services.",
+    pills: ["Pet Census", "Analytics", "Secure Access", "Government Reports"],
+    bg: "linear-gradient(150deg,#1e0d08 0%,#612719 55%,#2b140f 100%)",
+  },
+];
+
+const STATS = [
+  { value: "24/7",  label: "System Availability" },
+  { value: "100%",  label: "Digitalized Records"  },
+  { value: "LGU",   label: "Government Ready"      },
+];
+
+/* ──────────────────────────────────────────────────────────────
+   STYLES
+────────────────────────────────────────────────────────────── */
+
 const STYLES = `
-  @keyframes slideIn      { from { transform:translateX(110%);opacity:0; } to { transform:translateX(0);opacity:1; } }
-  @keyframes fadeIn       { from { opacity:0; } to { opacity:1; } }
-  @keyframes pop          { 0%{transform:scale(.5);opacity:0;} 70%{transform:scale(1.1);} 100%{transform:scale(1);opacity:1;} }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { margin:0; width:100%; min-height:100%; font-family:Inter,sans-serif; }
+
+  @keyframes fadeSlideIn  { from{opacity:0;transform:translateY(12px);} to{opacity:1;transform:translateY(0);} }
+  @keyframes fadeSlideOut { from{opacity:1;transform:translateY(0);} to{opacity:0;transform:translateY(-12px);} }
+  @keyframes shimmer      { 0%{transform:translateX(-120%);} 100%{transform:translateX(120%);} }
+  @keyframes spin         { to{transform:rotate(360deg);} }
   @keyframes scanLine     { 0%{top:10%;} 50%{top:84%;} 100%{top:10%;} }
-  @keyframes sealFloat    { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-6px);} }
-  @keyframes pulseRing    { 0%{transform:scale(1);opacity:.65;} 100%{transform:scale(2.2);opacity:0;} }
-  @keyframes blobDrift1 {
-    0%   { transform:translate(0,0) scale(1); }
-    15%  { transform:translate(60px,-80px) scale(1.18); }
-    30%  { transform:translate(120px,20px) scale(.92); }
-    45%  { transform:translate(60px,100px) scale(1.22); }
-    60%  { transform:translate(-40px,60px) scale(.95); }
-    75%  { transform:translate(-80px,-40px) scale(1.12); }
-    100% { transform:translate(0,0) scale(1); }
+  @keyframes pop          { 0%{transform:scale(.5);opacity:0;} 70%{transform:scale(1.1);} 100%{transform:scale(1);opacity:1;} }
+  @keyframes fadeIn       { from{opacity:0;} to{opacity:1;} }
+  @keyframes fadeUp       { from{opacity:0;transform:translateY(14px);} to{opacity:1;transform:translateY(0);} }
+  @keyframes slideInToast { from{transform:translateX(110%);opacity:0;} to{transform:translateX(0);opacity:1;} }
+  @keyframes pulseDot     { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  /* ── LAYOUT ── */
+  .login-root {
+    width:100%; min-height:100vh;
+    display:grid; grid-template-columns:1.15fr .85fr;
+    background:#fff; overflow:hidden;
   }
-  @keyframes blobDrift2 {
-    0%   { transform:translate(0,0) scale(1); }
-    20%  { transform:translate(-70px,90px) scale(1.20); }
-    40%  { transform:translate(-120px,-30px) scale(.90); }
-    60%  { transform:translate(40px,-100px) scale(1.16); }
-    80%  { transform:translate(90px,50px) scale(.94); }
-    100% { transform:translate(0,0) scale(1); }
+
+  /* ── LEFT PANEL ── */
+  .slideshow-panel {
+    position:relative; overflow:hidden; padding:42px;
+    display:flex; flex-direction:column; justify-content:space-between;
   }
-  @keyframes blobDrift3 {
-    0%   { transform:translate(0,0) scale(1); }
-    25%  { transform:translate(80px,70px) scale(1.14); }
-    50%  { transform:translate(-50px,110px) scale(.88); }
-    75%  { transform:translate(-90px,-50px) scale(1.18); }
-    100% { transform:translate(0,0) scale(1); }
+  .cityhall-outline {
+    position:absolute; inset:0;
+    background-image:url('/images/city_hall_outline.png');
+    background-size:cover; background-position:center;
+    opacity:.07; mix-blend-mode:screen; pointer-events:none;
   }
-  @keyframes fadeUp       { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:translateY(0);} }
-  @keyframes spinLoader   { to{transform:rotate(360deg);} }
-  @keyframes chipGlow     { 0%,100%{background:rgba(0,0,0,.22);} 50%{background:rgba(0,0,0,.32);} }
-  @keyframes btnShimmer   { 0%{transform:translateX(-100%) skewX(-15deg);} 100%{transform:translateX(280%) skewX(-15deg);} }
-  @keyframes btnGlowPulse { 0%,100%{box-shadow:0 4px 20px rgba(232,104,10,.4),0 0 0 0 rgba(232,104,10,0);}
-                             50%{box-shadow:0 6px 32px rgba(232,104,10,.6),0 0 0 6px rgba(232,104,10,.08);} }
-  @keyframes cardShimmer  { 0%{transform:translateX(-120%);} 100%{transform:translateX(120%);} }
-  @keyframes hexDrift     { 0%,100%{background-position:0 0;} 50%{background-position:6px 12px;} }
+  .cityhall-overlay {
+    position:absolute; inset:0;
+    background:linear-gradient(180deg,rgba(0,0,0,.14) 0%,rgba(0,0,0,.24) 100%);
+  }
 
-  .ls1{animation:fadeUp .48s .05s both cubic-bezier(.22,1,.36,1);}
-  .ls2{animation:fadeUp .48s .12s both cubic-bezier(.22,1,.36,1);}
-  .ls3{animation:fadeUp .48s .19s both cubic-bezier(.22,1,.36,1);}
-  .ls4{animation:fadeUp .48s .26s both cubic-bezier(.22,1,.36,1);}
-  .ls5{animation:fadeUp .48s .33s both cubic-bezier(.22,1,.36,1);}
-  .ls6{animation:fadeUp .48s .40s both cubic-bezier(.22,1,.36,1);}
+  /* brand */
+  .slide-brand { position:relative; z-index:2; }
+  .slide-logo  { display:flex; align-items:center; gap:16px; }
+  .slide-logo-seal {
+    width:74px; height:74px; border-radius:999px; overflow:hidden;
+    border:2px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.1);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 24px rgba(0,0,0,.22);
+    flex-shrink:0;
+  }
+  .slide-logo-seal img { width:100%; height:100%; object-fit:contain; padding:6px; }
+  .slide-logo-texts    { display:flex; flex-direction:column; }
+  .slide-logo-title    { color:#fff; font-size:30px; font-weight:900; line-height:1; letter-spacing:-0.04em; }
+  .slide-logo-subtitle { color:rgba(255,255,255,.7); font-size:13px; margin-top:5px; }
 
-  .seal-float  { animation:sealFloat 5s ease-in-out infinite; }
-  .seal-ring-1 { position:absolute;inset:-12px;border-radius:9999px;border:2.5px solid rgba(255,255,255,.55);animation:pulseRing 2.8s ease-out infinite;pointer-events:none; }
-  .seal-ring-2 { position:absolute;inset:-26px;border-radius:9999px;border:2px solid rgba(255,255,255,.32);animation:pulseRing 2.8s 1.1s ease-out infinite;pointer-events:none; }
+  /* slide content */
+  .slide-content-wrap { position:relative; z-index:2; width:100%; max-width:620px; min-height:420px; display:flex; align-items:center; }
+  .slide-content { width:100%; }
+  .slide-fade-in  { animation:fadeSlideIn .45s ease forwards; }
+  .slide-fade-out { animation:fadeSlideOut .3s ease forwards; }
 
-  .bg-blob   { position:absolute;border-radius:50%;pointer-events:none;will-change:transform; }
-  .bg-blob-1 { width:780px;height:780px;top:-25%;left:-18%;
-    background:radial-gradient(circle at 40% 40%,rgba(232,104,10,.55) 0%,rgba(220,80,8,.28) 30%,rgba(200,60,5,.08) 58%,transparent 72%);
-    filter:blur(38px);animation:blobDrift1 26s cubic-bezier(.42,0,.58,1) infinite; }
-  .bg-blob-2 { width:620px;height:620px;bottom:-20%;right:-15%;
-    background:radial-gradient(circle at 55% 55%,rgba(190,65,10,.52) 0%,rgba(160,40,8,.24) 32%,rgba(130,30,5,.07) 58%,transparent 72%);
-    filter:blur(36px);animation:blobDrift2 32s cubic-bezier(.42,0,.58,1) infinite; }
-  .bg-blob-3 { width:460px;height:460px;top:25%;right:10%;
-    background:radial-gradient(circle at 45% 45%,rgba(43,94,166,.40) 0%,rgba(30,70,140,.18) 35%,rgba(20,50,110,.05) 60%,transparent 72%);
-    filter:blur(34px);animation:blobDrift3 38s 3s cubic-bezier(.42,0,.58,1) infinite; }
+  .slide-tag {
+    display:inline-flex; align-items:center; gap:10px;
+    border-radius:999px; padding:10px 18px;
+    border:1px solid rgba(255,255,255,.15);
+    background:rgba(255,255,255,.08); backdrop-filter:blur(14px);
+    font-size:13px; font-weight:800; margin-bottom:28px; min-height:42px;
+  }
+  .slide-tag-dot  { width:7px; height:7px; border-radius:999px; }
+  .slide-headline { margin:0; font-size:64px; line-height:.95; color:#fff; font-weight:900; letter-spacing:-0.06em; min-height:130px; }
+  .slide-sub      { margin-top:24px; color:rgba(255,255,255,.8); line-height:1.85; font-size:17px; min-height:125px; }
+  .slide-pills    { display:flex; flex-wrap:wrap; gap:12px; min-height:58px; }
+  .slide-pill     {
+    height:42px; display:flex; align-items:center;
+    border-radius:999px; padding:0 16px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(10px); color:#fff; font-size:13px; font-weight:700;
+  }
 
-  .bg-honeycomb {
+  /* bottom */
+  .slide-bottom { position:relative; z-index:2; }
+  .slide-dots   { display:flex; align-items:center; gap:10px; margin-bottom:28px; }
+  .slide-dot    { height:6px; border:none; border-radius:999px; cursor:pointer; transition:all .25s ease; }
+  .slide-stats  { display:flex; gap:18px; flex-wrap:wrap; }
+  .slide-stat   {
+    min-width:150px; padding:18px; border-radius:22px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(14px);
+  }
+  .slide-stat-value { display:block; font-size:28px; font-weight:900; margin-bottom:6px; }
+  .slide-stat-label { color:rgba(255,255,255,.72); font-size:12px; }
+
+  /* ── RIGHT PANEL ── */
+  .login-panel {
+    position:relative; display:flex; align-items:center; justify-content:center;
+    padding:44px; overflow:hidden; background:#f8f9fb;
+  }
+
+  /* Subtle grid layer — gradient from light gray top to white bottom */
+  .login-panel-bg {
     position:absolute; inset:0; pointer-events:none; z-index:0;
-    opacity:.03;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='92'%3E%3Cpolygon points='40,3 77,23 77,69 40,89 3,69 3,23' fill='none' stroke='%23ffffff' stroke-width='1.4'/%3E%3C/svg%3E");' fill='none' stroke='%23ffffff' stroke-width='1.6'/%3E%3C/svg%3E");
-    background-size: 120px 138px;
-    animation: hexDrift 28s ease-in-out infinite;
+    background:
+      linear-gradient(175deg, rgba(210,218,228,.6) 0%, rgba(255,255,255,0) 65%),
+      repeating-linear-gradient(0deg,  transparent, transparent 27px, rgba(140,155,175,.14) 27px, rgba(140,155,175,.14) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(140,155,175,.14) 27px, rgba(140,155,175,.14) 28px);
   }
 
-  .left-stripe { position:absolute;inset:0;pointer-events:none;
-    background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.045) 0,rgba(255,255,255,.045) 1px,transparent 1px,transparent 20px); }
-  .left-glow   { position:absolute;inset:0;pointer-events:none;
-    background:radial-gradient(ellipse at 35% 18%,rgba(255,255,255,.22) 0%,transparent 55%); }
+  /* card wrap */
+  .login-card-wrap { position:relative; width:100%; max-width:470px; z-index:1; }
 
-  .info-chip { display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.18);border-radius:50px;padding:6px 14px;transition:background .2s;cursor:default;animation:chipGlow 4s ease-in-out infinite; }
-  .info-chip:hover { background:rgba(0,0,0,.32); }
-
-  .form-input {
-    width:100%;background:#F8F9FC;border:1.5px solid #E8ECF4;
-    border-radius:12px;padding:10px 15px;font-size:14px;color:#1a1a2e;
-    outline:none;transition:border-color .2s,box-shadow .2s,background .2s;
+  .login-card {
+    position:relative; z-index:2; overflow:hidden;
+    border-radius:32px;
+    background:rgba(255,255,255,.9);
+    backdrop-filter:blur(22px);
+    border:1px solid rgba(255,255,255,.8);
+    box-shadow:0 25px 80px rgba(0,0,0,.09), 0 10px 40px rgba(243,156,58,.09);
+    padding:44px;
   }
-  .form-input::placeholder { color:#B0B8CC; }
-  .form-input:focus { background:#fff;border-color:#E8680A;box-shadow:0 0 0 3px rgba(232,104,10,.12); }
+  .login-card::before {
+    content:''; position:absolute; top:0; left:-120%; width:50%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+    animation:shimmer 8s linear infinite;
+  }
 
-  .signin-btn {
-    width:100%;background:linear-gradient(135deg,#E8680A 0%,#F5882A 50%,#E8680A 100%);
-    color:#fff;font-weight:800;font-size:14px;letter-spacing:.09em;
-    text-transform:uppercase;border:none;border-radius:12px;padding:12px;
-    cursor:pointer;position:relative;overflow:hidden;
+  .login-mobile-logo { display:none; }
+  .login-header      { position:relative; z-index:2; }
+  .login-title       { margin:0; font-size:40px; line-height:1; letter-spacing:-0.05em; color:#1f2937; font-weight:900; }
+  .login-subtitle    { margin-top:16px; color:#6b7280; line-height:1.8; font-size:14px; }
+
+  /* form */
+  .login-form  { margin-top:34px; position:relative; z-index:2; }
+  .login-field { margin-bottom:22px; }
+  .login-label { display:block; margin-bottom:10px; font-size:13px; font-weight:800; color:#374151; }
+
+  .login-input-wrap { position:relative; }
+  .login-input-icon {
+    position:absolute; top:50%; left:16px; transform:translateY(-50%);
+    color:#9ca3af; display:flex; align-items:center; justify-content:center;
+  }
+  .login-input {
+    width:100%; height:58px; border-radius:18px; border:1.5px solid #e5e7eb;
+    background:#f9fafb; padding:0 54px 0 48px; font-size:15px; color:#1f2937;
+    outline:none; transition:border-color .2s,box-shadow .2s,background .2s,transform .2s;
+  }
+  .login-input::placeholder { color:#9ca3af; }
+  .login-input:focus {
+    background:#fff; border-color:#F39C3A;
+    box-shadow:0 0 0 4px rgba(243,156,58,.12); transform:translateY(-1px);
+  }
+  .login-show-pass {
+    position:absolute; top:50%; right:14px; transform:translateY(-50%);
+    border:none; background:none; cursor:pointer; color:#9ca3af;
+    display:flex; align-items:center; justify-content:center; transition:color .18s;
+  }
+  .login-show-pass:hover { color:#F39C3A; }
+
+  .login-error { margin-top:10px; color:#dc2626; font-size:13px; font-weight:700; }
+
+  /* button */
+  .login-btn {
+    width:100%; height:58px; border:none; border-radius:18px; cursor:pointer;
+    position:relative; overflow:hidden;
+    background:linear-gradient(135deg,#F39C3A 0%,#E85D3B 100%);
+    color:#fff; font-size:15px; font-weight:900; letter-spacing:.02em;
     transition:transform .18s,box-shadow .18s;
-    animation:btnGlowPulse 3s ease-in-out infinite;
+    box-shadow:0 16px 40px rgba(232,93,59,.28);
   }
-  .signin-btn::before { content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.18) 0%,transparent 60%);pointer-events:none; }
-  .signin-btn::after  { content:'';position:absolute;top:0;left:0;width:45%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);animation:btnShimmer 2.4s ease-in-out infinite;pointer-events:none; }
-  .signin-btn:hover:not(:disabled) { transform:translateY(-2px);box-shadow:0 12px 36px rgba(232,104,10,.55),0 0 0 4px rgba(232,104,10,.12) !important;animation:none; }
-  .signin-btn:active:not(:disabled){ transform:translateY(0);box-shadow:0 4px 14px rgba(232,104,10,.35) !important; }
-  .signin-btn:disabled { background:#d1d5db;color:#9ca3af;cursor:not-allowed;animation:none;box-shadow:none; }
-  .signin-btn:disabled::after { display:none; }
-
-  .right-shimmer {
-    position:absolute;top:0;left:0;width:60%;height:100%;
-    background:linear-gradient(90deg,transparent,rgba(232,104,10,.04),transparent);
-    animation:cardShimmer 5s ease-in-out infinite;
-    pointer-events:none;z-index:0;
-  }
-  .right-accent {
-    position:absolute;top:0;left:0;right:0;height:2px;
-    background:linear-gradient(90deg,transparent,rgba(232,104,10,.35),rgba(232,104,10,.6),rgba(232,104,10,.35),transparent);
-    pointer-events:none;
-  }
-  .right-corner-glow {
-    position:absolute;top:0;right:0;width:180px;height:180px;
-    background:radial-gradient(circle at 100% 0%,rgba(232,104,10,.08) 0%,transparent 65%);
-    pointer-events:none;
+  .login-btn:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 20px 50px rgba(232,93,59,.36); }
+  .login-btn:disabled { opacity:.7; cursor:not-allowed; }
+  .login-btn::before { content:''; position:absolute; inset:0; background:linear-gradient(180deg,rgba(255,255,255,.18),transparent); }
+  .login-btn::after  {
+    content:''; position:absolute; top:0; left:-100%; width:40%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);
+    animation:shimmer 2.8s linear infinite;
   }
 
-  .sc { position:absolute;width:20px;height:20px;border-style:solid;border-color:#E8680A; }
-  .sc.tl { top:8px;left:8px;    border-width:2.5px 0 0 2.5px;border-radius:3px 0 0 0; }
-  .sc.tr { top:8px;right:8px;   border-width:2.5px 2.5px 0 0;border-radius:0 3px 0 0; }
-  .sc.bl { bottom:8px;left:8px;  border-width:0 0 2.5px 2.5px;border-radius:0 0 0 3px; }
-  .sc.br { bottom:8px;right:8px; border-width:0 2.5px 2.5px 0;border-radius:0 0 3px 0; }
+  .login-spinner-wrap { display:flex; align-items:center; justify-content:center; gap:10px; }
+  .login-spinner {
+    width:18px; height:18px; border-radius:999px;
+    border:2px solid rgba(255,255,255,.3); border-top-color:#fff;
+    animation:spin .7s linear infinite;
+  }
+
+  /* footer actions */
+  .login-footer-actions {
+    position:relative; z-index:2; margin-top:22px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .login-guest-btn {
+    font-size:13px; color:#6b7280; background:none; border:1.5px solid #e5e7eb;
+    border-radius:10px; padding:8px 14px; cursor:pointer;
+    transition:border-color .18s,color .18s,background .18s;
+  }
+  .login-guest-btn:hover { border-color:#F39C3A; color:#E85D3B; background:rgba(243,156,58,.04); }
+  .login-signup-btn {
+    font-size:13px; font-weight:700; color:#E85D3B;
+    background:none; border:none; cursor:pointer; transition:opacity .18s;
+  }
+  .login-signup-btn:hover { opacity:.7; }
+
+  .login-footer {
+    position:relative; z-index:2; margin-top:20px;
+    text-align:center; color:#9ca3af; font-size:12px; line-height:1.8;
+  }
+
+  /* ── SCANNER MODAL ── */
+  .scanner-overlay {
+    position:fixed; inset:0; z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+    backdrop-filter:blur(10px);
+    background:rgba(30,20,10,.35);
+  }
+  .scanner-card {
+    background:#fff; border-radius:22px; width:100%; max-width:360px;
+    overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.16);
+    animation:fadeUp .3s ease both;
+  }
+  .scanner-header {
+    padding:16px 20px; display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(135deg,#E8680A,#F5882A);
+  }
+  .scanner-header-left { display:flex; align-items:center; gap:12px; }
+  .scanner-icon-box {
+    width:32px; height:32px; border-radius:9px; background:rgba(255,255,255,.2);
+    display:flex; align-items:center; justify-content:center; color:#fff;
+  }
+  .scanner-title    { color:#fff; font-weight:700; font-size:14px; margin:0; }
+  .scanner-subtitle { color:rgba(255,255,255,.65); font-size:12px; margin-top:2px; }
+  .scanner-close    { background:none; border:none; cursor:pointer; color:rgba(255,255,255,.65); display:flex; transition:color .18s; }
+  .scanner-close:hover { color:#fff; }
+  .scanner-body  { padding:20px; }
+  .scanner-hint  { text-align:center; color:#9ca3af; font-size:12px; margin-bottom:16px; }
+
+  .scanner-frame-wrap {
+    position:relative; width:165px; height:165px; margin:0 auto 16px;
+    border-radius:14px; background:#fff8f2; border:1px solid #fde8d4;
+  }
+  .sc    { position:absolute; width:20px; height:20px; border-style:solid; border-color:#E8680A; }
+  .sc.tl { top:8px;    left:8px;   border-width:2.5px 0 0 2.5px; border-radius:3px 0 0 0; }
+  .sc.tr { top:8px;    right:8px;  border-width:2.5px 2.5px 0 0; border-radius:0 3px 0 0; }
+  .sc.bl { bottom:8px; left:8px;   border-width:0 0 2.5px 2.5px; border-radius:0 0 0 3px; }
+  .sc.br { bottom:8px; right:8px;  border-width:0 2.5px 2.5px 0; border-radius:0 0 3px 0; }
+
+  .scan-line {
+    position:absolute; left:12px; right:12px; height:2px;
+    background:linear-gradient(90deg,transparent,#E8680A,transparent);
+    animation:scanLine 1.8s ease-in-out infinite;
+  }
+  .scan-icon-center {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:#fdd5b0;
+  }
+  .scan-result-overlay {
+    position:absolute; inset:0; border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+    animation:fadeIn .2s ease forwards; z-index:10;
+  }
+  .scan-result-label { color:#fff; font-weight:700; font-size:14px; }
+  .scan-result-sub   { color:rgba(255,255,255,.8); font-size:12px; }
+
+  .scanner-status { display:flex; align-items:center; justify-content:center; gap:8px; font-size:12px; min-height:18px; margin-bottom:10px; }
+  .status-dot     { width:8px; height:8px; border-radius:999px; animation:pulseDot 1.4s ease-in-out infinite; }
+  .scanner-email  { text-align:center; font-size:12px; color:#9ca3af; }
+  .scanner-email span { font-weight:600; color:#4b5563; }
+
+  /* ── TOAST ── */
+  .toast-container {
+    position:fixed; top:16px; right:16px; z-index:200;
+    display:flex; flex-direction:column; gap:8px; pointer-events:none;
+  }
+  .toast {
+    display:flex; align-items:center; gap:12px;
+    padding:12px 16px; border-radius:14px;
+    backdrop-filter:blur(12px); border:1px solid;
+    pointer-events:auto; min-width:280px; max-width:360px;
+    box-shadow:0 8px 32px rgba(0,0,0,.12);
+    animation:slideInToast .3s ease forwards;
+  }
+  .toast-error   { background:rgba(254,242,242,.97); border-color:#fecaca; color:#991b1b; }
+  .toast-success { background:rgba(240,253,244,.97); border-color:#bbf7d0; color:#166534; }
+  .toast-warning { background:rgba(255,251,235,.97); border-color:#fde68a; color:#92400e; }
+  .toast-msg  { font-size:13px; font-weight:600; flex:1; }
+  .toast-close { background:none; border:none; cursor:pointer; opacity:.5; display:flex; transition:opacity .18s; }
+  .toast-close:hover { opacity:1; }
+
+  /* ── RESPONSIVE ── */
+  @media(max-width:1100px) {
+    .slide-headline { font-size:54px; min-height:120px; }
+    .slide-sub { min-height:150px; }
+  }
+  @media(max-width:960px) {
+    .login-root { grid-template-columns:1fr; }
+    .slideshow-panel { min-height:520px; }
+    .slide-headline { font-size:48px; }
+    .slide-content-wrap { min-height:350px; }
+  }
+  @media(max-width:640px) {
+    .slideshow-panel { display:none; }
+    .login-panel { padding:22px; }
+    .login-card { padding:32px 24px; border-radius:28px; }
+    .login-mobile-logo { display:flex; align-items:center; gap:14px; margin-bottom:28px; }
+    .login-mobile-logo img { width:54px; height:54px; object-fit:contain; }
+    .login-mobile-logo-text { display:flex; flex-direction:column; }
+    .login-mobile-logo-title { font-size:26px; font-weight:900; line-height:1; color:#1f2937; }
+    .login-mobile-logo-sub { font-size:12px; color:#6b7280; margin-top:5px; }
+    .login-title { font-size:34px; }
+  }
 `;
 
-/* ── SVG Icons (inline, avoids lucide version mismatch entirely) ─────────── */
-function IconShield({ className }: { className?: string }) {
+/* ──────────────────────────────────────────────────────────────
+   SVG ICONS
+────────────────────────────────────────────────────────────── */
+function IconScan({ size = 17 }: { size?: number }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
-function IconBuilding({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M9 22V12h6v10M3 9h18" />
-    </svg>
-  );
-}
-function IconScan({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
       <line x1="3" y1="12" x2="21" y2="12" />
     </svg>
   );
 }
-function IconCheckCircle({ className, style }: { className?: string; style?: React.CSSProperties }) {
+function IconCheckCircle({ size = 17, style }: { size?: number; style?: React.CSSProperties }) {
   return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
+    <svg width={size} height={size} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
     </svg>
   );
 }
-function IconXCircle({ className, style }: { className?: string; style?: React.CSSProperties }) {
+function IconXCircle({ size = 17, style }: { size?: number; style?: React.CSSProperties }) {
   return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="15" y1="9" x2="9" y2="15" />
-      <line x1="9" y1="9" x2="15" y2="15" />
+    <svg width={size} height={size} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
     </svg>
   );
 }
-function IconX({ className }: { className?: string }) {
+function IconAlert({ size = 17 }: { size?: number }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-function IconAlert({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
+      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   );
 }
-function IconPaw({ className }: { className?: string }) {
+function IconX({ size = 16 }: { size?: number }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/>
-      <circle cx="20" cy="16" r="2"/><circle cx="4" cy="8" r="2"/>
-      <path d="M12 18c-3.5 0-6-2-6-4s2.5-3 6-3 6 1 6 3-2.5 4-6 4z"/>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+function IconEye({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+function IconEyeOff({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+      <path d="M14.12 14.12A3 3 0 019.88 9.88" />
+      <line x1="1" y1="1" x2="23" y2="23" />
     </svg>
   );
 }
 
-/* ── Toast ───────────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────
+   TOAST
+────────────────────────────────────────────────────────────── */
 type ToastType = "error" | "success" | "warning";
 interface Toast { id: number; type: ToastType; message: string; }
 let _toastId = 0;
 
 function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: number) => void }) {
   return (
-    <div className="fixed top-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+    <div className="toast-container">
       {toasts.map((t) => (
-        <div key={t.id}
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-sm border pointer-events-auto min-w-[280px] max-w-sm
-            ${t.type === "error"   ? "bg-red-50/95 border-red-200 text-red-800"
-            : t.type === "success" ? "bg-green-50/95 border-green-200 text-green-800"
-            :                        "bg-amber-50/95 border-amber-200 text-amber-800"}`}
-          style={{ animation: "slideIn 0.3s ease forwards" }}
-        >
-          {t.type === "error"   && <IconXCircle     className="w-5 h-5 text-red-500 shrink-0" />}
-          {t.type === "success" && <IconCheckCircle className="w-5 h-5 text-green-500 shrink-0" />}
-          {t.type === "warning" && <IconAlert       className="w-5 h-5 text-amber-500 shrink-0" />}
-          <p className="text-sm font-medium flex-1">{t.message}</p>
-          <button onClick={() => onRemove(t.id)} className="ml-2 opacity-50 hover:opacity-100 transition-opacity">
-            <IconX className="w-4 h-4" />
-          </button>
+        <div key={t.id} className={`toast toast-${t.type}`}>
+          {t.type === "error"   && <span style={{ flexShrink:0,display:"flex",color:"#dc2626" }}><IconXCircle size={18} /></span>}
+          {t.type === "success" && <span style={{ flexShrink:0,display:"flex",color:"#16a34a" }}><IconCheckCircle size={18} /></span>}
+          {t.type === "warning" && <span style={{ flexShrink:0,display:"flex",color:"#d97706" }}><IconAlert size={18} /></span>}
+          <p className="toast-msg">{t.message}</p>
+          <button className="toast-close" onClick={() => onRemove(t.id)}><IconX size={14} /></button>
         </div>
       ))}
     </div>
   );
 }
 
-/* ── Scan Result Overlay ─────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────
+   SCAN RESULT OVERLAY
+────────────────────────────────────────────────────────────── */
 type ScanResult = "granted" | "denied" | null;
 
 function ScanResultOverlay({ result, username }: { result: ScanResult; username?: string }) {
   if (!result) return null;
+  const bg = result === "granted" ? "rgba(22,163,74,.94)" : "rgba(220,38,38,.94)";
   return (
-    <div
-      className={`absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3 z-10
-        ${result === "granted" ? "bg-green-500/95" : "bg-red-500/95"}`}
-      style={{ animation: "fadeIn 0.2s ease forwards" }}
-    >
+    <div className="scan-result-overlay" style={{ background: bg }}>
       {result === "granted" ? (
         <>
-          <IconCheckCircle className="w-14 h-14 text-white" style={{ animation: "pop 0.3s ease forwards" }} />
-          <p className="text-white font-bold">Access Granted</p>
-          {username && <p className="text-white/80 text-sm">Welcome, {username.split(" ")[0]}</p>}
+          <IconCheckCircle size={52} style={{ color:"#fff", animation:"pop .3s ease forwards" }} />
+          <p className="scan-result-label">Access Granted</p>
+          {username && <p className="scan-result-sub">Welcome, {username.split(" ")[0]}</p>}
         </>
       ) : (
         <>
-          <IconXCircle className="w-14 h-14 text-white" style={{ animation: "pop 0.3s ease forwards" }} />
-          <p className="text-white font-bold">Access Denied</p>
-          <p className="text-white/80 text-sm">Invalid or unregistered ID</p>
+          <IconXCircle size={52} style={{ color:"#fff", animation:"pop .3s ease forwards" }} />
+          <p className="scan-result-label">Access Denied</p>
+          <p className="scan-result-sub">Invalid or unregistered ID</p>
         </>
       )}
     </div>
   );
 }
 
-/* ── City Seal ───────────────────────────────────────────────────────────── */
-function CitySeal() {
-  const [loaded, setLoaded] = useState(true);
-  return (
-    <div className="seal-float relative inline-block mb-4">
-      <span className="seal-ring-1" />
-      <span className="seal-ring-2" />
-      <div
-        className="w-[108px] h-[108px] rounded-full flex items-center justify-center overflow-hidden bg-white/20 border-2 border-white/40"
-        style={{ boxShadow: "0 8px 32px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.3)" }}
-      >
-        {loaded
-          ? <img src="/images/city-seal.png" alt="Calaca City Seal"
-              className="w-full h-full object-contain p-2"
-              onError={() => setLoaded(false)} />
-          : <IconPaw className="w-14 h-14 text-white" />
-        }
-      </div>
-    </div>
-  );
-}
-
-/* ── Scanner Modal ───────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────
+   SCANNER MODAL
+────────────────────────────────────────────────────────────── */
 function ScannerModal({
   pendingEmail, pendingUsername, pendingToken, onClose, onVerified, onDenied,
 }: {
@@ -330,86 +523,83 @@ function ScannerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/65 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
-        style={{ animation: "fadeUp 0.3s ease both" }}>
-        <div className="px-5 py-4 flex items-center justify-between"
-          style={{ background: "linear-gradient(135deg,#E8680A,#F5882A)" }}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <IconScan className="w-4 h-4 text-white" />
-            </div>
+    <div className="scanner-overlay">
+      <div className="scanner-card">
+        <div className="scanner-header">
+          <div className="scanner-header-left">
+            <div className="scanner-icon-box"><IconScan size={16} /></div>
             <div>
-              <h3 className="font-bold text-white text-sm">SuperAdmin ID Verification</h3>
-              <p className="text-white/65 text-xs">Biometric scan required</p>
+              <p className="scanner-title">SuperAdmin ID Verification</p>
+              <p className="scanner-subtitle">Biometric scan required</p>
             </div>
           </div>
           {!scanResult && (
-            <button onClick={onClose} className="text-white/60 hover:text-white transition-colors p-1">
-              <IconX className="w-4 h-4" />
-            </button>
+            <button className="scanner-close" onClick={onClose}><IconX size={15} /></button>
           )}
         </div>
-        <div className="p-5">
-          <p className="text-gray-500 text-xs text-center mb-4">
-            Scan your employee ID barcode or QR code to proceed
-          </p>
-          <div className="relative w-[165px] h-[165px] mx-auto mb-4 rounded-xl bg-orange-50 border border-orange-100">
+
+        <div className="scanner-body">
+          <p className="scanner-hint">Scan your employee ID barcode or QR code to proceed</p>
+
+          <div className="scanner-frame-wrap">
             <ScanResultOverlay result={scanResult} username={pendingUsername} />
             {!scanResult && (
               <>
                 <span className="sc tl" /><span className="sc tr" />
                 <span className="sc bl" /><span className="sc br" />
-                <div className="absolute left-3 right-3 h-[2px]"
-                  style={{
-                    background: "linear-gradient(90deg,transparent,#E8680A,transparent)",
-                    animation: "scanLine 1.8s ease-in-out infinite",
-                  }} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <IconScan className="w-9 h-9 text-orange-200" />
-                </div>
+                <div className="scan-line" />
+                <div className="scan-icon-center"><IconScan size={36} /></div>
               </>
             )}
           </div>
+
           <input
             ref={inputRef} type="password" value={scanValue}
             onChange={handleChange} onKeyDown={handleKeyDown}
-            className="opacity-0 absolute w-0 h-0 pointer-events-none"
+            style={{ opacity:0, position:"absolute", width:0, height:0, pointerEvents:"none" }}
             autoComplete="off" aria-hidden tabIndex={-1}
           />
-          <div className="flex items-center justify-center gap-2 text-xs min-h-[18px] mb-3">
+
+          <div className="scanner-status">
             {!scanResult && !isVerifying && (
-              <><span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
-              <span className="text-gray-500">Ready — scan your ID now</span></>
+              <><span className="status-dot" style={{ background:"#4ade80" }} />
+              <span style={{ color:"#6b7280" }}>Ready — scan your ID now</span></>
             )}
             {!scanResult && isVerifying && (
-              <><span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse inline-block" />
-              <span className="text-orange-600 font-medium">Verifying…</span></>
+              <><span className="status-dot" style={{ background:"#f59e0b" }} />
+              <span style={{ color:"#d97706", fontWeight:600 }}>Verifying…</span></>
             )}
-            {scanResult === "granted" && <span className="text-green-600 font-medium">Redirecting…</span>}
-            {scanResult === "denied"  && <span className="text-red-500 font-medium">Retrying in a moment…</span>}
+            {scanResult === "granted" && <span style={{ color:"#16a34a", fontWeight:600 }}>Redirecting…</span>}
+            {scanResult === "denied"  && <span style={{ color:"#dc2626", fontWeight:600 }}>Retrying in a moment…</span>}
           </div>
-          <p className="text-xs text-gray-400 text-center">
-            Authenticating: <span className="font-medium text-gray-600">{pendingEmail}</span>
-          </p>
+
+          <p className="scanner-email">Authenticating: <span>{pendingEmail}</span></p>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Main Login ──────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────────
+   MAIN COMPONENT
+────────────────────────────────────────────────────────────── */
 export function Login() {
   const navigate = useNavigate();
-  const [email,     setEmail]     = useState("");
-  const [password,  setPassword]  = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
+  /* auth state */
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+
+  /* barcode / scanner flow */
   const [pendingEmail,    setPendingEmail]    = useState("");
   const [pendingUsername, setPendingUsername] = useState("");
   const [pendingToken,    setPendingToken]    = useState("");
   const [showScanner,     setShowScanner]     = useState(false);
 
+  /* toasts */
   const [toasts, setToasts] = useState<Toast[]>([]);
   const addToast = (type: ToastType, message: string) => {
     const id = ++_toastId;
@@ -417,9 +607,31 @@ export function Login() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
   };
 
+  /* slideshow */
+  const [slide,     setSlide]     = useState(0);
+  const [animClass, setAnimClass] = useState("slide-fade-in");
+  const timerRef = useRef<any>(null);
+  const s = useMemo(() => SLIDES[slide], [slide]);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setAnimClass("slide-fade-out");
+      setTimeout(() => { setSlide((prev) => (prev + 1) % SLIDES.length); setAnimClass("slide-fade-in"); }, 280);
+    }, 5200);
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  const goSlide = (i: number) => {
+    clearInterval(timerRef.current);
+    setAnimClass("slide-fade-out");
+    setTimeout(() => { setSlide(i); setAnimClass("slide-fade-in"); }, 280);
+  };
+
+  /* submit */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (!email || !password) { setError("Please enter your email and password."); return; }
+    setLoading(true); setError("");
     try {
       const res  = await fetch("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -427,11 +639,8 @@ export function Login() {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.error === 'maintenance') {
-          window.location.reload();
-          return;
-        }
-        addToast("error", data.error || "Invalid email or password.");
+        if (data.error === "maintenance") { window.location.reload(); return; }
+        setError(data.error || "Invalid email or password.");
         return;
       }
       if (data.requiresBarcodeVerification) {
@@ -441,193 +650,175 @@ export function Login() {
         setShowScanner(true);
         return;
       }
-      sessionStorage.setItem("nasaalaga_user", JSON.stringify(data.user));
+      sessionStorage.setItem("nasaalaga_user",  JSON.stringify(data.user));
       sessionStorage.setItem("nasaalaga_token", data.token);
       addToast("success", `Welcome back, ${data.user.username}!`);
       setTimeout(() => navigate("/dashboard"), 400);
     } catch {
-      addToast("error", "Network error — is the backend running?");
+      setError("Network error — backend may be offline.");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const handleScanVerified = (user: any, token: string) => {
-    sessionStorage.setItem("nasaalaga_user", JSON.stringify(user));
+    sessionStorage.setItem("nasaalaga_user",  JSON.stringify(user));
     sessionStorage.setItem("nasaalaga_token", token);
     setShowScanner(false);
     navigate("/dashboard");
   };
 
   const handleGuestLogin = () => {
-    sessionStorage.setItem(
-      "nasaalaga_user",
-      JSON.stringify({ username: "Guest", role: "guest" as UserRole })
-    );
+    sessionStorage.setItem("nasaalaga_user", JSON.stringify({ username: "Guest", role: "guest" as UserRole }));
     navigate("/dashboard");
   };
 
+  /* ── RENDER ── */
   return (
     <>
       <style>{STYLES}</style>
       <ToastContainer toasts={toasts} onRemove={(id) => setToasts((p) => p.filter((t) => t.id !== id))} />
 
-      <div
-        className="min-h-screen flex items-center justify-center relative overflow-hidden"
-        style={{
-          background: "linear-gradient(145deg,#0a1220 0%,#111827 40%,#1a0e08 70%,#0a1220 100%)",
-          filter: showScanner ? "blur(4px) brightness(.7)" : "none",
-          transition: "filter .4s ease",
-        }}
-      >
-        {/* Honeycomb — larger cells, more visible */}
-        <div className="bg-honeycomb" />
+      <div className="login-root">
 
-        {/* Drifting blobs — more saturated, wider travel */}
-        <div className="bg-blob bg-blob-1" />
-        <div className="bg-blob bg-blob-2" />
-        <div className="bg-blob bg-blob-3" />
+        {/* ──────────── LEFT ──────────── */}
+        <div className="slideshow-panel" style={{ background: s.bg }}>
+          <div className="cityhall-outline" />
+          <div className="cityhall-overlay" />
 
-        {/* Card */}
-        <div
-          className="relative z-10 w-full mx-4 overflow-hidden"
-          style={{
-            maxWidth: 840,
-            borderRadius: 20,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            boxShadow: "0 32px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06)",
-          }}
-        >
-          {/* LEFT — branding */}
-          <div
-            className="relative flex flex-col items-center justify-center px-7 py-9 overflow-hidden"
-            style={{ background: "linear-gradient(150deg,#F5932A 0%,#E8680A 50%,#D04A08 100%)" }}
-          >
-            <div className="left-stripe" />
-            <div className="left-glow" />
-            <div className="absolute top-0 left-0 right-0 h-[2px]"
-              style={{ background: "linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent)" }} />
-
-            <div className="relative z-10 flex flex-col items-center text-center w-full">
-              <div className="ls1"><CitySeal /></div>
-
-              <div className="ls2">
-                <h1 className="text-[30px] font-extrabold text-white tracking-tight mb-0.5"
-                  style={{ textShadow: "0 2px 16px rgba(0,0,0,.2)" }}>
-                  NASaAlaga
-                </h1>
-                <p className="text-white/80 text-sm mb-4">Veterinary Management System</p>
+          {/* brand */}
+          <div className="slide-brand">
+            <div className="slide-logo">
+              <div className="slide-logo-seal">
+                <img src="/images/city-seal.png" alt="Calaca City Seal" />
               </div>
+              <div className="slide-logo-texts">
+                <span className="slide-logo-title">NASaAlaga</span>
+                <span className="slide-logo-subtitle">Veterinary Management System</span>
+              </div>
+            </div>
+          </div>
 
-              <div className="ls3 mb-4">
-                <div className="info-chip">
-                  <IconBuilding className="w-3.5 h-3.5 text-white/80 shrink-0" />
-                  <span className="text-white/90 text-sm font-medium">City of Calaca, Batangas</span>
+          {/* slide */}
+          <div className="slide-content-wrap">
+            <div className="slide-content">
+              <div className={animClass}>
+                <div className="slide-tag" style={{ color: s.tagColor }}>
+                  <span className="slide-tag-dot" style={{ background: s.tagColor }} />
+                  {s.tag}
                 </div>
-              </div>
-
-              <div className="ls4 flex flex-col gap-2 w-full max-w-[220px] mb-4">
-                {[
-                  { Icon: IconShield,       label: "Official LGU Gov't System" },
-                  { Icon: IconCheckCircle,  label: "ISO 9001 · ISO 27001 Certified" },
-                  { Icon: IconScan,         label: "2-Factor Biometric Auth" },
-                ].map(({ Icon, label }) => (
-                  <div key={label} className="info-chip">
-                    <Icon className="w-3.5 h-3.5 text-white/70 shrink-0" />
-                    <span className="text-white/85 text-xs">{label}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="ls5">
-                <div className="info-chip" style={{ paddingTop: 5, paddingBottom: 5 }}>
-                  <span className="text-white/55 text-xs">Protected · Data Privacy Act 2012</span>
+                <h1 className="slide-headline" style={{ whiteSpace: "pre-line" }}>{s.headline}</h1>
+                <p className="slide-sub">{s.sub}</p>
+                <div className="slide-pills">
+                  {s.pills.map((pill) => <div key={pill} className="slide-pill">{pill}</div>)}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT — form */}
-          <div className="relative flex flex-col justify-center px-8 py-9 overflow-hidden bg-white">
-            <div className="right-shimmer" />
-            <div className="right-accent" />
-            <div className="right-corner-glow" />
-
-            <div className="relative z-10">
-              <div className="ls1 mb-5">
-                <p className="text-xs font-bold tracking-[.14em] uppercase mb-1.5" style={{ color: "#E8680A" }}>
-                  Secure Portal
-                </p>
-                <h2 className="text-[26px] font-extrabold text-gray-900 tracking-tight leading-tight">
-                  Welcome back 👋
-                </h2>
-                <p className="text-gray-500 text-sm mt-1">Sign in with your verified government account</p>
-              </div>
-
-              <form onSubmit={handleSubmit}>
-                <div className="ls2 mb-3">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email address</label>
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="form-input"
-                    placeholder="your@email.com"
-                    type="email"
-                    required
-                  />
+          {/* bottom */}
+          <div className="slide-bottom">
+            <div className="slide-dots">
+              {SLIDES.map((_, i) => (
+                <button key={i} className="slide-dot" onClick={() => goSlide(i)}
+                  style={{ width: i === slide ? 28 : 6, background: i === slide ? s.tagColor : "rgba(255,255,255,.24)" }} />
+              ))}
+            </div>
+            <div className="slide-stats">
+              {STATS.map((st) => (
+                <div key={st.label} className="slide-stat">
+                  <span className="slide-stat-value" style={{ color: s.tagColor }}>{st.value}</span>
+                  <span className="slide-stat-label">{st.label}</span>
                 </div>
-
-                <div className="ls3 mb-6">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="form-input"
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-
-                <div className="ls4 mb-4">
-                  <button type="submit" disabled={isLoading} className="signin-btn">
-                    {isLoading
-                      ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none"
-                            style={{ animation: "spinLoader .65s linear infinite" }}>
-                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.3)" strokeWidth="3" />
-                            <path d="M4 12a8 8 0 018-8" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-                          </svg>
-                          Signing in…
-                        </span>
-                      )
-                      : "Sign In"
-                    }
-                  </button>
-                </div>
-              </form>
-
-              <div className="ls5 flex items-center justify-between">
-                <button onClick={handleGuestLogin}
-                  className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
-                  Continue as Guest
-                </button>
-                <button onClick={() => navigate("/signup")}
-                  className="text-sm font-semibold transition-colors hover:opacity-75"
-                  style={{ color: "#E8680A" }}>
-                  Create Account →
-                </button>
-              </div>
+              ))}
             </div>
           </div>
         </div>
 
-        <p className="absolute bottom-3 left-0 right-0 text-center text-[10px] tracking-widest z-10"
-          style={{ color: "rgba(255,255,255,.28)" }}>
-          © {new Date().getFullYear()} City Government of Calaca · NASaAlaga VMS
-        </p>
+        {/* ──────────── RIGHT ──────────── */}
+        <div className="login-panel">
+          <div className="login-panel-bg" />
+
+          <div className="login-card-wrap">
+            <div className="login-card">
+
+              {/* mobile logo */}
+              <div className="login-mobile-logo">
+                <img src="/images/city-seal.png" alt="Calaca City Seal" />
+                <div className="login-mobile-logo-text">
+                  <span className="login-mobile-logo-title">NASaAlaga</span>
+                  <span className="login-mobile-logo-sub">Veterinary Management System</span>
+                </div>
+              </div>
+
+              {/* header */}
+              <div className="login-header">
+                <h1 className="login-title">Welcome back 👋</h1>
+                <p className="login-subtitle">
+                  Sign in to continue managing veterinary records, vaccinations, pet monitoring, and LGU animal welfare services through NASaAlaga.
+                </p>
+              </div>
+
+              {/* form */}
+              <form className="login-form" onSubmit={handleSubmit}>
+
+                {/* email */}
+                <div className="login-field">
+                  <label className="login-label">Email Address</label>
+                  <div className="login-input-wrap">
+                    <span className="login-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 7l-10 7L2 7" />
+                      </svg>
+                    </span>
+                    <input className="login-input" type="email" placeholder="Enter your email"
+                      value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} />
+                  </div>
+                </div>
+
+                {/* password */}
+                <div className="login-field">
+                  <label className="login-label">Password</label>
+                  <div className="login-input-wrap">
+                    <span className="login-input-icon">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
+                      </svg>
+                    </span>
+                    <input className="login-input"
+                      type={showPass ? "text" : "password"}
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => { setPassword(e.target.value); setError(""); }} />
+                    <button type="button" className="login-show-pass" onClick={() => setShowPass((p) => !p)}>
+                      {showPass ? <IconEyeOff /> : <IconEye />}
+                    </button>
+                  </div>
+                  {error && <div className="login-error">⚠ {error}</div>}
+                </div>
+
+                {/* submit */}
+                <button type="submit" className="login-btn" disabled={loading}>
+                  {loading ? (
+                    <span className="login-spinner-wrap">
+                      <span className="login-spinner" /><span>Signing in…</span>
+                    </span>
+                  ) : "Sign In to NASaAlaga"}
+                </button>
+              </form>
+
+              {/* guest + signup */}
+              <div className="login-footer-actions">
+                <button className="login-guest-btn" onClick={handleGuestLogin}>Continue as Guest</button>
+                <button className="login-signup-btn" onClick={() => navigate("/signup")}>Create Account →</button>
+              </div>
+
+              <div className="login-footer">
+                City Government of Calaca · NASaAlaga Veterinary Management System · Government Digital Services
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {showScanner && (
@@ -643,3 +834,5 @@ export function Login() {
     </>
   );
 }
+
+export default Login;

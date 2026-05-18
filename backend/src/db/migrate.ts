@@ -85,6 +85,74 @@ const createTables = async () => {
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
 
+
+    // ── Livestock table enhancements ──────────────────────────────────────
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS age VARCHAR(50)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS color_markings VARCHAR(255)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS purpose VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS source VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS notes TEXT`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS tag_number VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_date DATE`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_reason TEXT`);
+    await client.query(`ALTER TABLE livestock ALTER COLUMN owner_id DROP NOT NULL`);
+
+    // ── Health records table ───────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS health_records (
+        id SERIAL PRIMARY KEY,
+        livestock_id VARCHAR(50) NOT NULL,
+        record_type VARCHAR(50) NOT NULL,
+        date DATE NOT NULL,
+        diagnosis TEXT,
+        treatment TEXT,
+        medicine_used TEXT,
+        veterinarian VARCHAR(255),
+        next_due_date DATE,
+        notes TEXT,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── Livestock mortality table ──────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS livestock_mortality (
+        id SERIAL PRIMARY KEY,
+        livestock_id VARCHAR(50),
+        animal_type VARCHAR(100) NOT NULL,
+        breed VARCHAR(255),
+        owner_name VARCHAR(255),
+        barangay VARCHAR(255),
+        quantity INTEGER DEFAULT 1,
+        cause VARCHAR(255),
+        date_reported DATE DEFAULT CURRENT_DATE,
+        investigation_status VARCHAR(50) DEFAULT 'Pending',
+        notes TEXT,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── Livestock disease alerts table ─────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS livestock_disease_events (
+        id VARCHAR(50) PRIMARY KEY,
+        animal_type VARCHAR(100),
+        disease VARCHAR(255) NOT NULL,
+        barangay VARCHAR(255),
+        cases INTEGER DEFAULT 0,
+        deaths INTEGER DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'Active',
+        date_reported DATE DEFAULT CURRENT_DATE,
+        resolved_date DATE,
+        notes TEXT,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
     // Make owner_id nullable (pets registered by admin may not have a portal user)
     await client.query(`ALTER TABLE pets ALTER COLUMN owner_id DROP NOT NULL`);
 
