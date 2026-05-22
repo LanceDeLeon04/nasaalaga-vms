@@ -1427,13 +1427,15 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
-export function PetRegistration() {
+import { BitingIncidents } from './BitingIncidents';
+
+export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [reports, setReports] = useState<LFReport[]>([]);
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
   const [survey, setSurvey] = useState<SurveyData|null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"schedule">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"schedule"|"biting">("overview");
 
   const [search, setSearch] = useState("");
   const [filterVax, setFilterVax] = useState("all");
@@ -1460,6 +1462,12 @@ export function PetRegistration() {
     microchipId:"",photoUrl:"",
     impoundStatus:"None",impoundReason:""
   });
+  const [ownerSuggestions, setOwnerSuggestions] = useState<{id:string;username:string;owner_id:string;email:string;barangay:string;address:string}[]>([]);
+  const [ownerLookupTimer, setOwnerLookupTimer] = useState<any>(null);
+  const [selectedOwnerId, setSelectedOwnerId]   = useState<string|null>(null);
+  const [isUnregisteredOwner, setIsUnregisteredOwner] = useState(false);
+  const [generatedTempId, setGeneratedTempId]   = useState<string|null>(null);
+  const [showOwnerSugg, setShowOwnerSugg]       = useState(false);
   const [lfForm, setLfForm] = useState({ petId:"",type:"Lost" as "Lost"|"Found", reportedBy:"",contactNumber:"",lastSeenLocation:"",barangay:"",description:"",species:"",breed:"",color:"" });
   const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",location:"",capacity:"100" });
 
@@ -1492,10 +1500,17 @@ export function PetRegistration() {
         photoUrl: np.photoUrl || null, vaccinationStatus: "Not Vaccinated",
         impoundStatus: np.impoundStatus || "None",
         impoundReason: np.impoundReason || null,
+        ownerId: selectedOwnerId || undefined,
+        isUnregistered: isUnregisteredOwner,
       });
       if (res.pet) setPets(prev => [res.pet, ...prev]);
-      setNp({ petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:"" });
-      setShowNewPet(false);
+      if (res.tempId) {
+        setGeneratedTempId(res.tempId);
+      } else {
+        setShowNewPet(false);
+        setNp({ petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:"" });
+        setSelectedOwnerId(null); setIsUnregisteredOwner(false); setGeneratedTempId(null);
+      }
       await loadAll();
     } catch(e:any) { alert("Error: " + e.message); }
     setSaving(false);
@@ -1621,7 +1636,7 @@ export function PetRegistration() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            <PawPrint className="w-6 h-6 text-[#2B5EA6]"/>Pet Registration
+            <PawPrint className="w-6 h-6 text-[#2B5EA6]"/>Pets Management
           </h2>
           <p className="text-gray-500 text-sm mt-0.5">Calaca CVO · Rabies Program · Lost & Found · Vaccination Schedules</p>
         </div>
@@ -1638,6 +1653,7 @@ export function PetRegistration() {
         {([
           ["overview","Overview",<Activity className="w-4 h-4"/>],
           ["pets",`Pet Records (${pets.length})`,<PawPrint className="w-4 h-4"/>],
+          ["biting","Biting Incidents",<AlertCircle className="w-4 h-4"/>],
           ["lost-found",`Lost & Found (${openReports.length})`,<Heart className="w-4 h-4"/>],
           ["schedule","Schedules",<Calendar className="w-4 h-4"/>],
         ] as [string,string,any][]).map(([key,label,icon])=>(
@@ -1777,6 +1793,11 @@ export function PetRegistration() {
         <ScheduleCalendar schedules={schedules} onAdd={()=>setShowScheduleAdd(true)} onManage={s=>setManageSchedule(s)} onStatusChange={handleStatusChange}/>
       )}
 
+      {/* ══ BITING INCIDENTS */}
+      {activeTab==="biting" && (
+        <BitingIncidents userRole={userRole || 'admin'} />
+      )}
+
       {/* ══ MODALS ══ */}
 
       {/* New Pet */}
@@ -1841,12 +1862,74 @@ export function PetRegistration() {
               {/* Owner Info */}
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Owner Information</p>
+
+                {/* TempID success banner */}
+                {generatedTempId && (
+                  <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:10,padding:'12px 16px',marginBottom:12}}>
+                    <p style={{margin:'0 0 4px',fontWeight:800,color:'#92400e',fontSize:13}}>⚠️ Unregistered Owner — Temporary ID Issued</p>
+                    <p style={{margin:'0 0 6px',color:'#92400e',fontSize:13}}>This pet has been registered with a Temporary ID. Give this ID to the owner — they can enter it during account signup to auto-link this pet to their account.</p>
+                    <div style={{background:'#fff',border:'2px solid #f59e0b',borderRadius:8,padding:'8px 14px',textAlign:'center',fontFamily:'monospace',fontSize:20,fontWeight:900,color:'#2B5EA6',letterSpacing:'.05em'}}>{generatedTempId}</div>
+                    <button onClick={()=>{setGeneratedTempId(null);setShowNewPet(false);setNp({petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:""});setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{marginTop:10,width:'100%',padding:'8px',background:'#2B5EA6',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>Done — Register Another Pet</button>
+                  </div>
+                )}
+
+                {!generatedTempId && (
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name *</label><input value={np.ownerName} onChange={e=>setNp({...np,ownerName:e.target.value})} className={INPUT} placeholder="Full name"/></div>
+                  <div style={{position:'relative',gridColumn:'1/-1'}}>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name * <span style={{color:'#9ca3af',fontWeight:400,fontSize:11}}>(type to search registered users)</span></label>
+                    {selectedOwnerId && (
+                      <div style={{background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#14532d',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <span>✅ Linked to registered user</span>
+                        <button onClick={()=>{setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Remove</button>
+                      </div>
+                    )}
+                    {isUnregisteredOwner && !selectedOwnerId && (
+                      <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#92400e',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <span>⚠️ Unregistered owner — Temp ID will be issued</span>
+                        <button onClick={()=>setIsUnregisteredOwner(false)} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Cancel</button>
+                      </div>
+                    )}
+                    <input
+                      value={np.ownerName}
+                      onChange={e=>{
+                        setNp({...np,ownerName:e.target.value});
+                        setSelectedOwnerId(null); setIsUnregisteredOwner(false);
+                        if(ownerLookupTimer) clearTimeout(ownerLookupTimer);
+                        if(e.target.value.length >= 2) {
+                          const t = setTimeout(async()=>{
+                            try{
+                              const r = await fetch(`/api/pets/owner-search?q=${encodeURIComponent(e.target.value)}`);
+                              const d = await r.json();
+                              setOwnerSuggestions(d.users||[]);
+                              setShowOwnerSugg(true);
+                            }catch{}
+                          },300);
+                          setOwnerLookupTimer(t);
+                        } else { setOwnerSuggestions([]); setShowOwnerSugg(false); }
+                      }}
+                      onFocus={()=>{ if(ownerSuggestions.length>0) setShowOwnerSugg(true); }}
+                      onBlur={()=>setTimeout(()=>setShowOwnerSugg(false),200)}
+                      className={INPUT} placeholder="Start typing owner name…"
+                    />
+                    {showOwnerSugg && (
+                      <div style={{position:'absolute',top:'100%',left:0,right:0,background:'#fff',border:'1.5px solid #e5e7eb',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:100,maxHeight:220,overflowY:'auto'}}>
+                        {ownerSuggestions.map(u=>(
+                          <div key={u.id} onClick={()=>{setNp({...np,ownerName:u.username,ownerContact:'',ownerAddress:u.address||'',barangay:u.barangay||np.barangay});setSelectedOwnerId(u.owner_id);setShowOwnerSugg(false);setOwnerSuggestions([]);}} style={{padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid #f1f5f9',fontSize:13}} onMouseEnter={e=>(e.currentTarget.style.background='#f0f7ff')} onMouseLeave={e=>(e.currentTarget.style.background='')}>
+                            <div style={{fontWeight:700,color:'#1f2937'}}>{u.username}</div>
+                            <div style={{fontSize:11,color:'#9ca3af'}}>{u.email} · {u.barangay||'—'}</div>
+                          </div>
+                        ))}
+                        <div onClick={()=>{setIsUnregisteredOwner(true);setSelectedOwnerId(null);setShowOwnerSugg(false);}} style={{padding:'10px 14px',cursor:'pointer',fontSize:13,fontWeight:700,color:'#f59e0b',background:'#fffbeb',borderTop:'1px solid #fde68a'}} onMouseEnter={e=>(e.currentTarget.style.background='#fef9c3')} onMouseLeave={e=>(e.currentTarget.style.background='#fffbeb')}>
+                          ⚠️ Owner not registered — issue Temporary ID
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number</label><input value={np.ownerContact} onChange={e=>setNp({...np,ownerContact:e.target.value})} className={INPUT} placeholder="0917-xxx-xxxx"/></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Address</label><input value={np.ownerAddress} onChange={e=>setNp({...np,ownerAddress:e.target.value})} className={INPUT} placeholder="Purok / Zone / Phase"/></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label><select value={np.barangay} onChange={e=>setNp({...np,barangay:e.target.value})} className={INPUT}><option value="">Select…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select></div>
                 </div>
+                )}
               </div>
 
               {/* Impound */}

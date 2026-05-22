@@ -28,6 +28,9 @@ const createTables = async () => {
       );
     `);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS barcode_hash VARCHAR(255);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS calacazen_id VARCHAR(100);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS household_number VARCHAR(100);`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS temp_id VARCHAR(100);`);
 
     // OTP store table
     await client.query(`
@@ -163,6 +166,9 @@ const createTables = async () => {
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS impound_date DATE`);
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS impound_reason TEXT`);
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS release_date DATE`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS pet_tag_id VARCHAR(100)`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS temp_id VARCHAR(100)`);
 
     // Pet pre-registrations table
     await client.query(`
@@ -172,22 +178,31 @@ const createTables = async () => {
         pet_name VARCHAR(255) NOT NULL,
         species VARCHAR(100) NOT NULL,
         breed VARCHAR(255),
-        age INTEGER,
+        age VARCHAR(50),
         color VARCHAR(100),
         gender VARCHAR(20),
         owner_name VARCHAR(255),
         contact_number VARCHAR(50),
+        owner_email VARCHAR(255),
         barangay VARCHAR(255),
         address TEXT,
         photo TEXT,
         status VARCHAR(50) DEFAULT 'Pending',
         denial_reason TEXT,
         pet_id VARCHAR(50),
+        pet_tag_id VARCHAR(100),
+        email_sent BOOLEAN DEFAULT false,
+        expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '14 days'),
         submitted_date TIMESTAMPTZ DEFAULT NOW(),
         approved_date TIMESTAMPTZ,
         denied_date TIMESTAMPTZ
       );
     `);
+    await client.query(`ALTER TABLE pet_pre_registrations ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255);`);
+    await client.query(`ALTER TABLE pet_pre_registrations ADD COLUMN IF NOT EXISTS pet_tag_id VARCHAR(100);`);
+    await client.query(`ALTER TABLE pet_pre_registrations ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT false;`);
+    await client.query(`ALTER TABLE pet_pre_registrations ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '14 days');`);
+    await client.query(`ALTER TABLE pet_pre_registrations ALTER COLUMN age TYPE VARCHAR(50) USING age::VARCHAR;`);
 
     // Livestock table
     await client.query(`
@@ -519,6 +534,35 @@ const createTables = async () => {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // ── Biting Incidents table ──────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS biting_incidents (
+        id VARCHAR(50) PRIMARY KEY,
+        pet_id VARCHAR(50),
+        pet_name VARCHAR(255) NOT NULL,
+        incident_date DATE NOT NULL,
+        location TEXT NOT NULL,
+        bitten_person VARCHAR(255) NOT NULL,
+        owner_name VARCHAR(255),
+        confirmed_rabies BOOLEAN DEFAULT false,
+        vaccinated BOOLEAN DEFAULT false,
+        remarks TEXT,
+        observation_start DATE,
+        observation_end DATE,
+        observation_update TEXT,
+        status VARCHAR(50) DEFAULT 'Open',
+        reported_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // ── Add horse to livestock_stats ────────────────────────────────────────
+    await client.query(`ALTER TABLE livestock_stats ADD COLUMN IF NOT EXISTS horses INTEGER DEFAULT 0`);
+
+    // ── Ensure cityHealth role is valid (no constraint change needed — role is free-text VARCHAR) ──
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(100)`);
 
     await client.query('COMMIT');
     console.log('✅ All tables created successfully');

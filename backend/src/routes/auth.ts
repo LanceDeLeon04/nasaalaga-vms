@@ -209,7 +209,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
 // ── Signup ─────────────────────────────────────────────────────────────────
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { email, phone, password, username, barangay, address, temporaryId } = req.body;
+    const { email, phone, password, username, barangay, address, temporaryId, calacazenId, householdNumber } = req.body;
     const key = email ? email.toLowerCase() : phone;
 
     const otpResult = await query('SELECT * FROM otp_store WHERE key=$1 AND verified=true', [key]);
@@ -225,10 +225,21 @@ router.post('/signup', async (req: Request, res: Response) => {
     const hash = await bcrypt.hash(password, 10);
 
     await query(
-      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified)
-       VALUES ($1,$2,$3,$4,$5,'owner',$6,$7,$8,true)`,
-      [userId, key, phone || null, hash, username, ownerId, barangay || null, address || null]
+      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, calacazen_id, household_number, temp_id)
+       VALUES ($1,$2,$3,$4,$5,'owner',$6,$7,$8,true,$9,$10,$11)`,
+      [userId, key, phone || null, hash, username, ownerId, barangay || null, address || null,
+       calacazenId || null, householdNumber || null, temporaryId || null]
     );
+
+    // If a temporaryId was supplied, link all pets that carry that temp_id to this new user
+    if (temporaryId && temporaryId.trim()) {
+      await query(
+        `UPDATE pets SET owner_id=$1 WHERE temp_id=$2 AND (owner_id IS NULL OR owner_id='')`,
+        [ownerId, temporaryId.trim()]
+      );
+      // Invalidate the temp_id so it can't be reused
+      await query(`UPDATE pets SET temp_id=NULL WHERE temp_id=$1`, [temporaryId.trim()]);
+    }
 
     await query('DELETE FROM otp_store WHERE key=$1', [key]);
 

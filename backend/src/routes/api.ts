@@ -55,6 +55,80 @@ router.get('/barangays', async (req, res) => {
   }
 });
 
+
+// ── Dashboard Summary (all real counts in one call) ──────────────────────
+router.get('/dashboard/summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const [
+      livestockTotal, petTotal, petVax, preRegs,
+      diseaseAlerts, lostFound, users, deployments,
+      budgetTotal, inventory
+    ] = await Promise.all([
+      query(`SELECT COALESCE(SUM(quantity),0) as total,
+                    COUNT(*) as records,
+                    SUM(CASE WHEN health_status='Healthy' THEN quantity ELSE 0 END) as healthy,
+                    SUM(CASE WHEN health_status='Sick' OR health_status='Quarantine' THEN quantity ELSE 0 END) as sick,
+                    SUM(CASE WHEN vaccination_status='Vaccinated' THEN quantity ELSE 0 END) as vaccinated
+             FROM livestock`),
+      query(`SELECT COUNT(*) as total,
+                    COUNT(CASE WHEN vaccination_status='Vaccinated' THEN 1 END) as vaccinated,
+                    COUNT(CASE WHEN status='Active' THEN 1 END) as active
+             FROM pets`),
+      query(`SELECT COUNT(*) as total FROM pets WHERE vaccination_status='Vaccinated'`),
+      query(`SELECT COUNT(*) as total FROM pet_pre_registrations WHERE status='Pending'`),
+      query(`SELECT COUNT(*) as active FROM disease_alerts WHERE status='Active'`),
+      query(`SELECT COUNT(*) as open FROM lost_found_reports WHERE status='Open'`),
+      query(`SELECT COUNT(*) as total FROM users WHERE role NOT IN ('superadmin')`),
+      query(`SELECT COUNT(*) as pending FROM deployments WHERE status='pending'`),
+      query(`SELECT COALESCE(SUM(amount),0) as total, COALESCE(SUM(amount*percentage/100),0) as utilized FROM budget_allocation`),
+      query(`SELECT 
+               (SELECT COUNT(*) FROM medicine_inventory WHERE quantity <= reorder_level) as low_medicine,
+               (SELECT COUNT(*) FROM supplies_inventory WHERE quantity <= reorder_level) as low_supplies`)
+    ]);
+
+    const ls = livestockTotal.rows[0];
+    const pets = petTotal.rows[0];
+    const lsTotal = parseInt(ls.total || '0');
+    const lsVax = parseInt(ls.vaccinated || '0');
+    const petCount = parseInt(pets.total || '0');
+    const petVaxCount = parseInt(pets.vaccinated || '0');
+    const combinedTotal = lsTotal + petCount;
+    const combinedVax = lsVax + petVaxCount;
+    const vaxRate = combinedTotal > 0 ? Math.round((combinedVax / combinedTotal) * 100) : 0;
+    const alertCount = parseInt(diseaseAlerts.rows[0]?.active || '0');
+    const pendingPreRegs = parseInt(preRegs.rows[0]?.total || '0');
+    const pendingDeploys = parseInt(deployments.rows[0]?.pending || '0');
+    const budgetTotalAmt = parseFloat(budgetTotal.rows[0]?.total || '0');
+    const lostFoundOpen = parseInt(lostFound.rows[0]?.open || '0');
+    const lowStock = parseInt(inventory.rows[0]?.low_medicine || '0') + parseInt(inventory.rows[0]?.low_supplies || '0');
+
+    return res.json({
+      livestock: {
+        total: lsTotal,
+        records: parseInt(ls.records || '0'),
+        healthy: parseInt(ls.healthy || '0'),
+        sick: parseInt(ls.sick || '0'),
+        vaccinated: lsVax,
+      },
+      pets: {
+        total: petCount,
+        vaccinated: petVaxCount,
+        active: parseInt(pets.active || '0'),
+      },
+      vaccinationRate: vaxRate,
+      activeAlerts: alertCount,
+      pendingApplications: pendingPreRegs,
+      pendingDeployments: pendingDeploys,
+      budgetTotal: budgetTotalAmt,
+      lostFoundOpen,
+      lowStock,
+      registeredUsers: parseInt(users.rows[0]?.total || '0'),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Schedules ──────────────────────────────────────────────────────────────
 router.get('/schedules', async (req, res) => {
   try {
@@ -103,6 +177,23 @@ router.post('/schedules', authenticate, async (req: AuthRequest, res: Response) 
 // ── Statistics ─────────────────────────────────────────────────────────────
 router.get('/statistics/livestock-by-barangay', async (req, res) => {
   try {
+    // Use live livestock records aggregated by barangay
+    const live = await query(`
+      SELECT barangay,
+        SUM(CASE WHEN animal_type='Cattle'  THEN quantity ELSE 0 END) as cattle,
+        SUM(CASE WHEN animal_type='Swine'   THEN quantity ELSE 0 END) as swine,
+        SUM(CASE WHEN animal_type='Poultry' THEN quantity ELSE 0 END) as poultry,
+        SUM(CASE WHEN animal_type='Goats'   THEN quantity ELSE 0 END) as goats,
+        SUM(CASE WHEN animal_type='Horse'   THEN quantity ELSE 0 END) as horses,
+        SUM(quantity) as total
+      FROM livestock
+      GROUP BY barangay
+      ORDER BY total DESC
+    `);
+    if (live.rows.length > 0) {
+      return res.json({ data: live.rows });
+    }
+    // Fallback to static livestock_stats table
     const result = await query('SELECT * FROM livestock_stats ORDER BY barangay');
     return res.json({ data: result.rows });
   } catch (err: any) {
@@ -115,10 +206,10 @@ router.put('/statistics/livestock-by-barangay', authenticate, async (req: AuthRe
     const updates: any[] = req.body;
     for (const u of updates) {
       await query(
-        `INSERT INTO livestock_stats (barangay, cattle, swine, poultry, goats)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (barangay) DO UPDATE SET cattle=$2, swine=$3, poultry=$4, goats=$5, updated_at=NOW()`,
-        [u.barangay, u.cattle || 0, u.swine || 0, u.poultry || 0, u.goats || 0]
+        `INSERT INTO livestock_stats (barangay, cattle, swine, poultry, goats, horses)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (barangay) DO UPDATE SET cattle=$2, swine=$3, poultry=$4, goats=$5, horses=$6, updated_at=NOW()`,
+        [u.barangay, u.cattle || 0, u.swine || 0, u.poultry || 0, u.goats || 0, u.horses || 0]
       );
     }
     const result = await query('SELECT * FROM livestock_stats ORDER BY barangay');
@@ -241,6 +332,8 @@ router.put('/users/:id', authenticate, async (req: AuthRequest, res: Response) =
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { username, role, barangay, verified } = req.body;
+    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth'];
+    if (role && !validRoles.includes(role)) return res.status(400).json({ error: `Invalid role: ${role}` });
     const result = await query(
       `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, updated_at=NOW() WHERE id=$5 RETURNING id, email, username, role, barangay, verified`,
       [username, role, barangay, verified, req.params.id]
@@ -725,6 +818,75 @@ router.put('/feedback/:id', authenticate, async (req: AuthRequest, res: Response
   try {
     const result = await query(`UPDATE feedback SET status=$1 WHERE id=$2 RETURNING *`, [req.body.status, req.params.id]);
     return res.json({ success: true, feedback: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Biting Incidents ────────────────────────────────────────────────────────
+router.get('/biting-incidents', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM biting_incidents ORDER BY incident_date DESC`);
+    return res.json({ incidents: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','cityHealth'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `BITE-${Date.now()}`;
+    const obsStart = d.incidentDate || null;
+    const obsEnd   = obsStart ? new Date(new Date(obsStart).getTime() + 14*24*60*60*1000).toISOString().split('T')[0] : null;
+    const result = await query(
+      `INSERT INTO biting_incidents
+         (id, pet_id, pet_name, incident_date, location, bitten_person, owner_name,
+          confirmed_rabies, vaccinated, remarks, observation_start, observation_end,
+          status, reported_by, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Open',$13,NOW(),NOW()) RETURNING *`,
+      [id, d.petId||null, d.petName, d.incidentDate, d.location, d.bittenPerson,
+       d.ownerName||null, d.confirmedRabies||false, d.vaccinated||false,
+       d.remarks||null, obsStart, obsEnd, d.reportedBy||req.user?.username||'System']
+    );
+    // If this year, set pet vaccination status to suspended
+    if (d.petId) {
+      await query(`UPDATE pets SET vaccination_status='Observation - Biting Incident' WHERE id=$1`, [d.petId]);
+    }
+    return res.json({ success: true, incident: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','cityHealth'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE biting_incidents SET
+         pet_name=$1, incident_date=$2, location=$3, bitten_person=$4, owner_name=$5,
+         confirmed_rabies=$6, vaccinated=$7, remarks=$8, observation_update=$9,
+         status=$10, updated_at=NOW()
+       WHERE id=$11 RETURNING *`,
+      [d.petName, d.incidentDate, d.location, d.bittenPerson, d.ownerName||null,
+       d.confirmedRabies||false, d.vaccinated||false, d.remarks||null,
+       d.observationUpdate||null, d.status||'Open', req.params.id]
+    );
+    return res.json({ success: true, incident: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
+    return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

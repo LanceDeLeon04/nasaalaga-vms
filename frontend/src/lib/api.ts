@@ -33,6 +33,7 @@ export const api = {
   verifyBarcode: (pendingToken: string, barcode: string) =>
     request('/auth/verify-barcode', { method: 'POST', body: JSON.stringify({ pendingToken, barcode }) }),
   health: () => request('/health'),
+  getDashboardSummary: () => request('/dashboard/summary'),
   checkMaintenance: () => request('/system/maintenance'),
   setMaintenance: (enabled: boolean) =>
     request('/system/maintenance', { method: 'PUT', body: JSON.stringify({ enabled }) }),

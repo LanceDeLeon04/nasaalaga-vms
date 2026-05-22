@@ -1,671 +1,573 @@
 import { useState, useEffect } from 'react';
-import { ClipboardList, Eye, Check, X, Upload, Calendar, User, Phone, Mail, MapPin, AlertCircle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { CALACA_BARANGAYS } from '../utils/barangays';
 
-
-interface PreRegisteredPet {
-  preRegNumber: string;
-  ownerId: string;
-  petName: string;
+/* ─── types ─── */
+interface PreReg {
+  pre_reg_number: string;
+  owner_id: string;
+  pet_name: string;
   species: string;
   breed: string;
   age: string;
   color: string;
   gender: string;
-  ownerName: string;
-  contactNumber: string;
-  ownerEmail: string;
+  owner_name: string;
+  contact_number: string;
+  owner_email: string;
   barangay: string;
   address: string;
+  photo: string;
   status: 'Pending' | 'Approved' | 'Denied';
-  submittedDate: string;
-  approvedDate?: string;
-  deniedDate?: string;
-  denialReason?: string;
-  petId?: string;
+  submitted_date: string;
+  approved_date?: string;
+  denied_date?: string;
+  denial_reason?: string;
+  pet_id?: string;
+  pet_tag_id?: string;
+  expires_at?: string;
+}
+
+type ValStep = 'details' | 'photo' | 'tag' | 'confirm';
+
+const STYLES = `
+  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spin   { to{transform:rotate(360deg)} }
+  @keyframes popIn  { 0%{transform:scale(.7);opacity:0} 70%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+
+  .prl-wrap { padding: 0; }
+  .prl-topbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+  .prl-title  { font-size:24px; font-weight:900; color:#1f2937; margin:0; display:flex; align-items:center; gap:10px; }
+  .prl-subtitle { color:#6b7280; font-size:14px; margin:4px 0 0; }
+  .prl-stats  { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+  .prl-stat   { background:#fff; border-radius:14px; padding:18px 20px; box-shadow:0 2px 8px rgba(0,0,0,.06); display:flex; align-items:center; gap:14px; }
+  .prl-stat-ico { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .prl-stat-val { font-size:26px; font-weight:900; }
+  .prl-stat-lbl { font-size:12px; color:#6b7280; font-weight:600; }
+  .prl-toolbar  { background:#fff; border-radius:14px; padding:16px 20px; margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+  .prl-search   { flex:1; min-width:200px; height:40px; border:1.5px solid #e5e7eb; border-radius:10px; padding:0 12px; font-size:14px; outline:none; }
+  .prl-search:focus { border-color:#2B5EA6; }
+  .prl-tabs     { display:flex; gap:6px; }
+  .prl-tab      { height:40px; padding:0 16px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; color:#6b7280; font-size:13px; font-weight:700; cursor:pointer; transition:all .18s; }
+  .prl-tab.active-all      { background:#2B5EA6; border-color:#2B5EA6; color:#fff; }
+  .prl-tab.active-Pending  { background:#f59e0b; border-color:#f59e0b; color:#fff; }
+  .prl-tab.active-Approved { background:#16a34a; border-color:#16a34a; color:#fff; }
+  .prl-tab.active-Denied   { background:#dc2626; border-color:#dc2626; color:#fff; }
+  .prl-table-wrap { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.06); overflow:hidden; }
+  .prl-table    { width:100%; border-collapse:collapse; }
+  .prl-table th { background:#f8fafc; padding:12px 16px; text-align:left; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:#64748b; border-bottom:1.5px solid #e2e8f0; }
+  .prl-table td { padding:14px 16px; border-bottom:1px solid #f1f5f9; font-size:14px; color:#374151; vertical-align:middle; }
+  .prl-table tr:last-child td { border-bottom:none; }
+  .prl-table tr:hover td { background:#f8fafc; }
+  .prl-badge    { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:700; }
+  .prl-badge.Pending  { background:#fef9c3; color:#92400e; border:1px solid #fde047; }
+  .prl-badge.Approved { background:#dcfce7; color:#14532d; border:1px solid #86efac; }
+  .prl-badge.Denied   { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .prl-btn      { height:34px; padding:0 14px; border-radius:8px; border:none; font-size:13px; font-weight:700; cursor:pointer; transition:all .18s; }
+  .prl-btn-blue { background:#eff6ff; color:#2B5EA6; }
+  .prl-btn-blue:hover { background:#2B5EA6; color:#fff; }
+  .prl-btn-green { background:#f0fdf4; color:#16a34a; }
+  .prl-btn-green:hover { background:#16a34a; color:#fff; }
+  .prl-empty    { text-align:center; padding:60px 20px; color:#9ca3af; }
+  .prl-empty-ico{ font-size:48px; margin-bottom:12px; }
+
+  /* ─── modal ─── */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal-box     { background:#fff; border-radius:20px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,.25); animation:fadeUp .3s cubic-bezier(.22,1,.36,1) both; }
+  .modal-header  { display:flex; align-items:center; justify-content:space-between; padding:22px 28px 0; }
+  .modal-title   { font-size:18px; font-weight:900; color:#1f2937; margin:0; }
+  .modal-close   { width:34px; height:34px; border-radius:50%; border:none; background:#f1f5f9; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#64748b; }
+  .modal-close:hover { background:#e2e8f0; }
+  .modal-body    { padding:24px 28px; }
+  .modal-steps   { display:flex; gap:0; border-bottom:1px solid #e8edf4; margin-bottom:24px; }
+  .modal-step    { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:12px 6px; font-size:12px; font-weight:700; color:#9ca3af; border-bottom:3px solid transparent; }
+  .modal-step.active { color:#2B5EA6; border-bottom-color:#2B5EA6; }
+  .modal-step.done   { color:#16a34a; border-bottom-color:#16a34a; }
+  .modal-step-num { width:20px; height:20px; border-radius:50%; background:#e5e7eb; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; }
+  .modal-step.active .modal-step-num { background:#2B5EA6; color:#fff; }
+  .modal-step.done   .modal-step-num { background:#16a34a; color:#fff; }
+  .modal-section { font-size:10.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#2B5EA6; margin:0 0 14px; padding-bottom:5px; border-bottom:1.5px solid #e8f0fb; }
+  .modal-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+  .modal-detail  { background:#f8fafc; border-radius:10px; padding:12px 14px; }
+  .modal-detail-lbl { font-size:11px; color:#9ca3af; font-weight:600; margin-bottom:3px; }
+  .modal-detail-val { font-size:14px; color:#1f2937; font-weight:700; }
+  .modal-field   { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+  .modal-label   { font-size:12.5px; font-weight:700; color:#374151; }
+  .modal-input   { height:44px; padding:0 12px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; font-size:14px; outline:none; font-family:inherit; transition:border-color .18s; }
+  .modal-input:focus { border-color:#2B5EA6; background:#fff; }
+  .modal-textarea { padding:10px 12px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; font-size:14px; outline:none; font-family:inherit; resize:none; line-height:1.6; }
+  .modal-textarea:focus { border-color:#2B5EA6; background:#fff; }
+  .modal-actions { display:flex; gap:10px; margin-top:20px; }
+  .modal-btn-primary { flex:1; height:46px; border:none; border-radius:11px; cursor:pointer; background:linear-gradient(135deg,#2B5EA6,#3d7ac7); color:#fff; font-size:14px; font-weight:800; box-shadow:0 6px 20px rgba(43,94,166,.28); transition:transform .18s; }
+  .modal-btn-primary:hover:not(:disabled) { transform:translateY(-2px); }
+  .modal-btn-primary:disabled { background:#d1d5db; color:#9ca3af; box-shadow:none; cursor:not-allowed; }
+  .modal-btn-secondary { height:46px; padding:0 18px; border:1.5px solid #e5e7eb; border-radius:11px; background:#fff; color:#374151; font-size:14px; font-weight:700; cursor:pointer; transition:all .18s; }
+  .modal-btn-secondary:hover { border-color:#2B5EA6; color:#2B5EA6; }
+  .modal-btn-deny { flex:1; height:46px; border:none; border-radius:11px; cursor:pointer; background:#fee2e2; color:#dc2626; font-size:14px; font-weight:800; transition:all .18s; }
+  .modal-btn-deny:hover { background:#dc2626; color:#fff; }
+  .modal-spinner { display:inline-block; width:15px; height:15px; border-radius:50%; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; animation:spin .6s linear infinite; vertical-align:middle; margin-right:6px; }
+  .modal-photo-upload { border:2px dashed #d1d5db; border-radius:12px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; }
+  .modal-photo-upload:hover { border-color:#2B5EA6; background:#f0f7ff; }
+  .modal-photo-preview { width:100%; max-height:200px; object-fit:cover; border-radius:10px; margin-top:10px; }
+  .modal-alert  { border-radius:10px; padding:12px 16px; font-size:13px; line-height:1.6; margin-bottom:14px; }
+  .modal-alert.warn { background:#fff8ed; border:1.5px solid #fbbf24; color:#92400e; }
+  .modal-alert.info { background:#eff6ff; border:1.5px solid #bfdbfe; color:#1e40af; }
+  .modal-confirm-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f1f5f9; font-size:14px; }
+  .modal-confirm-row:last-child { border-bottom:none; }
+  .modal-confirm-key { color:#6b7280; font-weight:600; }
+  .modal-confirm-val { color:#1f2937; font-weight:700; }
+  .modal-success-icon { width:72px; height:72px; border-radius:50%; background:#f0fdf4; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; animation:popIn .4s cubic-bezier(.22,1,.36,1) both; }
+  .modal-tag-box { background:#f0f7ff; border:2px solid #2B5EA6; border-radius:12px; padding:18px; text-align:center; margin-bottom:16px; }
+  .modal-tag-val { font-size:24px; font-weight:900; font-family:monospace; color:#2B5EA6; }
+
+  @media(max-width:600px){
+    .prl-stats { grid-template-columns:1fr; }
+    .modal-detail-grid { grid-template-columns:1fr; }
+    .modal-steps { flex-wrap:wrap; }
+  }
+`;
+
+function formatDate(d?: string) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 export function PreRegisteredPets() {
-  const [preRegistrations, setPreRegistrations] = useState<PreRegisteredPet[]>([]);
-  const [filteredRegistrations, setFilteredRegistrations] = useState<PreRegisteredPet[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'Pending' | 'Approved' | 'Denied'>('Pending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPreReg, setSelectedPreReg] = useState<PreRegisteredPet | null>(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [showValidationModal, setShowValidationModal] = useState(false);
-  
-  // Validation form
-  const [validationForm, setValidationForm] = useState({
-    petId: '',
-    photo: '',
-    action: 'approve' as 'approve' | 'deny',
-    denialReason: ''
-  });
+  const [list, setList]       = useState<PreReg[]>([]);
+  const [filtered, setFiltered] = useState<PreReg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState<'all'|'Pending'|'Approved'|'Denied'>('Pending');
+  const [search, setSearch]   = useState('');
 
-  // Fetch pre-registered pets
+  const [selected, setSelected]     = useState<PreReg | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showValidate, setShowValidate] = useState(false);
+  const [valStep, setValStep]       = useState<ValStep>('details');
+  const [submitting, setSubmitting] = useState(false);
+
+  const [valPhoto, setValPhoto]     = useState('');
+  const [petTagId, setPetTagId]     = useState('');
+  const [denyReason, setDenyReason] = useState('');
+  const [denyMode, setDenyMode]     = useState(false);
+  const [valDone, setValDone]       = useState(false);
+
+  /* ─ load ─ */
+  useEffect(() => { fetchList(); }, []);
+
   useEffect(() => {
-    fetchPreRegistrations();
-  }, []);
+    let r = list;
+    if (filter !== 'all') r = r.filter(p => p.status === filter);
+    if (search) r = r.filter(p =>
+      [p.pet_name, p.owner_name, p.pre_reg_number, p.species]
+        .some(f => f?.toLowerCase().includes(search.toLowerCase()))
+    );
+    setFiltered(r);
+  }, [list, filter, search]);
 
-  // Filter and search
-  useEffect(() => {
-    let filtered = preRegistrations;
-
-    // Filter by status
-    if (filter !== 'all') {
-      filtered = filtered.filter(p => p.status === filter);
-    }
-
-    // Search
-    if (searchQuery) {
-      filtered = filtered.filter(p =>
-        p.petName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.preRegNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.species.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    setFilteredRegistrations(filtered);
-  }, [preRegistrations, filter, searchQuery]);
-
-  const fetchPreRegistrations = async () => {
+  const fetchList = async () => {
+    setLoading(true);
     try {
-      setIsLoading(true);
-      const response = await fetch(
-        `/api/pets/pre-registered`,
-        {
-          headers: {
-            
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch pre-registrations');
-      }
-
-      const data = await response.json();
-      setPreRegistrations(data.preRegistrations || []);
-    } catch (error) {
-      console.error('Error fetching pre-registrations:', error);
-      toast.error('Failed to load pre-registrations');
-    } finally {
-      setIsLoading(false);
-    }
+      const res = await fetch('/api/pets/pre-registered');
+      const data = await res.json();
+      setList(data.preRegistrations || []);
+    } catch { toast.error('Failed to load pre-registrations'); }
+    finally { setLoading(false); }
   };
 
-  const handleValidate = async () => {
-    if (!selectedPreReg) return;
-
-    if (validationForm.action === 'approve') {
-      if (!validationForm.petId || !validationForm.photo) {
-        toast.error('Please provide Pet ID and photo');
-        return;
-      }
-    } else if (validationForm.action === 'deny') {
-      if (!validationForm.denialReason) {
-        toast.error('Please provide a reason for denial');
-        return;
-      }
-    }
-
-    try {
-      const response = await fetch(
-        `/api/pets/validate/${selectedPreReg.preRegNumber}`,
-        {
-          method: 'POST',
-          headers: {
-            
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            action: validationForm.action,
-            petId: validationForm.petId,
-            photo: validationForm.photo,
-            denialReason: validationForm.denialReason
-          })
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to validate pre-registration');
-      }
-
-      const data = await response.json();
-      
-      if (validationForm.action === 'approve') {
-        toast.success(`Pet ${validationForm.petId} validated and registered successfully!`);
-      } else {
-        toast.success('Pre-registration denied');
-      }
-
-      // Refresh list
-      await fetchPreRegistrations();
-      
-      // Reset and close
-      setShowValidationModal(false);
-      setSelectedPreReg(null);
-      setValidationForm({
-        petId: '',
-        photo: '',
-        action: 'approve',
-        denialReason: ''
-      });
-    } catch (error) {
-      console.error('Error validating pre-registration:', error);
-      toast.error('Failed to validate pre-registration');
-    }
+  const openValidate = (p: PreReg) => {
+    setSelected(p);
+    setValStep('details');
+    setValPhoto('');
+    setPetTagId('');
+    setDenyReason('');
+    setDenyMode(false);
+    setValDone(false);
+    setShowValidate(true);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setValidationForm(prev => ({ ...prev, photo: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setValPhoto(ev.target?.result as string);
+    reader.readAsDataURL(file);
   };
 
-  const generatePetId = () => {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return `PET-${timestamp}-${random}`;
+  const handleApprove = async () => {
+    if (!selected) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve', photo: valPhoto, petTagId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Validation failed');
+      toast.success(`✅ ${selected.pet_name} validated and registered! Tag: ${petTagId}`);
+      setValDone(true);
+      fetchList();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally { setSubmitting(false); }
   };
 
-  const pendingCount = preRegistrations.filter(p => p.status === 'Pending').length;
-  const approvedCount = preRegistrations.filter(p => p.status === 'Approved').length;
-  const deniedCount = preRegistrations.filter(p => p.status === 'Denied').length;
+  const handleDeny = async () => {
+    if (!selected || !denyReason.trim()) { toast.error('Please enter a reason'); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deny', denialReason: denyReason }),
+      });
+      if (!res.ok) throw new Error('Denial failed');
+      toast.success('Pre-registration denied.');
+      setShowValidate(false);
+      fetchList();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally { setSubmitting(false); }
+  };
+
+  const pending  = list.filter(p => p.status === 'Pending').length;
+  const approved = list.filter(p => p.status === 'Approved').length;
+  const denied   = list.filter(p => p.status === 'Denied').length;
+
+  const valSteps: { key: ValStep; label: string }[] = [
+    { key: 'details', label: 'Review' },
+    { key: 'photo',   label: 'Photo' },
+    { key: 'tag',     label: 'Pet Tag' },
+    { key: 'confirm', label: 'Confirm' },
+  ];
+  const valStepIdx = valSteps.findIndex(s => s.key === valStep);
+
+  const isExpired = (p: PreReg) => p.expires_at && new Date(p.expires_at) < new Date();
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-            <ClipboardList className="w-8 h-8 text-[#2B5EA6]" />
-            Pre-Registered Pets
-          </h1>
-          <p className="text-gray-600 mt-1">Review and validate pet pre-registrations</p>
-        </div>
-      </div>
+    <>
+      <style>{STYLES}</style>
+      <div className="prl-wrap">
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Pending Validation</p>
-              <p className="text-3xl font-bold text-[#F39C3A]">{pendingCount}</p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-              <ClipboardList className="w-6 h-6 text-[#F39C3A]" />
-            </div>
+        {/* top bar */}
+        <div className="prl-topbar">
+          <div>
+            <h1 className="prl-title">📋 Pre-Registered Pets</h1>
+            <p className="prl-subtitle">Review and validate pet pre-registrations submitted by owners</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Approved</p>
-              <p className="text-3xl font-bold text-[#60A85C]">{approvedCount}</p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-[#60A85C]" />
-            </div>
+        {/* stats */}
+        <div className="prl-stats">
+          <div className="prl-stat">
+            <div className="prl-stat-ico" style={{ background: '#fff8ed' }}>⏳</div>
+            <div><div className="prl-stat-val" style={{ color: '#f59e0b' }}>{pending}</div><div className="prl-stat-lbl">Pending</div></div>
+          </div>
+          <div className="prl-stat">
+            <div className="prl-stat-ico" style={{ background: '#f0fdf4' }}>✅</div>
+            <div><div className="prl-stat-val" style={{ color: '#16a34a' }}>{approved}</div><div className="prl-stat-lbl">Approved</div></div>
+          </div>
+          <div className="prl-stat">
+            <div className="prl-stat-ico" style={{ background: '#fee2e2' }}>❌</div>
+            <div><div className="prl-stat-val" style={{ color: '#dc2626' }}>{denied}</div><div className="prl-stat-lbl">Denied</div></div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Denied</p>
-              <p className="text-3xl font-bold text-[#E85D3B]">{deniedCount}</p>
-            </div>
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-              <X className="w-6 h-6 text-[#E85D3B]" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters and Search */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by pet name, owner, or pre-reg number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'all'
-                  ? 'bg-[#2B5EA6] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setFilter('Pending')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'Pending'
-                  ? 'bg-[#F39C3A] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Pending
-            </button>
-            <button
-              onClick={() => setFilter('Approved')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'Approved'
-                  ? 'bg-[#60A85C] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Approved
-            </button>
-            <button
-              onClick={() => setFilter('Denied')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'Denied'
-                  ? 'bg-[#E85D3B] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Denied
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Pre-Registrations List */}
-      {isLoading ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <div className="w-12 h-12 border-4 border-[#2B5EA6] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading pre-registrations...</p>
-        </div>
-      ) : filteredRegistrations.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No pre-registrations found</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredRegistrations.map((preReg) => (
-            <div key={preReg.preRegNumber} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
-              <div className={`h-2 rounded-t-lg ${
-                preReg.status === 'Pending' ? 'bg-[#F39C3A]' :
-                preReg.status === 'Approved' ? 'bg-[#60A85C]' :
-                'bg-[#E85D3B]'
-              }`}></div>
-              
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">{preReg.petName}</h3>
-                    <p className="text-sm text-gray-500 font-mono">{preReg.preRegNumber}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    preReg.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
-                    preReg.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {preReg.status}
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-sm mb-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <p><strong>Species:</strong> {preReg.species}</p>
-                    <p><strong>Breed:</strong> {preReg.breed}</p>
-                    <p><strong>Age:</strong> {preReg.age}</p>
-                    <p><strong>Gender:</strong> {preReg.gender}</p>
-                  </div>
-                  <div className="pt-2 border-t border-gray-200">
-                    <p className="text-gray-600"><strong>Owner:</strong> {preReg.ownerName}</p>
-                    <p className="text-gray-600 text-xs">{preReg.contactNumber} • {preReg.ownerEmail}</p>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    <Calendar className="w-3 h-3 inline mr-1" />
-                    Submitted: {new Date(preReg.submittedDate).toLocaleDateString()}
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedPreReg(preReg);
-                      setShowDetailsModal(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-[#2B5EA6] text-[#2B5EA6] rounded-md hover:bg-[#2B5EA6] hover:text-white transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View Details
-                  </button>
-                  {preReg.status === 'Pending' && (
-                    <button
-                      onClick={() => {
-                        setSelectedPreReg(preReg);
-                        setValidationForm({
-                          petId: generatePetId(),
-                          photo: '',
-                          action: 'approve',
-                          denialReason: ''
-                        });
-                        setShowValidationModal(true);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#60A85C] text-white rounded-md hover:bg-[#4a8a47] transition-colors"
-                    >
-                      <Check className="w-4 h-4" />
-                      Validate
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Details Modal */}
-      {showDetailsModal && selectedPreReg && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-[#2B5EA6] to-[#3d7ac7] px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h2 className="text-xl font-bold text-white">Pre-Registration Details</h2>
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="text-white/70 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
+        {/* toolbar */}
+        <div className="prl-toolbar">
+          <input className="prl-search" placeholder="Search by name, species, ID…" value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="prl-tabs">
+            {(['all','Pending','Approved','Denied'] as const).map(f => (
+              <button key={f} className={`prl-tab ${filter === f ? `active-${f}` : ''}`} onClick={() => setFilter(f)}>
+                {f === 'all' ? 'All' : f}
+                {f === 'Pending' && pending > 0 && <span style={{ marginLeft: 6, background: '#f59e0b', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{pending}</span>}
               </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Status */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Status</span>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    selectedPreReg.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
-                    selectedPreReg.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {selectedPreReg.status}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Pre-Reg #: {selectedPreReg.preRegNumber}</p>
-              </div>
-
-              {/* Pet Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Pet Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Pet Name</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.petName}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Species</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.species}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Breed</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.breed}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Age</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.age}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Color/Markings</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.color}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Gender</label>
-                    <p className="font-medium text-gray-800">{selectedPreReg.gender}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Owner Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">Owner Information</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <p className="text-gray-800">{selectedPreReg.ownerName}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <p className="text-gray-800">{selectedPreReg.contactNumber}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <p className="text-gray-800">{selectedPreReg.ownerEmail}</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400 mt-1" />
-                    <div>
-                      <p className="text-gray-800">{selectedPreReg.address}</p>
-                      <p className="text-sm text-gray-600">{selectedPreReg.barangay}, Calaca City</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Additional Info */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <strong>Submitted:</strong> {new Date(selectedPreReg.submittedDate).toLocaleString()}
-                </p>
-                {selectedPreReg.approvedDate && (
-                  <p className="text-sm text-green-800 mt-1">
-                    <strong>Approved:</strong> {new Date(selectedPreReg.approvedDate).toLocaleString()}
-                  </p>
-                )}
-                {selectedPreReg.deniedDate && (
-                  <>
-                    <p className="text-sm text-red-800 mt-1">
-                      <strong>Denied:</strong> {new Date(selectedPreReg.deniedDate).toLocaleString()}
-                    </p>
-                    {selectedPreReg.denialReason && (
-                      <p className="text-sm text-red-800 mt-1">
-                        <strong>Reason:</strong> {selectedPreReg.denialReason}
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-      )}
 
-      {/* Validation Modal */}
-      {showValidationModal && selectedPreReg && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-[#60A85C] to-[#4a8a47] px-6 py-4 flex items-center justify-between rounded-t-2xl">
-              <h2 className="text-xl font-bold text-white">Validate Pre-Registration</h2>
-              <button
-                onClick={() => setShowValidationModal(false)}
-                className="text-white/70 hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Pet Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-800 mb-2">{selectedPreReg.petName}</h3>
-                <p className="text-sm text-gray-600">{selectedPreReg.species} • {selectedPreReg.breed} • {selectedPreReg.color}</p>
-                <p className="text-xs text-gray-500 mt-1">Owner: {selectedPreReg.ownerName}</p>
-              </div>
-
-              {/* Action Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">Action</label>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setValidationForm(prev => ({ ...prev, action: 'approve' }))}
-                    className={`flex-1 py-3 rounded-lg border-2 transition-all ${
-                      validationForm.action === 'approve'
-                        ? 'border-[#60A85C] bg-green-50 text-[#60A85C]'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <Check className="w-5 h-5 mx-auto mb-1" />
-                    <span className="font-medium">Approve & Register</span>
-                  </button>
-                  <button
-                    onClick={() => setValidationForm(prev => ({ ...prev, action: 'deny' }))}
-                    className={`flex-1 py-3 rounded-lg border-2 transition-all ${
-                      validationForm.action === 'deny'
-                        ? 'border-[#E85D3B] bg-red-50 text-[#E85D3B]'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <X className="w-5 h-5 mx-auto mb-1" />
-                    <span className="font-medium">Deny</span>
-                  </button>
-                </div>
-              </div>
-
-              {validationForm.action === 'approve' ? (
-                <>
-                  {/* Pet ID */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Assign Pet ID <span className="text-red-500">*</span>
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={validationForm.petId}
-                        onChange={(e) => setValidationForm(prev => ({ ...prev, petId: e.target.value }))}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#60A85C]"
-                        placeholder="PET-XXXXX"
-                      />
-                      <button
-                        onClick={() => setValidationForm(prev => ({ ...prev, petId: generatePetId() }))}
-                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        Generate
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Photo Upload */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Upload Pet Photo <span className="text-red-500">*</span>
-                    </label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#60A85C] transition-colors">
-                      {validationForm.photo ? (
-                        <div className="space-y-3">
-                          <img
-                            src={validationForm.photo}
-                            alt="Pet"
-                            className="w-48 h-48 object-cover rounded-lg mx-auto"
-                          />
-                          <button
-                            onClick={() => setValidationForm(prev => ({ ...prev, photo: '' }))}
-                            className="text-sm text-red-600 hover:text-red-700"
-                          >
-                            Remove Photo
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                          <p className="text-sm text-gray-600 mb-2">Click to upload or drag and drop</p>
-                          <p className="text-xs text-gray-500">PNG, JPG up to 10MB</p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handlePhotoUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex gap-3">
-                      <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                      <div className="text-sm text-blue-800">
-                        <p className="font-semibold mb-1">Complete Validation</p>
-                        <p>Once you approve this pre-registration, the pet will be officially registered in the system with the assigned ID and photo.</p>
+        {/* table */}
+        <div className="prl-table-wrap">
+          {loading ? (
+            <div className="prl-empty"><div className="prl-empty-ico">⏳</div><p>Loading…</p></div>
+          ) : filtered.length === 0 ? (
+            <div className="prl-empty"><div className="prl-empty-ico">📭</div><p>No pre-registrations found.</p></div>
+          ) : (
+            <table className="prl-table">
+              <thead>
+                <tr>
+                  <th>Pre-Reg ID</th>
+                  <th>Pet</th>
+                  <th>Owner</th>
+                  <th>Submitted</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.pre_reg_number}>
+                    <td><code style={{ fontSize: 12, background: '#f1f5f9', padding: '2px 6px', borderRadius: 6 }}>{p.pre_reg_number}</code></td>
+                    <td>
+                      <div style={{ fontWeight: 700 }}>{p.pet_name}</div>
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{p.species}{p.breed ? ` · ${p.breed}` : ''}</div>
+                    </td>
+                    <td>
+                      <div>{p.owner_name}</div>
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{p.contact_number}</div>
+                    </td>
+                    <td style={{ fontSize: 13 }}>{formatDate(p.submitted_date)}</td>
+                    <td style={{ fontSize: 13, color: isExpired(p) ? '#dc2626' : '#374151', fontWeight: isExpired(p) ? 700 : 400 }}>
+                      {p.expires_at ? formatDate(p.expires_at) : '—'}
+                      {isExpired(p) && <div style={{ fontSize: 11, color: '#dc2626' }}>EXPIRED</div>}
+                    </td>
+                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Pending' ? '⏳' : p.status === 'Approved' ? '✅' : '❌'} {p.status}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="prl-btn prl-btn-blue" onClick={() => { setSelected(p); setShowDetails(true); }}>View</button>
+                        {p.status === 'Pending' && (
+                          <button className="prl-btn prl-btn-green" onClick={() => openValidate(p)}>Validate</button>
+                        )}
                       </div>
-                    </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ─── DETAILS MODAL ─── */}
+      {showDetails && selected && (
+        <div className="modal-overlay" onClick={() => setShowDetails(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">🐾 {selected.pet_name} — Details</h3>
+              <button className="modal-close" onClick={() => setShowDetails(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-section">Pet Information</p>
+              <div className="modal-detail-grid">
+                {[
+                  ['Pre-Reg ID', selected.pre_reg_number],
+                  ['Status', selected.status],
+                  ['Pet Name', selected.pet_name],
+                  ['Species', selected.species],
+                  ['Breed', selected.breed || '—'],
+                  ['Age', selected.age || '—'],
+                  ['Color', selected.color || '—'],
+                  ['Gender', selected.gender],
+                  ['Pet Tag ID', selected.pet_tag_id || '—'],
+                ].map(([l,v]) => (
+                  <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
+                ))}
+              </div>
+              <p className="modal-section">Owner Information</p>
+              <div className="modal-detail-grid">
+                {[
+                  ['Owner Name', selected.owner_name],
+                  ['Contact No.', selected.contact_number],
+                  ['Email', selected.owner_email || '—'],
+                  ['Barangay', selected.barangay],
+                  ['Address', selected.address],
+                ].map(([l,v]) => (
+                  <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
+                ))}
+              </div>
+              {selected.photo && (
+                <>
+                  <p className="modal-section">Pet Photo</p>
+                  <img src={selected.photo} style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 12 }} alt="Pet" />
+                </>
+              )}
+              {selected.status === 'Pending' && (
+                <div style={{ marginTop: 16 }}>
+                  <button className="modal-btn-primary" style={{ width: '100%' }} onClick={() => { setShowDetails(false); openValidate(selected); }}>
+                    ✅ Proceed to Validate
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── VALIDATION MODAL ─── */}
+      {showValidate && selected && (
+        <div className="modal-overlay" onClick={() => !submitting && setShowValidate(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                {denyMode ? '❌ Deny Pre-Registration' : `✅ Validate: ${selected.pet_name}`}
+              </h3>
+              <button className="modal-close" onClick={() => !submitting && setShowValidate(false)}>×</button>
+            </div>
+
+            <div className="modal-body">
+              {/* success screen */}
+              {valDone ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div className="modal-success-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5} style={{ width: 40, height: 40 }}>
+                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 900, color: '#1f2937' }}>Pet Validated & Registered!</h3>
+                  <p style={{ color: '#6b7280', fontSize: 14, margin: '0 0 20px' }}>{selected.pet_name} has been moved to the registered pets database and tagged to the owner's account.</p>
+                  <div className="modal-tag-box">
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 6 }}>Pet Tag ID Assigned</div>
+                    <div className="modal-tag-val">{petTagId || '(Auto-assigned)'}</div>
+                  </div>
+                  <button className="modal-btn-primary" style={{ width: '100%' }} onClick={() => setShowValidate(false)}>Done</button>
+                </div>
+              ) : denyMode ? (
+                <>
+                  <div className="modal-alert warn">You are about to deny this pre-registration. Please provide a clear reason.</div>
+                  <div className="modal-field">
+                    <label className="modal-label">Reason for Denial *</label>
+                    <textarea className="modal-textarea" rows={4} placeholder="e.g. Incomplete details, invalid information…" value={denyReason} onChange={e => setDenyReason(e.target.value)} />
+                  </div>
+                  <div className="modal-actions">
+                    <button className="modal-btn-secondary" onClick={() => setDenyMode(false)}>← Cancel</button>
+                    <button className="modal-btn-deny" onClick={handleDeny} disabled={submitting}>
+                      {submitting ? <><span className="modal-spinner" />Denying…</> : '❌ Confirm Denial'}
+                    </button>
                   </div>
                 </>
               ) : (
                 <>
-                  {/* Denial Reason */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Reason for Denial <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={validationForm.denialReason}
-                      onChange={(e) => setValidationForm(prev => ({ ...prev, denialReason: e.target.value }))}
-                      rows={4}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E85D3B]"
-                      placeholder="Provide a clear reason for denying this pre-registration..."
-                    />
+                  {/* step indicator */}
+                  <div className="modal-steps">
+                    {valSteps.map((s, i) => (
+                      <div key={s.key} className={`modal-step ${valStep === s.key ? 'active' : i < valStepIdx ? 'done' : ''}`}>
+                        <span className="modal-step-num">{i < valStepIdx ? '✓' : i + 1}</span>
+                        {s.label}
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                    <div className="flex gap-3">
-                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                      <div className="text-sm text-amber-800">
-                        <p className="font-semibold mb-1">Denial Notice</p>
-                        <p>The pet owner will be notified via email with the reason for denial. They can resubmit with corrections if needed.</p>
+                  {/* STEP 1: Review Details */}
+                  {valStep === 'details' && (
+                    <>
+                      <p className="modal-section">Verify Submitted Information</p>
+                      <div className="modal-detail-grid">
+                        {[
+                          ['Pet Name', selected.pet_name],
+                          ['Species', selected.species],
+                          ['Breed', selected.breed || '—'],
+                          ['Age', selected.age || '—'],
+                          ['Color', selected.color || '—'],
+                          ['Gender', selected.gender],
+                          ['Owner', selected.owner_name],
+                          ['Contact', selected.contact_number],
+                          ['Email', selected.owner_email || '—'],
+                          ['Barangay', selected.barangay],
+                        ].map(([l,v]) => (
+                          <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
+                        ))}
                       </div>
-                    </div>
-                  </div>
+                      <div className="modal-detail" style={{ marginBottom: 16 }}>
+                        <div className="modal-detail-lbl">Address</div>
+                        <div className="modal-detail-val">{selected.address}</div>
+                      </div>
+                      {isExpired(selected) && (
+                        <div className="modal-alert warn">⚠️ This pre-registration has <strong>expired</strong> (14-day window passed). You may still validate, but advise the owner accordingly.</div>
+                      )}
+                      <div className="modal-actions">
+                        <button className="modal-btn-deny" onClick={() => setDenyMode(true)}>❌ Deny</button>
+                        <button className="modal-btn-primary" onClick={() => setValStep('photo')}>Next: Take Photo →</button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* STEP 2: Photo */}
+                  {valStep === 'photo' && (
+                    <>
+                      <p className="modal-section">Take / Upload Pet Photo</p>
+                      <div className="modal-alert info">📸 Please take a current photo of the pet during the CVO visit. This will be the official photo on record.</div>
+                      <div className="modal-photo-upload" onClick={() => document.getElementById('val-photo-input')?.click()}>
+                        <input id="val-photo-input" type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
+                        {valPhoto ? (
+                          <img src={valPhoto} className="modal-photo-preview" alt="Pet" />
+                        ) : (
+                          <div style={{ color: '#9ca3af' }}>
+                            <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
+                            <p style={{ margin: 0, fontSize: 13 }}>Click to capture or upload photo</p>
+                          </div>
+                        )}
+                      </div>
+                      {!valPhoto && selected.photo && (
+                        <div style={{ marginTop: 10 }}>
+                          <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 6px' }}>Or use submitted photo:</p>
+                          <img src={selected.photo} style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, cursor: 'pointer', opacity: .85 }} alt="Submitted" onClick={() => setValPhoto(selected.photo)} />
+                        </div>
+                      )}
+                      <div className="modal-actions">
+                        <button className="modal-btn-secondary" onClick={() => setValStep('details')}>← Back</button>
+                        <button className="modal-btn-primary" onClick={() => setValStep('tag')}>Next: Assign Tag →</button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* STEP 3: Pet Tag ID */}
+                  {valStep === 'tag' && (
+                    <>
+                      <p className="modal-section">Assign Pet Tag ID</p>
+                      <div className="modal-alert info">📌 Enter the official Pet Tag ID from the physical tag that will be attached to the animal.</div>
+                      <div className="modal-field">
+                        <label className="modal-label">Pet Tag ID *</label>
+                        <input className="modal-input" placeholder="e.g. TAG-2024-00123" value={petTagId} onChange={e => setPetTagId(e.target.value)} />
+                      </div>
+                      <div className="modal-actions">
+                        <button className="modal-btn-secondary" onClick={() => setValStep('photo')}>← Back</button>
+                        <button className="modal-btn-primary" onClick={() => { if (!petTagId.trim()) { toast.error('Please enter a Pet Tag ID'); return; } setValStep('confirm'); }}>
+                          Next: Confirm →
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* STEP 4: Confirm */}
+                  {valStep === 'confirm' && (
+                    <>
+                      <p className="modal-section">Confirm Validation</p>
+                      <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                        {[
+                          ['Pet Name', selected.pet_name],
+                          ['Species', selected.species],
+                          ['Owner', selected.owner_name],
+                          ['Pet Tag ID', petTagId],
+                          ['Photo', valPhoto ? '✅ Photo uploaded' : '(Using submitted photo)'],
+                        ].map(([k,v]) => (
+                          <div key={k} className="modal-confirm-row">
+                            <span className="modal-confirm-key">{k}</span>
+                            <span className="modal-confirm-val">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {valPhoto && (
+                        <img src={valPhoto} style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, marginBottom: 16 }} alt="Pet" />
+                      )}
+                      <div className="modal-alert warn">
+                        By confirming, this pet will be <strong>officially registered</strong> and moved from the pre-registration list to the active pets database. This action cannot be undone.
+                      </div>
+                      <div className="modal-actions">
+                        <button className="modal-btn-secondary" onClick={() => setValStep('tag')}>← Back</button>
+                        <button className="modal-btn-primary" onClick={handleApprove} disabled={submitting}>
+                          {submitting ? <><span className="modal-spinner" />Saving…</> : '✅ Confirm & Register Pet'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
-                <button
-                  onClick={() => setShowValidationModal(false)}
-                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleValidate}
-                  className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold transition-colors ${
-                    validationForm.action === 'approve'
-                      ? 'bg-[#60A85C] hover:bg-[#4a8a47]'
-                      : 'bg-[#E85D3B] hover:bg-[#d64d2b]'
-                  }`}
-                >
-                  {validationForm.action === 'approve' ? 'Complete Validation & Register' : 'Deny Pre-Registration'}
-                </button>
-              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
+
+export default PreRegisteredPets;

@@ -96,6 +96,9 @@ export function DashboardOverview() {
   const [tData, setTData] = useState<any[]>([]);
   const [bData, setBData] = useState<any[]>([]);
   const [petSurvey, setPetSurvey] = useState<any>(null);
+  const [dbSummary, setDbSummary] = useState<any>(null);
+  const [diseaseAlertsDb, setDiseaseAlertsDb] = useState<any[]>([]);
+  const [preRegsDb, setPreRegsDb] = useState<any[]>([]);
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
@@ -104,11 +107,17 @@ export function DashboardOverview() {
       api.getVaccinationTrends(),
       api.getBudget(),
       api.getPetSurveyData(),
-    ]).then(([lsRes, tRes, bRes, psRes]) => {
+      api.getDashboardSummary().catch(() => null),
+      api.getDiseaseAlerts().catch(() => ({ data: [] })),
+      api.getPreRegistrations('Pending').catch(() => ({ preRegistrations: [] })),
+    ]).then(([lsRes, tRes, bRes, psRes, sumRes, daRes, prRes]) => {
       if (lsRes.data?.length) setLsData(lsRes.data.map((r: any) => ({ barangay: r.barangay, cattle: r.cattle, swine: r.swine, poultry: r.poultry, goats: r.goats })));
       if (tRes.data?.length) setTData(tRes.data.map((r: any) => ({ month: r.month, vaccination: r.vaccination_rate, diseases: r.diseases })));
       if (bRes.data?.length) setBData(bRes.data.map((r: any) => ({ name: r.category, value: parseFloat(r.amount), color: r.color })));
       if (psRes) setPetSurvey(psRes);
+      if (sumRes) setDbSummary(sumRes);
+      if (daRes?.data) setDiseaseAlertsDb(daRes.data.filter((a: any) => a.status === 'Active').slice(0, 5));
+      if (prRes?.preRegistrations) setPreRegsDb(prRes.preRegistrations.slice(0, 5));
       setDbReady(true);
     }).catch(e => { console.error(e); setDbReady(true); });
   }, []);
@@ -172,78 +181,88 @@ export function DashboardOverview() {
   const effectiveTrend = tData.length > 0 ? tData : trendData;
   const effectiveBudget = bData.length > 0 ? bData : budgetData;
 
+  // ── Live stats from DB ────────────────────────────────────────────────────
+  const lsTotal       = dbSummary?.livestock?.total ?? 0;
+  const petCount      = dbSummary?.pets?.total ?? 0;
+  const vaxRate       = dbSummary?.vaccinationRate ?? 0;
+  const alertCount    = dbSummary?.activeAlerts ?? 0;
+  const pendingApps   = dbSummary?.pendingApplications ?? 0;
+  const budgetAmt     = dbSummary?.budgetTotal ?? 0;
+  const lowStock      = dbSummary?.lowStock ?? 0;
+  const lostFoundOpen = dbSummary?.lostFoundOpen ?? 0;
+
   const stats = [
     {
       label: "Total Livestock",
-      value: "15,847",
+      value: dbSummary ? lsTotal.toLocaleString('en-PH') : "—",
       icon: Package,
       gradient: "from-blue-600 to-blue-500",
-      change: "+5.2%",
-      changeType: "positive",
-      sub: "vs last month",
+      change: `${dbSummary?.livestock?.records ?? 0} records`,
+      changeType: "neutral",
+      sub: "All species · Calaca",
     },
     {
-      label: "Registered Hog Raisers",
-      value: "342",
+      label: "Registered Pets",
+      value: dbSummary ? petCount.toLocaleString('en-PH') : "—",
       icon: Users,
       gradient: "from-emerald-600 to-emerald-500",
-      change: "+12",
+      change: `${dbSummary?.pets?.active ?? 0} active`,
       changeType: "positive",
-      sub: "new this month",
+      sub: "Dogs, cats · all barangays",
     },
     {
       label: "Vaccination Coverage",
-      value: "96%",
+      value: dbSummary ? `${vaxRate}%` : "—",
       icon: Syringe,
       gradient: "from-violet-600 to-violet-500",
-      change: "+2%",
-      changeType: "positive",
-      sub: "vs last quarter",
+      change: vaxRate >= 80 ? "On target" : "Below target",
+      changeType: vaxRate >= 80 ? "positive" : "negative",
+      sub: "Livestock + pets combined",
     },
     {
-      label: "Vaccine Utilization",
-      value: "89%",
-      icon: TrendingUp,
-      gradient: "from-orange-500 to-amber-500",
-      change: "+4%",
-      changeType: "positive",
-      sub: "efficiency rate",
-    },
-    {
-      label: "Budget Utilization",
-      value: "₱1.2M",
+      label: "Budget Allocated",
+      value: budgetAmt > 0 ? `₱${(budgetAmt/1000000).toFixed(1)}M` : "—",
       icon: DollarSign,
       gradient: "from-teal-600 to-cyan-500",
-      change: "72%",
+      change: budgetAmt > 0 ? "FY 2025" : "Not set",
       changeType: "neutral",
-      sub: "of total budget",
+      sub: "Total allocation",
     },
     {
-      label: "Active Alerts",
-      value: "3",
+      label: "Active Disease Alerts",
+      value: dbSummary ? String(alertCount) : "—",
       icon: AlertTriangle,
-      gradient: "from-red-600 to-rose-500",
-      change: "Urgent",
-      changeType: "negative",
-      sub: "requires action",
+      gradient: alertCount > 0 ? "from-red-600 to-rose-500" : "from-green-600 to-emerald-500",
+      change: alertCount > 0 ? "Urgent" : "Clear",
+      changeType: alertCount > 0 ? "negative" : "positive",
+      sub: "Requires immediate action",
     },
     {
-      label: "Pending Applications",
-      value: "18",
+      label: "Pending Pre-Registrations",
+      value: dbSummary ? String(pendingApps) : "—",
       icon: FileCheck,
       gradient: "from-amber-500 to-yellow-500",
-      change: "5",
-      changeType: "neutral",
-      sub: "filed today",
+      change: pendingApps > 0 ? "For review" : "All reviewed",
+      changeType: pendingApps > 0 ? "neutral" : "positive",
+      sub: "Awaiting admin validation",
     },
     {
-      label: "System Uptime",
-      value: "99.8%",
+      label: "Lost & Found Open",
+      value: dbSummary ? String(lostFoundOpen) : "—",
       icon: Activity,
-      gradient: "from-indigo-600 to-blue-500",
-      change: "Excellent",
-      changeType: "positive",
-      sub: "last 30 days",
+      gradient: lostFoundOpen > 0 ? "from-orange-500 to-amber-500" : "from-green-600 to-emerald-500",
+      change: lostFoundOpen > 0 ? "Open cases" : "All resolved",
+      changeType: lostFoundOpen > 0 ? "neutral" : "positive",
+      sub: "Active lost/found reports",
+    },
+    {
+      label: "Low Stock Alerts",
+      value: dbSummary ? String(lowStock) : "—",
+      icon: TrendingUp,
+      gradient: lowStock > 0 ? "from-red-500 to-orange-500" : "from-indigo-600 to-blue-500",
+      change: lowStock > 0 ? "Reorder needed" : "Stock OK",
+      changeType: lowStock > 0 ? "negative" : "positive",
+      sub: "Medicines + supplies",
     },
   ];
 
@@ -299,86 +318,51 @@ export function DashboardOverview() {
     },
   ];
 
-  const alertSeverity = [
-    {
-      level: "CRITICAL",
-      label: "ASF Suspected Case",
-      location: "Barangay 3 — Under Investigation",
-      time: "2 hours ago",
-      borderColor: "#ef4444",
-      bg: "#fef2f2",
-      dotColor: "#ef4444",
-      badgeBg: "#fee2e2",
-      badgeText: "#b91c1c",
-      badgeBorder: "#fca5a5",
-      titleColor: "#7f1d1d",
-      subColor: "#991b1b",
-      timeColor: "#b91c1c",
-    },
-    {
-      level: "MONITOR",
-      label: "Rabies Case — Dog",
-      location: "Barangay 1 — Quarantined",
-      time: "1 day ago",
-      borderColor: "#f59e0b",
-      bg: "#fffbeb",
-      dotColor: "#f59e0b",
-      badgeBg: "#fef3c7",
-      badgeText: "#92400e",
-      badgeBorder: "#fcd34d",
-      titleColor: "#451a03",
-      subColor: "#78350f",
-      timeColor: "#92400e",
-    },
-    {
-      level: "WATCH",
-      label: "Avian Flu Advisory",
-      location: "Barangay 5 — Preventive Measures",
-      time: "3 days ago",
-      borderColor: "#f97316",
-      bg: "#fff7ed",
-      dotColor: "#f97316",
-      badgeBg: "#ffedd5",
-      badgeText: "#9a3412",
-      badgeBorder: "#fdba74",
-      titleColor: "#431407",
-      subColor: "#7c2d12",
-      timeColor: "#9a3412",
-    },
+  // ── Live disease alerts from DB ────────────────────────────────────────
+  const ALERT_STYLES = [
+    { borderColor:"#ef4444", bg:"#fef2f2", dotColor:"#ef4444", badgeBg:"#fee2e2", badgeText:"#b91c1c", badgeBorder:"#fca5a5", titleColor:"#7f1d1d", subColor:"#991b1b", timeColor:"#b91c1c", level:"CRITICAL" },
+    { borderColor:"#f59e0b", bg:"#fffbeb", dotColor:"#f59e0b", badgeBg:"#fef3c7", badgeText:"#92400e", badgeBorder:"#fcd34d", titleColor:"#451a03", subColor:"#78350f", timeColor:"#92400e", level:"HIGH" },
+    { borderColor:"#f97316", bg:"#fff7ed", dotColor:"#f97316", badgeBg:"#ffedd5", badgeText:"#9a3412", badgeBorder:"#fdba74", titleColor:"#431407", subColor:"#7c2d12", timeColor:"#9a3412", level:"WATCH" },
+    { borderColor:"#8b5cf6", bg:"#f5f3ff", dotColor:"#8b5cf6", badgeBg:"#ede9fe", badgeText:"#4c1d95", badgeBorder:"#c4b5fd", titleColor:"#2e1065", subColor:"#4c1d95", timeColor:"#6d28d9", level:"MONITOR" },
+    { borderColor:"#06b6d4", bg:"#ecfeff", dotColor:"#06b6d4", badgeBg:"#cffafe", badgeText:"#164e63", badgeBorder:"#67e8f9", titleColor:"#083344", subColor:"#155e75", timeColor:"#0e7490", level:"WATCH" },
   ];
 
-  const applications = [
-    {
-      id: "VHC-2024-1205",
-      type: "VHC Issuance",
-      applicant: "Juan Dela Cruz",
-      barangay: "Barangay 1",
-      date: "Dec 14, 2024",
-      status: "For Validation",
-      statusStyle:
-        "bg-amber-500/15 text-amber-400 border border-amber-500/25",
-    },
-    {
-      id: "HR-2024-1204",
-      type: "Hog Raiser Registration",
-      applicant: "Maria Santos",
-      barangay: "Barangay 3",
-      date: "Dec 13, 2024",
-      status: "Pending",
-      statusStyle:
-        "bg-blue-500/15 text-blue-400 border border-blue-500/25",
-    },
-    {
-      id: "PCIC-2024-1203",
-      type: "Livestock Insurance",
-      applicant: "Pedro Reyes",
-      barangay: "Barangay 2",
-      date: "Dec 12, 2024",
-      status: "For Validation",
-      statusStyle:
-        "bg-amber-500/15 text-amber-400 border border-amber-500/25",
-    },
-  ];
+  const alertSeverity = diseaseAlertsDb.length > 0
+    ? diseaseAlertsDb.map((a: any, i: number) => {
+        const style = ALERT_STYLES[i % ALERT_STYLES.length];
+        const severityMap: Record<string,string> = { Critical:"CRITICAL", High:"HIGH", Medium:"WATCH", Low:"MONITOR" };
+        const reported = new Date(a.reported_date || a.date_reported || a.created_at);
+        const diffMs = Date.now() - reported.getTime();
+        const diffH = Math.floor(diffMs / 3600000);
+        const timeStr = diffH < 1 ? 'Just now' : diffH < 24 ? `${diffH}h ago` : `${Math.floor(diffH/24)}d ago`;
+        return {
+          ...style,
+          level: severityMap[a.severity] || style.level,
+          label: a.disease,
+          location: `${a.location || a.barangay} — ${a.status}`,
+          time: timeStr,
+        };
+      })
+    : [
+        { level:"NO ALERTS", label:"No active disease alerts", location:"All clear — Calaca City", time:"Updated now", borderColor:"#10b981", bg:"#f0fdf4", dotColor:"#10b981", badgeBg:"#dcfce7", badgeText:"#14532d", badgeBorder:"#86efac", titleColor:"#14532d", subColor:"#15803d", timeColor:"#16a34a" },
+      ];
+
+  // ── Live pending pre-registrations from DB ─────────────────────────────
+  const applications = preRegsDb.length > 0
+    ? preRegsDb.map((p: any) => ({
+        id: p.pre_reg_number,
+        type: "Pet Pre-Registration",
+        applicant: p.owner_name,
+        barangay: p.barangay,
+        date: p.submitted_date ? new Date(p.submitted_date).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—',
+        status: p.status || 'Pending',
+        statusStyle: p.status === 'Approved'
+          ? 'bg-green-500/15 text-green-600 border border-green-500/25'
+          : p.status === 'Denied'
+          ? 'bg-red-500/15 text-red-500 border border-red-500/25'
+          : 'bg-amber-500/15 text-amber-400 border border-amber-500/25',
+      }))
+    : [];
 
   return (
     <div className="space-y-6 min-h-screen">
@@ -600,7 +584,7 @@ export function DashboardOverview() {
                     Vaccination & Disease Trends
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    January – June 2024
+                    {tData.length > 0 ? `${tData[0]?.month} – ${tData[tData.length-1]?.month}` : 'Vaccination & Disease trend'}
                   </p>
                 </div>
                 <div className="flex gap-3">
@@ -680,7 +664,7 @@ export function DashboardOverview() {
                     Budget Allocation
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    FY 2024 · ₱1,200,000 total
+                    FY 2025 · {budgetAmt > 0 ? `₱${budgetAmt.toLocaleString('en-PH')} total` : 'Budget not set'}
                   </p>
                 </div>
               </div>
@@ -709,14 +693,8 @@ export function DashboardOverview() {
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-3">
                   {effectiveBudget.map((item, i) => {
-                    const pct = Math.round(
-                      (item.value /
-                        budgetData.reduce(
-                          (s, d) => s + d.value,
-                          0,
-                        )) *
-                        100,
-                    );
+                    const total = effectiveBudget.reduce((s: number, d: any) => s + d.value, 0);
+                    const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
                     return (
                       <div key={i}>
                         <div className="flex items-center justify-between mb-1">
@@ -765,12 +743,12 @@ export function DashboardOverview() {
                     Active Disease Alerts
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    3 open cases requiring attention
+                    {alertCount > 0 ? `${alertCount} open case${alertCount > 1 ? 's' : ''} requiring attention` : 'No active alerts'}
                   </p>
                 </div>
                 <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-600">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  3 Active
+                  {alertCount} Active
                 </span>
               </div>
               <div className="space-y-3">
@@ -843,7 +821,7 @@ export function DashboardOverview() {
                   Pending Applications & Requests
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  18 total · 5 filed today
+                  {pendingApps} pending · awaiting validation
                 </p>
               </div>
               <button className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors">
@@ -874,7 +852,13 @@ export function DashboardOverview() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {applications.map((app, i) => (
+                  {applications.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400 text-sm">
+                        No pending pre-registrations
+                      </td>
+                    </tr>
+                  ) : applications.map((app, i) => (
                     <tr
                       key={i}
                       className="hover:bg-blue-50/30 transition-colors group"

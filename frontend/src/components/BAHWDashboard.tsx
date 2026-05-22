@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { DashboardOverview } from './DashboardOverview';
 import { LivestockManagement } from './LivestockManagement';
 import { PetRegistration } from './PetRegistration';
+import { PetPreRegistration } from './PetPreRegistration';
 import { OutbreakMonitoring } from './OutbreakMonitoring';
 import { VeterinaryServices } from './VeterinaryServices';
 import { ReportsCertificates } from './ReportsCertificates';
@@ -28,7 +29,9 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'livestock':
         return <LivestockManagement />;
       case 'rabies':
-        return <PetRegistration />;
+        return <PetRegistration userRole={user.role} />;
+      case 'preregistered':
+        return <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email} />;
       case 'outbreak':
         return <OutbreakMonitoring />;
       case 'services':

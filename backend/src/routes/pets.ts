@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { sendPreRegEmail } from '../services/email';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -67,12 +69,36 @@ router.post('/pre-register', async (req: AuthRequest, res: Response) => {
   try {
     const petData = req.body;
     const preRegNumber = `PRE-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+
     await query(
-      `INSERT INTO pet_pre_registrations (pre_reg_number, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Pending')`,
-      [preRegNumber, petData.ownerId, petData.petName, petData.species, petData.breed, petData.age, petData.color, petData.gender, petData.ownerName, petData.contactNumber, petData.barangay, petData.address, petData.photo || null]
+      `INSERT INTO pet_pre_registrations
+         (pre_reg_number, owner_id, pet_name, species, breed, age, color, gender,
+          owner_name, contact_number, owner_email, barangay, address, photo, status, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Pending',$15)`,
+      [preRegNumber, petData.ownerId, petData.petName, petData.species, petData.breed,
+       petData.age, petData.color, petData.gender, petData.ownerName, petData.contactNumber,
+       petData.ownerEmail || null, petData.barangay, petData.address, petData.photo || null, expiresAt]
     );
-    return res.json({ success: true, preRegNumber, message: 'Pre-registration submitted successfully.' });
+
+    // Send confirmation email if owner email is provided
+    let emailSent = false;
+    if (petData.ownerEmail) {
+      try {
+        const result = await sendPreRegEmail(
+          petData.ownerEmail, petData.ownerName, petData.petName, preRegNumber, expiresAt
+        );
+        emailSent = result.sent;
+        await query(`UPDATE pet_pre_registrations SET email_sent=$1 WHERE pre_reg_number=$2`, [emailSent, preRegNumber]);
+      } catch (emailErr) { console.error('[Pre-register] Email error:', emailErr); }
+    }
+
+    return res.json({
+      success: true, preRegNumber,
+      expiresAt: expiresAt.toISOString(),
+      emailSent,
+      message: 'Pre-registration submitted successfully.'
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -118,22 +144,38 @@ router.put('/pre-registered/:preRegNumber', authenticate, async (req: AuthReques
 router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { preRegNumber } = req.params;
-    const { action, petId, photo, denialReason } = req.body;
+    const { action, petId, photo, petTagId, denialReason } = req.body;
     const preRegResult = await query('SELECT * FROM pet_pre_registrations WHERE pre_reg_number=$1', [preRegNumber]);
     const preReg = preRegResult.rows[0];
     if (!preReg) return res.status(404).json({ error: 'Pre-registration not found' });
+
     if (action === 'approve') {
-      const newPetId = petId || `PET-${Date.now()}`;
+      const countResult = await query('SELECT COUNT(*) FROM pets');
+      const count = parseInt(countResult.rows[0].count);
+      const newPetId = petId || `PET-${String(count + 1).padStart(3, '0')}`;
+      const tagId = petTagId || null;
+
       await query(
-        `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, vaccination_status, status, pre_reg_number)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Not Vaccinated','Active',$14)`,
-        [newPetId, preReg.owner_id, preReg.pet_name, preReg.species, preReg.breed, preReg.age, preReg.color, preReg.gender, preReg.owner_name, preReg.contact_number, preReg.barangay, preReg.address, photo || preReg.photo, preRegNumber]
+        `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender,
+           owner_name, contact_number, owner_email, barangay, address, photo,
+           vaccination_status, status, pre_reg_number, pet_tag_id, registration_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Not Vaccinated','Active',$15,$16,CURRENT_DATE)`,
+        [newPetId, preReg.owner_id, preReg.pet_name, preReg.species, preReg.breed,
+         preReg.age, preReg.color, preReg.gender, preReg.owner_name, preReg.contact_number,
+         preReg.owner_email, preReg.barangay, preReg.address, photo || preReg.photo,
+         preRegNumber, tagId]
       );
-      await query(`UPDATE pet_pre_registrations SET status='Approved', pet_id=$1, approved_date=NOW() WHERE pre_reg_number=$2`, [newPetId, preRegNumber]);
+      await query(
+        `UPDATE pet_pre_registrations SET status='Approved', pet_id=$1, pet_tag_id=$2, approved_date=NOW() WHERE pre_reg_number=$3`,
+        [newPetId, tagId, preRegNumber]
+      );
       const pet = (await query('SELECT * FROM pets WHERE id=$1', [newPetId])).rows[0];
       return res.json({ success: true, pet });
     } else if (action === 'deny') {
-      await query(`UPDATE pet_pre_registrations SET status='Denied', denial_reason=$1, denied_date=NOW() WHERE pre_reg_number=$2`, [denialReason, preRegNumber]);
+      await query(
+        `UPDATE pet_pre_registrations SET status='Denied', denial_reason=$1, denied_date=NOW() WHERE pre_reg_number=$2`,
+        [denialReason, preRegNumber]
+      );
       return res.json({ success: true, message: 'Denied' });
     }
     return res.status(400).json({ error: 'Invalid action' });
@@ -163,15 +205,53 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     const countResult = await query('SELECT COUNT(*) FROM pets');
     const count = parseInt(countResult.rows[0].count);
     const newId = `PET-${String(count + 1).padStart(3, '0')}`;
+
+    // If ownerName provided and no ownerId, try to find a registered user by name
+    let resolvedOwnerId = d.ownerId || null;
+    let tempId = d.tempId || null;
+
+    if (!resolvedOwnerId && d.ownerName) {
+      const userMatch = await query(
+        `SELECT owner_id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1`,
+        [d.ownerName.trim()]
+      );
+      if (userMatch.rows[0]) {
+        resolvedOwnerId = userMatch.rows[0].owner_id;
+      } else if (d.tempId) {
+        // tempId was pre-supplied (unregistered owner flow)
+        tempId = d.tempId;
+      } else if (d.isUnregistered) {
+        // Generate a new temp_id for unregistered owner
+        tempId = `TEMP-${uuidv4().slice(0,8).toUpperCase()}`;
+      }
+    }
+
     const result = await query(
-      `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, vaccination_status, is_spayed, is_neutered, impound_status, status, registration_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Active',CURRENT_DATE) RETURNING *`,
-      [newId, d.ownerId || null, d.petName, d.species, d.breed, d.age || null, d.color, d.gender || null,
+      `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, vaccination_status, is_spayed, is_neutered, impound_status, status, registration_date, pet_tag_id, temp_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Active',CURRENT_DATE,$18,$19) RETURNING *`,
+      [newId, resolvedOwnerId, d.petName, d.species, d.breed, d.age || null, d.color, d.gender || null,
        d.ownerName, d.contactNumber || d.ownerContact || null, d.barangay, d.address || d.ownerAddress || null,
        d.photoUrl || d.photo || null, d.vaccinationStatus || 'Not Vaccinated',
-       d.isSpayed || false, d.isNeutered || false, d.impoundStatus || 'None']
+       d.isSpayed || false, d.isNeutered || false, d.impoundStatus || 'None',
+       d.petTagId || null, tempId]
     );
-    return res.json({ pet: result.rows[0], success: true });
+    return res.json({ pet: result.rows[0], success: true, tempId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Search registered users (for admin pet registration owner lookup) ──────
+router.get('/owner-search', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json({ users: [] });
+    const result = await query(
+      `SELECT id, username, owner_id, email, barangay, address
+       FROM users WHERE LOWER(username) LIKE LOWER($1) ORDER BY username LIMIT 10`,
+      [`%${q}%`]
+    );
+    return res.json({ users: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

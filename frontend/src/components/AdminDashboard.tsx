@@ -48,7 +48,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
     switch (activeView) {
       case 'dashboard':    return <DashboardOverview />;
       case 'livestock':    return <LivestockManagement />;
-      case 'rabies':       return <PetRegistration />;
+      case 'rabies':       return <PetRegistration userRole={user.role} />;
       case 'preregistered':return <PreRegisteredPets />;
       case 'outbreak':     return <OutbreakMonitoring />;
       case 'services':     return <VeterinaryServices userRole={user.role} />;

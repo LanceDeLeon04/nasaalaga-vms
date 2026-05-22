@@ -533,8 +533,8 @@ export function LivestockManagement() {
       {tab==='overview'&&(
         <div className="space-y-5">
           {/* Animal count cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {(['Cattle','Swine','Poultry','Goats','Carabao'] as const).map(type=>(
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+            {(['Cattle','Swine','Poultry','Goats','Carabao','Horse'] as const).map(type=>(
               <div key={type} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={()=>{setFType(type);mt('records');}}>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{type}</p>
@@ -610,6 +610,7 @@ export function LivestockManagement() {
                 <Bar dataKey="swine"   name="Swine"   stackId="a" fill="#f59e0b"/>
                 <Bar dataKey="poultry" name="Poultry" stackId="a" fill="#e68a00"/>
                 <Bar dataKey="goats"   name="Goats"   stackId="a" fill="#8b5cf6"/>
+                <Bar dataKey="horse"   name="Horse"   stackId="a" fill="#b45309"/>
                 <Bar dataKey="carabao" name="Carabao" stackId="a" fill="#6b7280" radius={[4,4,0,0]}/>
               </BarChart>
             </ResponsiveContainer>

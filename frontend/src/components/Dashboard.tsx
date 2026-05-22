@@ -4,6 +4,7 @@ import { AdminDashboard } from './AdminDashboard';
 import { BAHWDashboard } from './BAHWDashboard';
 import { PetOwnerDashboard } from './PetOwnerDashboard';
 import { GuestDashboard } from './GuestDashboard';
+import { CityHealthDashboard } from './CityHealthDashboard';
 import type { User } from '../App';
 
 export function Dashboard() {
@@ -44,6 +45,8 @@ export function Dashboard() {
         <AdminDashboard user={user} onLogout={handleLogout} />
       ) : user.role === 'bahw' ? (
         <BAHWDashboard user={user} onLogout={handleLogout} />
+      ) : user.role === 'cityHealth' ? (
+        <CityHealthDashboard user={user} onLogout={handleLogout} />
       ) : user.role === 'petOwner' || user.role === 'livestockManager' || user.role === 'owner' ? (
         <PetOwnerDashboard user={user} onLogout={handleLogout} />
       ) : user.role === 'guest' ? (

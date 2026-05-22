@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
-  ClipboardList, Settings, X, FlaskConical
+  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint
 } from 'lucide-react';
 import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
@@ -16,19 +16,19 @@ interface SidebarProps {
 
 export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, onClose }: SidebarProps) {
   const menuItems = [
-    { id: 'dashboard' as ActiveView, label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'livestock' as ActiveView, label: 'Livestock', icon: Package, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'rabies' as ActiveView, label: 'Pet Registration', icon: Syringe, roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'dashboard' as ActiveView, label: 'Dashboard',        icon: LayoutDashboard, roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'rabies'    as ActiveView, label: 'Pets Management',  icon: PawPrint,        roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'preregistered' as ActiveView, label: 'Pre-Registered Pets', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'wildlife' as ActiveView, label: 'Wildlife Tracking', icon: Bird, roles: ['admin', 'superadmin'] },
-    { id: 'outbreak' as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'services' as ActiveView, label: 'CVO Services', icon: FileText, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'inventory' as ActiveView, label: 'Inventory', icon: FlaskConical, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'reports' as ActiveView, label: 'Reports', icon: Award, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'feedback' as ActiveView, label: 'Feedback', icon: MessageSquare, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'users' as ActiveView, label: 'Users', icon: Users, roles: ['admin', 'superadmin'] },
-    { id: 'audit' as ActiveView, label: 'Audit Logs', icon: ScrollText, roles: ['admin', 'superadmin'] },
-    { id: 'settings' as ActiveView, label: '⚙️ SuperAdmin Panel', icon: Settings, roles: ['superadmin'] },
+    { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
+    { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'services'  as ActiveView, label: 'CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'inventory' as ActiveView, label: 'Inventory',        icon: FlaskConical,    roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },
+    { id: 'audit'     as ActiveView, label: 'Audit Logs',       icon: ScrollText,      roles: ['admin', 'superadmin'] },
+    { id: 'settings'  as ActiveView, label: '⚙️ SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
   ];
 
   const handleMenuItemClick = (itemId: ActiveView, isAllowed: boolean) => {

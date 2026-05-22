@@ -159,3 +159,86 @@ export async function verifyEmailConnection(): Promise<void> {
     console.error('[Email]    Check GMAIL_USER and GMAIL_APP_PASSWORD in backend/.env');
   }
 }
+
+// ── Pre-Registration Confirmation Email ────────────────────────────────────
+export async function sendPreRegEmail(
+  toEmail: string,
+  ownerName: string,
+  petName: string,
+  preRegNumber: string,
+  expiresAt: Date
+): Promise<{ sent: boolean; fallbackMode: boolean }> {
+  const transporter = createTransporter();
+  const expiryStr = expiresAt.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#2B5EA6 0%,#60A85C 100%);padding:36px 40px;text-align:center;">
+            <div style="font-size:32px;margin-bottom:8px;">🐾</div>
+            <h1 style="color:#ffffff;margin:0;font-size:26px;font-weight:700;">NASaAlaga</h1>
+            <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Calaca City Veterinary Management System</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px 40px 32px;">
+            <h2 style="color:#1e293b;font-size:22px;margin:0 0 16px;">🎉 Pet Pre-Registration Received!</h2>
+            <p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 20px;">
+              Dear <strong>${ownerName}</strong>, your pet pre-registration has been successfully submitted.
+            </p>
+            <div style="background:#f0f7ff;border:2px solid #2B5EA6;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+              <p style="color:#64748b;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">Pre-Registration ID</p>
+              <p style="color:#2B5EA6;font-size:28px;font-weight:900;font-family:monospace;margin:0 0 8px;">${preRegNumber}</p>
+              <p style="color:#64748b;font-size:13px;margin:0;">Pet: <strong>${petName}</strong></p>
+            </div>
+            <div style="background:#fff8ed;border:1.5px solid #f59e0b;border-radius:10px;padding:20px;margin-bottom:20px;">
+              <p style="color:#92400e;font-size:14px;font-weight:700;margin:0 0 10px;">⚠️ Important — Action Required</p>
+              <ul style="color:#92400e;font-size:14px;line-height:1.8;margin:0;padding-left:20px;">
+                <li>Bring your pet to the <strong>Calaca City Veterinary Office (CVO)</strong> for validation.</li>
+                <li>This pre-registration will <strong>expire on ${expiryStr}</strong> (14 days from today).</li>
+                <li>The CVO staff will validate your details, take a photo of your pet, and assign an official Pet Tag ID.</li>
+                <li>Once validated, your pet will be officially registered in the system.</li>
+              </ul>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0;">
+              Please save this email and your Pre-Registration ID for reference.<br/>
+              Questions? Contact the Calaca CVO office.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">NASaAlaga — Calaca City Veterinary Management System</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  if (!transporter) {
+    console.log(`[Email] Pre-reg confirmation for ${toEmail}: ${preRegNumber}`);
+    return { sent: false, fallbackMode: true };
+  }
+  try {
+    await transporter.sendMail({
+      from: `"NASaAlaga - Calaca CVO" <${process.env.GMAIL_USER}>`,
+      to: toEmail,
+      subject: `🐾 NASaAlaga — Pet Pre-Registration Confirmed: ${preRegNumber}`,
+      html,
+    });
+    console.log(`[Email] ✅ Pre-reg email sent to ${toEmail}`);
+    return { sent: true, fallbackMode: false };
+  } catch (err: any) {
+    console.error('[Email] ❌ Pre-reg email failed:', err.message);
+    return { sent: false, fallbackMode: true };
+  }
+}
+
