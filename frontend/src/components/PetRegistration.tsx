@@ -18,7 +18,7 @@ import { api } from "../lib/api";
 
 interface Pet {
   id: string;
-  pet_name: string; petName?: string;
+  pet_name: string; petName?: string; pet_tag_id?: string; petTagId?: string;
   species: string; breed: string; age?: string;
   color: string; gender?: string;
   is_spayed?: boolean; is_neutered?: boolean;
@@ -212,7 +212,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
     detail: speciesMatch
       ? `Both are ${lost.species}`
       : `Lost: ${lost.species || "?"} · Found: ${found.species || "?"}`,
-    icon: "🐾",
+    icon: "paw",
   });
 
   // 2. Breed — fuzzy (20 pts)
@@ -228,7 +228,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
       : breedPts >= 10
       ? `Similar: "${lost.breed}" ≈ "${found.breed}" (${Math.round(breedSim*100)}%)`
       : `Different: "${lost.breed||"?"}" vs "${found.breed||"?"}"`  ,
-    icon: "🔬",
+    icon: "microscope",
   });
 
   // 3. Color — token overlap (15 pts)
@@ -244,7 +244,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
       : colorPts >= 8
       ? `Partial color overlap: "${lost.color}" / "${found.color}"`
       : `Colors differ: "${lost.color||"?"}" vs "${found.color||"?"}"`,
-    icon: "🎨",
+    icon: "palette",
   });
 
   // 4. Location — same barangay (10 pts) or adjacent zone (5 pts)
@@ -261,7 +261,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
       : nearbyBarangay
       ? `Adjacent zone: ${lost.barangay} ↔ ${found.barangay}`
       : `Different areas: ${lost.barangay} / ${found.barangay}`,
-    icon: "📍",
+    icon: "pin",
   });
 
   // 5. Date proximity — within 3 days (10 pts), 7 days (6 pts), 14 days (3 pts)
@@ -279,7 +279,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
     max: 10,
     matched: datePts >= 3,
     detail: dateDetail,
-    icon: "📅",
+    icon: "calendar",
   });
 
   // 6. Description keyword overlap (5 pts)
@@ -295,7 +295,7 @@ function analyzeMatch(lost: LFReport, found: LFReport): MatchFactor[] {
       : kwPts >= 2
       ? "Some shared keywords in descriptions"
       : "No significant keyword overlap",
-    icon: "📝",
+    icon: "notes",
   });
 
   return factors;
@@ -594,11 +594,11 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
           <div className="grid grid-cols-2 gap-2 mt-3">
             <div className="bg-purple-50 rounded-xl p-3 text-center">
               <p className="text-2xl font-black text-purple-600">{survey.spayedNeutered.spayed}</p>
-              <p className="text-xs text-purple-500 font-semibold">Spayed ♀</p>
+              <p className="text-xs text-purple-500 font-semibold">Spayed (F)</p>
             </div>
             <div className="bg-cyan-50 rounded-xl p-3 text-center">
               <p className="text-2xl font-black text-cyan-600">{survey.spayedNeutered.neutered}</p>
-              <p className="text-xs text-cyan-500 font-semibold">Neutered ♂</p>
+              <p className="text-xs text-cyan-500 font-semibold">Neutered (M)</p>
             </div>
           </div>
         </div>
@@ -1413,7 +1413,7 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
             <p className="font-semibold flex items-center gap-1.5"><Info className="w-4 h-4"/>What will be recorded:</p>
             <p>• Vaccination date: <strong>Today ({fmtDate(new Date().toISOString().split("T")[0])})</strong></p>
             <p>• Next due date: <strong>1 year from today</strong></p>
-            <p>• Status: <strong>Vaccinated ✓</strong></p>
+            <p>• Status: <strong>Vaccinated</strong></p>
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
@@ -1706,7 +1706,17 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                       <td className="py-3 px-3">
                         {petPhoto(pet)?<img src={petPhoto(pet)} alt={pn(pet)} className="w-10 h-10 rounded-xl object-cover border border-gray-200"/>:<div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300"><PawPrint className="w-4 h-4 text-gray-400"/></div>}
                       </td>
-                      <td className="py-3 px-3"><p className="text-xs font-bold text-gray-600">{pet.id}</p>{pet.status!=="Active"&&<span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded ${pet.status==="Lost"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{pet.status}</span>}</td>
+                      <td className="py-3 px-3">
+  <p className="text-xs font-bold text-gray-600">{pet.id}</p>
+  {(pet.pet_tag_id||pet.petTagId)&&(()=>{
+    const tag=pet.pet_tag_id||pet.petTagId||'';
+    const prefix=tag.split('-')[0];
+    const colorMap:Record<string,string>={BLU:'#2B5EA6',PRP:'#8B5CF6',RED:'#E85D3B',GRY:'#6B7280'};
+    const bg=colorMap[prefix]||'#6B7280';
+    return <span style={{display:'inline-block',marginTop:2,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:bg,letterSpacing:'0.04em'}}>{tag}</span>;
+  })()}
+  {pet.status!=="Active"&&<span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded ${pet.status==="Lost"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{pet.status}</span>}
+</td>
                       <td className="py-3 px-3"><p className="font-semibold text-gray-800 text-sm">{pn(pet)}</p><p className="text-xs text-gray-500">{pet.species} · {pet.breed} · {pet.color}</p></td>
                       <td className="py-3 px-3"><p className="text-sm font-semibold text-gray-800">{on(pet)}</p><p className="text-xs text-gray-500">{pet.contact_number||pet.ownerContact||"—"}</p></td>
                       <td className="py-3 px-3 text-sm text-gray-600">{brgy(pet)}</td>
@@ -1736,7 +1746,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                             }catch{ toast.error('Could not load vaccination history'); }
                             finally{ setVaxCardLoading(false); }
                           }} className="px-2.5 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 flex items-center gap-1">
-                            💳 Card
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 inline-block mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>Card
                           </button>
                         </div>
                       </td>
@@ -1880,7 +1890,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                 {/* TempID success banner */}
                 {generatedTempId && (
                   <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:10,padding:'12px 16px',marginBottom:12}}>
-                    <p style={{margin:'0 0 4px',fontWeight:800,color:'#92400e',fontSize:13}}>⚠️ Unregistered Owner — Temporary ID Issued</p>
+                    <p style={{margin:'0 0 4px',fontWeight:800,color:'#92400e',fontSize:13,display:'flex',alignItems:'center',gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Unregistered Owner — Temporary ID Issued</p>
                     <p style={{margin:'0 0 6px',color:'#92400e',fontSize:13}}>This pet has been registered with a Temporary ID. Give this ID to the owner — they can enter it during account signup to auto-link this pet to their account.</p>
                     <div style={{background:'#fff',border:'2px solid #f59e0b',borderRadius:8,padding:'8px 14px',textAlign:'center',fontFamily:'monospace',fontSize:20,fontWeight:900,color:'#2B5EA6',letterSpacing:'.05em'}}>{generatedTempId}</div>
                     <button onClick={()=>{setGeneratedTempId(null);setShowNewPet(false);setNp({petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:""});setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{marginTop:10,width:'100%',padding:'8px',background:'#2B5EA6',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>Done — Register Another Pet</button>
@@ -1893,13 +1903,13 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                     <label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name * <span style={{color:'#9ca3af',fontWeight:400,fontSize:11}}>(type to search registered users)</span></label>
                     {selectedOwnerId && (
                       <div style={{background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#14532d',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                        <span>✅ Linked to registered user</span>
+                        <span style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Linked to registered user</span>
                         <button onClick={()=>{setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Remove</button>
                       </div>
                     )}
                     {isUnregisteredOwner && !selectedOwnerId && (
                       <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#92400e',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                        <span>⚠️ Unregistered owner — Temp ID will be issued</span>
+                        <span style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Unregistered owner — Temp ID will be issued</span>
                         <button onClick={()=>setIsUnregisteredOwner(false)} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Cancel</button>
                       </div>
                     )}
@@ -1934,7 +1944,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                           </div>
                         ))}
                         <div onClick={()=>{setIsUnregisteredOwner(true);setSelectedOwnerId(null);setShowOwnerSugg(false);}} style={{padding:'10px 14px',cursor:'pointer',fontSize:13,fontWeight:700,color:'#f59e0b',background:'#fffbeb',borderTop:'1px solid #fde68a'}} onMouseEnter={e=>(e.currentTarget.style.background='#fef9c3')} onMouseLeave={e=>(e.currentTarget.style.background='#fffbeb')}>
-                          ⚠️ Owner not registered — issue Temporary ID
+                          Owner not registered — issue Temporary ID
                         </div>
                       </div>
                     )}
@@ -1986,7 +1996,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
             </div>
             <div className="p-6 space-y-4">
               <div className="flex gap-2">
-                {(["Lost","Found"] as const).map(t=><button key={t} onClick={()=>setLfForm({...lfForm,type:t})} className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-all ${lfForm.type===t?t==="Lost"?"border-red-500 bg-red-50 text-red-700":"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>{t==="Lost"?"🔴 Lost Pet":"🟢 Found Pet"}</button>)}
+                {(["Lost","Found"] as const).map(t=><button key={t} onClick={()=>setLfForm({...lfForm,type:t})} className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-all ${lfForm.type===t?t==="Lost"?"border-red-500 bg-red-50 text-red-700":"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>{t==="Lost"?"Lost Pet":"Found Pet"}</button>)}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Linked Pet from Registry (if known)</label><select value={lfForm.petId} onChange={e=>setLfForm({...lfForm,petId:e.target.value})} className={INPUT}><option value="">Unknown / Not Registered</option>{pets.map(p=><option key={p.id} value={p.id}>{p.id} – {pn(p)} ({on(p)})</option>)}</select></div>

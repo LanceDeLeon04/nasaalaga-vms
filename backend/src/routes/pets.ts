@@ -6,6 +6,38 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
+// ── Barangay zone -> color prefix mapping ─────────────────────────────────
+async function getBarangayPrefix(barangayName: string): Promise<string> {
+  try {
+    const result = await query('SELECT zone FROM barangays WHERE LOWER(name) = LOWER($1) LIMIT 1', [barangayName]);
+    if (result.rows.length > 0) {
+      const zone = result.rows[0].zone;
+      const prefixMap: Record<string, string> = {
+        'East':  'BLU',
+        'West':  'PRP',
+        'North': 'GRY',
+        'Red':   'RED',
+      };
+      return prefixMap[zone] || 'BLU';
+    }
+  } catch { /* fallback */ }
+  return 'BLU';
+}
+
+async function generatePetTagId(barangayName: string): Promise<string> {
+  const prefix = await getBarangayPrefix(barangayName);
+  // Count existing pets with this prefix to get next sequence number
+  const result = await query(
+    `SELECT COUNT(*) as count FROM pets WHERE pet_tag_id LIKE $1`,
+    [`${prefix}-%`]
+  );
+  const next = parseInt(result.rows[0]?.count || '0') + 1;
+  // Format: PREFIX-NNN-NNNN  e.g. BLU-001-0001
+  return `${prefix}-${String(next).padStart(3, '0')}-${String(next).padStart(4, '0')}`;
+}
+
+
+
 // ── Survey data (real from DB) ─────────────────────────────────────────────
 router.get('/survey-data', async (req: AuthRequest, res: Response) => {
   try {
@@ -153,7 +185,8 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
       const countResult = await query('SELECT COUNT(*) FROM pets');
       const count = parseInt(countResult.rows[0].count);
       const newPetId = petId || `PET-${String(count + 1).padStart(3, '0')}`;
-      const tagId = petTagId || null;
+      // Auto-generate tag ID from barangay if not provided
+      const tagId = petTagId || (preReg.barangay ? await generatePetTagId(preReg.barangay) : null);
 
       await query(
         `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender,
@@ -226,6 +259,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // Auto-generate pet tag ID from barangay color zone
+    const autoTagId = d.petTagId || (d.barangay ? await generatePetTagId(d.barangay) : null);
+
     const result = await query(
       `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, vaccination_status, is_spayed, is_neutered, impound_status, status, registration_date, pet_tag_id, temp_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Active',CURRENT_DATE,$18,$19) RETURNING *`,
@@ -233,7 +269,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
        d.ownerName, d.contactNumber || d.ownerContact || null, d.barangay, d.address || d.ownerAddress || null,
        d.photoUrl || d.photo || null, d.vaccinationStatus || 'Not Vaccinated',
        d.isSpayed || false, d.isNeutered || false, d.impoundStatus || 'None',
-       d.petTagId || null, tempId]
+       autoTagId, tempId]
     );
     return res.json({ pet: result.rows[0], success: true, tempId });
   } catch (err: any) {

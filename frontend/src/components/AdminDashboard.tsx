@@ -57,7 +57,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
         return (
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <div className="text-6xl mb-4">🔒</div>
+              <div className="mb-4 flex justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
               <h2 className="text-xl font-bold text-gray-700">Access Restricted</h2>
               <p className="text-gray-500 mt-2">SuperAdmin access required for this section.</p>
             </div>

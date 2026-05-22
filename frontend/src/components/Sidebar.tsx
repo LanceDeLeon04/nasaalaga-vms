@@ -28,7 +28,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },
     { id: 'audit'     as ActiveView, label: 'Audit Logs',       icon: ScrollText,      roles: ['admin', 'superadmin'] },
-    { id: 'settings'  as ActiveView, label: '⚙️ SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
+    { id: 'settings'  as ActiveView, label: 'SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
   ];
 
   const handleMenuItemClick = (itemId: ActiveView, isAllowed: boolean) => {

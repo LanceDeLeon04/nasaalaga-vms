@@ -100,7 +100,7 @@ export function VaccinationModule({ user }: Props) {
     try {
       const d = await api.lookupVaccineBarcode(code);
       setVaccine(d.medicine);
-      toast.success(`✅ Vaccine found: ${d.medicine.name}`);
+      toast.success(`Vaccine found: ${d.medicine.name}`);
     } catch {
       toast.error('Vaccine not found. Check barcode.');
       setVaccine(null);
@@ -120,7 +120,7 @@ export function VaccinationModule({ user }: Props) {
     try {
       const d = await api.getPetById(pid);
       setPet(d.pet);
-      toast.success(`🐾 Pet found: ${d.pet.pet_name}`);
+      toast.success(`Pet found: ${d.pet.pet_name}`);
       // Load history
       setHistoryLoading(true);
       const h = await api.getVaccinationHistory(d.pet.id);
@@ -155,7 +155,7 @@ export function VaccinationModule({ user }: Props) {
       });
       setLastRecord(res);
       setSuccess(true);
-      toast.success(`💉 Vaccination recorded for ${pet.pet_name}!`);
+      toast.success(`Vaccination recorded for ${pet.pet_name}!`);
       // Refresh history
       const h = await api.getVaccinationHistory(pet.id);
       setHistory(h.history || []);
@@ -178,20 +178,20 @@ export function VaccinationModule({ user }: Props) {
       <div className="vm-wrap">
         <div className="vm-header">
           <div>
-            <h1 className="vm-title">💉 Vaccination Module</h1>
+            <h1 className="vm-title" style={{display:"flex",alignItems:"center",gap:8}}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 2v2m4-2v2M5 10l14 4-3 3-5-5-3 3-3-5z"/><path d="m18 14-3 3"/><path d="m6 18 2 2 4-4"/></svg>Vaccination Module</h1>
             <p className="vm-sub">Scan vaccine and pet ID to record vaccinations — auto-deducts inventory</p>
           </div>
         </div>
 
         {/* Vet info badge */}
         <div className="vm-vet-badge">
-          <strong>👨‍⚕️ {user.username}</strong>
+          <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{user.username}</strong>
           Administering Veterinarian — logged in · Date: {new Date().toLocaleDateString('en-PH',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
         </div>
 
         {success && lastRecord ? (
           <div className="vm-success">
-            <div className="vm-success-icon">✅</div>
+            <div className="vm-success-icon"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg></div>
             <div className="vm-success-title">Vaccination Recorded Successfully!</div>
             <div className="vm-success-sub">
               <strong>{pet?.pet_name}</strong> vaccinated with <strong>{vaccine?.name}</strong><br/>
@@ -207,7 +207,7 @@ export function VaccinationModule({ user }: Props) {
 
             {/* LEFT — Vaccine */}
             <div className="vm-panel">
-              <div className="vm-panel-title">💊 Step 1: Scan Vaccine Barcode</div>
+              <div className="vm-panel-title" style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m10.5 20.5 10-10a4.95 4.95 0 0 0-7.07-7.07l-10 10a4.95 4.95 0 0 0 7.07 7.07Z"/><path d="m8.5 8.5 7 7"/></svg>Step 1: Scan Vaccine Barcode</div>
               <p className="vm-section">Vaccine</p>
               <div className="vm-field">
                 <label className="vm-label">Vaccine Barcode <span className="req">*</span></label>
@@ -222,7 +222,7 @@ export function VaccinationModule({ user }: Props) {
                     autoFocus
                   />
                   <button className="vm-scan-btn" onClick={() => lookupVaccine()}>
-                    {vaccineLoading ? <span className="vm-spinner"/> : '🔍'} Lookup
+                    {vaccineLoading ? <span className="vm-spinner"/> : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} Lookup
                   </button>
                 </div>
                 <p style={{fontSize:11,color:'#9ca3af',margin:'4px 0 0'}}>Focus this field and scan barcode on the vaccine vial, or type the code.</p>
@@ -240,7 +240,7 @@ export function VaccinationModule({ user }: Props) {
                   <div className="vm-vax-detail">Lot No: {vaccine.lot_number || '—'} · Expires: {fmt(vaccine.expiry_date)}</div>
                   <div className="vm-vax-detail">Category: {vaccine.category} · {vaccine.type}</div>
                   {vaccine.quantity === 0 && (
-                    <div style={{marginTop:8,color:'#dc2626',fontWeight:700,fontSize:12}}>⚠️ Out of stock! Cannot administer.</div>
+                    <div style={{marginTop:8,color:"#dc2626",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Out of stock! Cannot administer.</div>
                   )}
                 </div>
               )}
@@ -262,7 +262,7 @@ export function VaccinationModule({ user }: Props) {
 
             {/* RIGHT — Pet */}
             <div className="vm-panel">
-              <div className="vm-panel-title">🐾 Step 2: Identify Pet</div>
+              <div className="vm-panel-title" style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/></svg>Step 2: Identify Pet</div>
               <p className="vm-section">Pet Lookup</p>
               <div className="vm-field">
                 <label className="vm-label">Pet ID <span className="req">*</span></label>
@@ -276,7 +276,7 @@ export function VaccinationModule({ user }: Props) {
                     onKeyDown={onPetKey}
                   />
                   <button className="vm-scan-btn" onClick={() => lookupPet()}>
-                    {petLoading ? <span className="vm-spinner"/> : '🔍'} Lookup
+                    {petLoading ? <span className="vm-spinner"/> : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} Lookup
                   </button>
                 </div>
                 <p style={{fontSize:11,color:'#9ca3af',margin:'4px 0 0'}}>Scan the barcode on the vaccination booklet or type the Pet ID (e.g. PET-001).</p>
@@ -284,7 +284,7 @@ export function VaccinationModule({ user }: Props) {
 
               {pet && (
                 <div className="vm-pet-card">
-                  <div className="vm-pet-name">🐶 {pet.pet_name}</div>
+                  <div className="vm-pet-name">{pet.pet_name}</div>
                   <div className="vm-pet-row">
                     <div className="vm-pet-item">Species: <span>{pet.species}</span></div>
                     <div className="vm-pet-item">Breed: <span>{pet.breed || '—'}</span></div>
@@ -301,7 +301,7 @@ export function VaccinationModule({ user }: Props) {
                   </div>
                   {pet.vaccination_status?.includes('Observation') && (
                     <div style={{marginTop:8,background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:8,padding:'6px 10px',fontSize:12,color:'#991b1b',fontWeight:700}}>
-                      ⚠️ This pet is under biting incident observation. Vaccination is not recommended this year.
+                      This pet is under biting incident observation. Vaccination is not recommended this year.
                     </div>
                   )}
                 </div>
@@ -309,7 +309,7 @@ export function VaccinationModule({ user }: Props) {
 
               {/* Submit */}
               <button className="vm-submit" onClick={handleSubmit} disabled={!canSubmit || vaccine?.quantity === 0}>
-                {saving ? <><span className="vm-spinner"/>Recording…</> : '💉 Record Vaccination & Deduct Inventory'}
+                {saving ? <><span className="vm-spinner"/>Recording…</> : <><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{display:"inline",marginRight:4}}><path d="M10 2v2m4-2v2M5 10l14 4-3 3-5-5-3 3-3-5z"/><path d="m18 14-3 3"/></svg>Record Vaccination &amp; Deduct Inventory</>}
               </button>
 
               {!vaccine && <p style={{fontSize:12,color:'#9ca3af',textAlign:'center',marginTop:8}}>Scan a vaccine first</p>}
@@ -322,7 +322,7 @@ export function VaccinationModule({ user }: Props) {
         {pet && history.length > 0 && (
           <div className="vm-history">
             <div className="vm-history-hd">
-              <div className="vm-history-title">📋 Vaccination History — {pet.pet_name}</div>
+              <div className="vm-history-title" style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>Vaccination History — {pet.pet_name}</div>
               <span style={{fontSize:12,color:'#6b7280'}}>{history.length} record{history.length!==1?'s':''}</span>
             </div>
             {historyLoading ? (

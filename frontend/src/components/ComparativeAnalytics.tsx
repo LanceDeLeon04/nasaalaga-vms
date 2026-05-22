@@ -350,7 +350,7 @@ export function ComparativeAnalytics() {
                 <BarChart3 className="w-5 h-5 text-white"/>
               </div>
               <div>
-                <p className="font-bold text-green-800 text-sm mb-1">📊 Correlation Analysis</p>
+                <p className="font-bold text-green-800 text-sm mb-1">Correlation Analysis</p>
                 <p className="text-sm text-green-700 leading-relaxed">
                   Barangays with vaccination coverage above <strong>80%</strong> show <strong>60% fewer disease cases</strong> on average.
                   Priority areas with coverage below <strong>70%</strong> require immediate intervention.

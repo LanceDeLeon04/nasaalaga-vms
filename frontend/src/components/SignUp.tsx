@@ -485,7 +485,7 @@ export function SignUp() {
 
             {fallbackMode && displayedOTP ? (
               <div className="otp-banner warn">
-                <strong>⚠️ Testing Mode</strong> — Email delivery is restricted. Use this code:
+                <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Testing Mode</strong> — Email delivery is restricted. Use this code:
                 <div className="otp-code-display">{displayedOTP}</div>
                 <p style={{ marginTop: 10, fontSize: 12, color: '#92400e' }}>
                   To send real emails, verify a domain at resend.com/domains
@@ -493,7 +493,7 @@ export function SignUp() {
               </div>
             ) : (
               <div className="otp-banner info">
-                📧 Check your email inbox (and spam folder) for the OTP code.
+                Check your email inbox (and spam folder) for the OTP code.
               </div>
             )}
 

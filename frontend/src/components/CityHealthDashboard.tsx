@@ -144,7 +144,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
   const notifs = [
     ...overdueIncidents.map(i => ({
       type: 'alert' as const,
-      icon: '⚠️',
+      icon: 'alert',
       title: `Observation Update Required: ${i.pet_name}`,
       body: `The 14-day observation period ended on ${new Date(i.observation_end).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}. Please log an update.`,
       time: 'Action required',
@@ -153,7 +153,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
       const days = Math.ceil((new Date(i.observation_end).getTime() - Date.now()) / 86400000);
       return {
         type: 'warn' as const,
-        icon: '🔍',
+        icon: 'search',
         title: `Under Observation: ${i.pet_name}`,
         body: `Observation ends ${new Date(i.observation_end).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})} — ${days} day${days===1?'':'s'} remaining. Pet should not be vaccinated this year.`,
         time: `Since ${new Date(i.observation_start||i.incident_date).toLocaleDateString('en-PH',{month:'short',day:'numeric'})}`,
@@ -161,7 +161,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
     }),
     ...(biteThisYear.length > 0 ? [{
       type: 'info' as const,
-      icon: '📋',
+      icon: 'list',
       title: `${biteThisYear.length} Biting Incident${biteThisYear.length===1?'':'s'} This Year`,
       body: `There ${biteThisYear.length===1?'is':'are'} ${biteThisYear.length} recorded biting incident${biteThisYear.length===1?'':'s'} in ${thisYear}. Ensure all records are up to date.`,
       time: `${thisYear}`,
@@ -182,7 +182,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
         {/* sidebar */}
         <div className="cho-sidebar">
           <div className="cho-sidebar-logo">
-            <h2>🏥 NASaAlaga</h2>
+            <h2 style={{display:"flex",alignItems:"center",gap:8}}><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>NASaAlaga</h2>
             <p>City Health Office Portal</p>
           </div>
           <div className="cho-sidebar-role">
@@ -200,7 +200,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
               </button>
             ))}
           </nav>
-          <button className="cho-logout" onClick={onLogout}>🚪 Logout</button>
+          <button className="cho-logout" onClick={onLogout} style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
         </div>
 
         {/* main */}
@@ -269,7 +269,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                           </td>
                           <td>
                             {petsWithBiting.has(p.id)
-                              ? <span className="cho-bite-flag">🦷 Has Record</span>
+                              ? <span className="cho-bite-flag" style={{display:"inline-flex",alignItems:"center",gap:3}}><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Has Record</span>
                               : <span style={{color:'#9ca3af',fontSize:12}}>None</span>
                             }
                           </td>
@@ -281,7 +281,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                                 setVaxCardPet(p); setVaxCardHistory(h.history||[]);
                               }catch{}
                             }} style={{height:30,padding:'0 10px',background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:12,fontWeight:700,cursor:'pointer'}}>
-                              💳 View
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{display:"inline",marginRight:4}}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>View
                             </button>
                           </td>
                         </tr>
@@ -313,7 +313,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                 </p>
                 {notifs.length === 0 ? (
                   <div style={{background:'#fff',borderRadius:14,padding:48,textAlign:'center',color:'#9ca3af',boxShadow:'0 2px 8px rgba(0,0,0,.06)'}}>
-                    <div style={{fontSize:40,marginBottom:10}}>✅</div>
+                    <div style={{fontSize:40,marginBottom:10,display:"flex",justifyContent:"center"}}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg></div>
                     <p style={{margin:0,fontWeight:700}}>All clear — no pending actions.</p>
                   </div>
                 ) : (
@@ -338,7 +338,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
               <div className="cho-profile-card">
                 <div className="cho-profile-avatar">{(user.username||'C')[0].toUpperCase()}</div>
                 <h2 className="cho-profile-name">{user.username}</h2>
-                <span className="cho-profile-role">🏥 City Health Office</span>
+                <span className="cho-profile-role" style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>City Health Office</span>
                 <div>
                   {[
                     ['Username', user.username],

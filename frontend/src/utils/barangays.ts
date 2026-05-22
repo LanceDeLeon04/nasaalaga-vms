@@ -12,7 +12,7 @@ export async function fetchCalacaBarangays(): Promise<string[]> {
     if (response.ok) {
       const data = await response.json();
       const barangays = data.map((brgy: any) => brgy.name).sort();
-      console.log('✅ Successfully fetched barangays from PSGC API:', barangays.length);
+      console.log('Successfully fetched barangays from PSGC API:', barangays.length);
       return barangays;
     }
   } catch (error) {
@@ -26,7 +26,7 @@ export async function fetchCalacaBarangays(): Promise<string[]> {
     if (response.ok) {
       const data = await response.json();
       const barangays = data.map((brgy: any) => brgy.name).sort();
-      console.log('✅ Successfully fetched barangays from alternative API:', barangays.length);
+      console.log('Successfully fetched barangays from alternative API:', barangays.length);
       return barangays;
     }
   } catch (error) {

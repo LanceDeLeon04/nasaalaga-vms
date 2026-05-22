@@ -203,7 +203,7 @@ function buildPlanHTML(d: DeploymentSuggestion): string {
 
 <div class="header">
   <div class="logo-block">
-    <div class="logo-circle">🚛</div>
+    <div class="logo-circle"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
     <div class="org">
       <h1>NASaAlaga — Resource Deployment Plan</h1>
       <p>City Government of Calaca, Batangas · Office of the City Veterinarian</p>
@@ -216,7 +216,7 @@ function buildPlanHTML(d: DeploymentSuggestion): string {
 </div>
 
 <div class="title-band">
-  <h2>📍 ${d.barangay} — Deployment Plan</h2>
+  <h2>${d.barangay} — Deployment Plan</h2>
   <p style="color:rgba(255,255,255,0.8);font-size:13px;">${d.reason}</p>
   <div class="meta-row">
     <span class="meta-pill">Priority #${d.priority}</span>
@@ -231,7 +231,7 @@ ${
   d.status === "deployed" || d.status === "completed"
     ? `
 <div class="deployment-info">
-  ✅ <strong>Team Deployed on ${d.deployedAt}</strong>
+  <strong>Team Deployed on ${d.deployedAt}</strong>
   ${d.deployedStaff?.length ? `<br>Assigned Personnel: ${d.deployedStaff.join(", ")}` : ""}
 </div>`
     : ""
@@ -255,21 +255,21 @@ ${
 <div class="section">
   <div class="section-title">Resource Requirements</div>
   <div class="resource-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px;">
-    <div class="resource-box vax"><div class="rlabel">💉 Vaccines</div><div class="rvalue">${d.medicineEstimate.vaccines}</div><div style="font-size:10px;color:#15803d">doses</div></div>
-    <div class="resource-box abx"><div class="rlabel">💊 Antibiotics</div><div class="rvalue">${d.medicineEstimate.antibiotics}</div><div style="font-size:10px;color:#1d4ed8">doses</div></div>
-    <div class="resource-box vit"><div class="rlabel">🌿 Vitamins</div><div class="rvalue">${d.medicineEstimate.vitamins}</div><div style="font-size:10px;color:#7e22ce">doses</div></div>
+    <div class="resource-box vax"><div class="rlabel">Vaccines</div><div class="rvalue">${d.medicineEstimate.vaccines}</div><div style="font-size:10px;color:#15803d">doses</div></div>
+    <div class="resource-box abx"><div class="rlabel">Antibiotics</div><div class="rvalue">${d.medicineEstimate.antibiotics}</div><div style="font-size:10px;color:#1d4ed8">doses</div></div>
+    <div class="resource-box vit"><div class="rlabel">Vitamins</div><div class="rvalue">${d.medicineEstimate.vitamins}</div><div style="font-size:10px;color:#7e22ce">doses</div></div>
   </div>
   <div class="resource-grid" style="grid-template-columns:repeat(3,1fr);">
-    <div class="resource-box staff"><div class="rlabel">👥 Personnel</div><div class="rvalue">${d.staffNeeded}</div><div style="font-size:10px;color:#c2410c">staff members</div></div>
+    <div class="resource-box staff"><div class="rlabel">Personnel</div><div class="rvalue">${d.staffNeeded}</div><div style="font-size:10px;color:#c2410c">staff members</div></div>
     <div class="resource-box dur"><div class="rlabel">⏱ Duration</div><div class="rvalue" style="font-size:15px;">${d.estimatedDuration}</div></div>
-    <div class="resource-box animals"><div class="rlabel">🐾 Animals</div><div class="rvalue">${d.targetAnimals.toLocaleString()}</div><div style="font-size:10px;color:#b91c1c">to be serviced</div></div>
+    <div class="resource-box animals"><div class="rlabel">Animals</div><div class="rvalue">${d.targetAnimals.toLocaleString()}</div><div style="font-size:10px;color:#b91c1c">to be serviced</div></div>
   </div>
 </div>
 
 <div class="section">
   <div class="section-title">Equipment &amp; Supplies Checklist</div>
   <div class="equip-grid">
-    ${d.equipmentNeeded.map((e) => `<span class="equip-tag">☐ ${e}</span>`).join("")}
+    ${d.equipmentNeeded.map((e) => `<span class="equip-tag">${e}</span>`).join("")}
   </div>
 </div>
 
@@ -480,11 +480,11 @@ function DeployModal({
               Deployment Summary
             </p>
             <p className="text-amber-700">
-              📍 {d.barangay} &nbsp;·&nbsp; 🐾{" "}
+              {d.barangay} &nbsp;·&nbsp;{" "}
               {d.targetAnimals.toLocaleString()} animals
             </p>
             <p className="text-amber-700">
-              ⏱ {d.estimatedDuration} &nbsp;·&nbsp; 👥 Minimum{" "}
+              {d.estimatedDuration} &nbsp;·&nbsp; Min.{" "}
               {d.staffNeeded} staff needed
             </p>
           </div>
@@ -925,7 +925,7 @@ export function ResourceDeployment() {
       ),
     );
     pushNotif(
-      `🚛 Team Deployed to ${d.barangay}`,
+      `Team Deployed to ${d.barangay}`,
       `${staff.length} personnel assigned. Expected duration: ${d.estimatedDuration}. ${staff.slice(0, 2).join(", ")}${staff.length > 2 ? ` +${staff.length - 2} more` : ""} notified.`,
       "deploy",
     );
@@ -938,7 +938,7 @@ export function ResourceDeployment() {
       ),
     );
     pushNotif(
-      `✅ Mission Complete — ${d.barangay}`,
+      `Mission Complete — ${d.barangay}`,
       `Deployment ${(d.id ?? '').toUpperCase()} has been marked as completed.`,
       "complete",
     );
@@ -952,7 +952,7 @@ export function ResourceDeployment() {
       p.map((x) => (x.id === updated.id ? updated : x)),
     );
     pushNotif(
-      `📝 Plan Updated — ${updated.barangay}`,
+      `Plan Updated — ${updated.barangay}`,
       `Deployment plan ${(updated.id ?? '').toUpperCase()} has been modified and saved.`,
       "info",
     );
@@ -961,7 +961,7 @@ export function ResourceDeployment() {
   const handleGeneratePlan = (d: DeploymentSuggestion) => {
     downloadPlan(d);
     pushNotif(
-      `📥 Plan Downloaded`,
+      `Plan Downloaded`,
       `Deployment plan for ${d.barangay} saved as HTML file.`,
       "plan",
     );
@@ -991,7 +991,7 @@ export function ResourceDeployment() {
       );
     }
     pushNotif(
-      `🚨 ${highs.length} High Priority Teams Deployed`,
+      `${highs.length} High Priority Teams Deployed`,
       `All Immediate deployments have been scheduled and staff notified.`,
       "deploy",
     );
@@ -1260,15 +1260,15 @@ export function ResourceDeployment() {
                     {/* Medicine row */}
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-lg">
-                        💉 {d.medicineEstimate.vaccines}{" "}
+                        {d.medicineEstimate.vaccines}{" "}Vaccines{" "}
                         vaccines
                       </span>
                       <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-lg">
-                        💊 {d.medicineEstimate.antibiotics}{" "}
+                        {d.medicineEstimate.antibiotics}{" "}Antibiotics{" "}
                         antibiotics
                       </span>
                       <span className="px-2.5 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg">
-                        🌿 {d.medicineEstimate.vitamins}{" "}
+                        {d.medicineEstimate.vitamins}{" "}
                         vitamins
                       </span>
                     </div>

@@ -203,7 +203,7 @@ export function PreRegisteredPets() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Validation failed');
-      toast.success(`✅ ${selected.pet_name} validated and registered! Tag: ${petTagId}`);
+      toast.success(`${selected.pet_name} validated and registered! Tag: ${petTagId}`);
       setValDone(true);
       fetchList();
     } catch (err: any) {
@@ -251,7 +251,7 @@ export function PreRegisteredPets() {
         {/* top bar */}
         <div className="prl-topbar">
           <div>
-            <h1 className="prl-title">📋 Pre-Registered Pets</h1>
+            <h1 className="prl-title">Pre-Registered Pets</h1>
             <p className="prl-subtitle">Review and validate pet pre-registrations submitted by owners</p>
           </div>
         </div>
@@ -263,11 +263,11 @@ export function PreRegisteredPets() {
             <div><div className="prl-stat-val" style={{ color: '#f59e0b' }}>{pending}</div><div className="prl-stat-lbl">Pending</div></div>
           </div>
           <div className="prl-stat">
-            <div className="prl-stat-ico" style={{ background: '#f0fdf4' }}>✅</div>
+            <div className="prl-stat-ico" style={{ background: '#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center' }}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div>
             <div><div className="prl-stat-val" style={{ color: '#16a34a' }}>{approved}</div><div className="prl-stat-lbl">Approved</div></div>
           </div>
           <div className="prl-stat">
-            <div className="prl-stat-ico" style={{ background: '#fee2e2' }}>❌</div>
+            <div className="prl-stat-ico" style={{ background: '#fee2e2', display:'flex', alignItems:'center', justifyContent:'center' }}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
             <div><div className="prl-stat-val" style={{ color: '#dc2626' }}>{denied}</div><div className="prl-stat-lbl">Denied</div></div>
           </div>
         </div>
@@ -290,7 +290,7 @@ export function PreRegisteredPets() {
           {loading ? (
             <div className="prl-empty"><div className="prl-empty-ico">⏳</div><p>Loading…</p></div>
           ) : filtered.length === 0 ? (
-            <div className="prl-empty"><div className="prl-empty-ico">📭</div><p>No pre-registrations found.</p></div>
+            <div className="prl-empty"><div className="prl-empty-ico"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>No pre-registrations found.</p></div>
           ) : (
             <table className="prl-table">
               <thead>
@@ -321,7 +321,7 @@ export function PreRegisteredPets() {
                       {p.expires_at ? formatDate(p.expires_at) : '—'}
                       {isExpired(p) && <div style={{ fontSize: 11, color: '#dc2626' }}>EXPIRED</div>}
                     </td>
-                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Pending' ? '⏳' : p.status === 'Approved' ? '✅' : '❌'} {p.status}</span></td>
+                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Pending' ? p.status : p.status === 'Approved' ? '✅' : '❌'} {p.status}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="prl-btn prl-btn-blue" onClick={() => { setSelected(p); setShowDetails(true); }}>View</button>
@@ -343,7 +343,7 @@ export function PreRegisteredPets() {
         <div className="modal-overlay" onClick={() => setShowDetails(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">🐾 {selected.pet_name} — Details</h3>
+              <h3 className="modal-title">{selected.pet_name} — Details</h3>
               <button className="modal-close" onClick={() => setShowDetails(false)}>×</button>
             </div>
             <div className="modal-body">
@@ -384,7 +384,7 @@ export function PreRegisteredPets() {
               {selected.status === 'Pending' && (
                 <div style={{ marginTop: 16 }}>
                   <button className="modal-btn-primary" style={{ width: '100%' }} onClick={() => { setShowDetails(false); openValidate(selected); }}>
-                    ✅ Proceed to Validate
+                    Proceed to Validate
                   </button>
                 </div>
               )}
@@ -399,7 +399,7 @@ export function PreRegisteredPets() {
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">
-                {denyMode ? '❌ Deny Pre-Registration' : `✅ Validate: ${selected.pet_name}`}
+                {denyMode ? 'Deny Pre-Registration' : `Validate: ${selected.pet_name}`}
               </h3>
               <button className="modal-close" onClick={() => !submitting && setShowValidate(false)}>×</button>
             </div>
@@ -431,7 +431,7 @@ export function PreRegisteredPets() {
                   <div className="modal-actions">
                     <button className="modal-btn-secondary" onClick={() => setDenyMode(false)}>← Cancel</button>
                     <button className="modal-btn-deny" onClick={handleDeny} disabled={submitting}>
-                      {submitting ? <><span className="modal-spinner" />Denying…</> : '❌ Confirm Denial'}
+                      {submitting ? <><span className="modal-spinner" />Denying…</> : 'Confirm Denial'}
                     </button>
                   </div>
                 </>
@@ -472,10 +472,10 @@ export function PreRegisteredPets() {
                         <div className="modal-detail-val">{selected.address}</div>
                       </div>
                       {isExpired(selected) && (
-                        <div className="modal-alert warn">⚠️ This pre-registration has <strong>expired</strong> (14-day window passed). You may still validate, but advise the owner accordingly.</div>
+                        <div className="modal-alert warn">This pre-registration has <strong>expired</strong> (14-day window passed). You may still validate, but advise the owner accordingly.</div>
                       )}
                       <div className="modal-actions">
-                        <button className="modal-btn-deny" onClick={() => setDenyMode(true)}>❌ Deny</button>
+                        <button className="modal-btn-deny" onClick={() => setDenyMode(true)}>Deny</button>
                         <button className="modal-btn-primary" onClick={() => setValStep('photo')}>Next: Take Photo →</button>
                       </div>
                     </>
@@ -485,14 +485,14 @@ export function PreRegisteredPets() {
                   {valStep === 'photo' && (
                     <>
                       <p className="modal-section">Take / Upload Pet Photo</p>
-                      <div className="modal-alert info">📸 Please take a current photo of the pet during the CVO visit. This will be the official photo on record.</div>
+                      <div className="modal-alert info">Please take a current photo of the pet during the CVO visit. This will be the official photo on record.</div>
                       <div className="modal-photo-upload" onClick={() => document.getElementById('val-photo-input')?.click()}>
                         <input id="val-photo-input" type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
                         {valPhoto ? (
                           <img src={valPhoto} className="modal-photo-preview" alt="Pet" />
                         ) : (
                           <div style={{ color: '#9ca3af' }}>
-                            <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
+                            <div style={{ fontSize: 36, marginBottom: 8, display:"flex", justifyContent:"center" }}><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
                             <p style={{ margin: 0, fontSize: 13 }}>Click to capture or upload photo</p>
                           </div>
                         )}
@@ -514,7 +514,7 @@ export function PreRegisteredPets() {
                   {valStep === 'tag' && (
                     <>
                       <p className="modal-section">Assign Pet Tag ID</p>
-                      <div className="modal-alert info">📌 Enter the official Pet Tag ID from the physical tag that will be attached to the animal.</div>
+                      <div className="modal-alert info">Enter the official Pet Tag ID from the physical tag that will be attached to the animal.</div>
                       <div className="modal-field">
                         <label className="modal-label">Pet Tag ID *</label>
                         <input className="modal-input" placeholder="e.g. TAG-2024-00123" value={petTagId} onChange={e => setPetTagId(e.target.value)} />
@@ -538,7 +538,7 @@ export function PreRegisteredPets() {
                           ['Species', selected.species],
                           ['Owner', selected.owner_name],
                           ['Pet Tag ID', petTagId],
-                          ['Photo', valPhoto ? '✅ Photo uploaded' : '(Using submitted photo)'],
+                          ['Photo', valPhoto ? 'Photo uploaded' : '(Using submitted photo)'],
                         ].map(([k,v]) => (
                           <div key={k} className="modal-confirm-row">
                             <span className="modal-confirm-key">{k}</span>

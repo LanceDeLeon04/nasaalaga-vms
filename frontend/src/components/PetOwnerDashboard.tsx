@@ -34,6 +34,7 @@ interface Pet {
   nextVaccinationDate?: string;
   status: 'Active' | 'Lost' | 'Found';
   photo?: string;
+  petTagId?: string;
 }
 
 interface LostFoundReport {
@@ -132,7 +133,28 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         }
 
         const data = await response.json();
-        setPets(data.pets || []);
+        const mappedPets = (data.pets || []).map((p: any) => ({
+          id: p.id,
+          ownerId: p.owner_id ?? p.ownerId ?? '',
+          petName: p.pet_name ?? p.petName ?? '',
+          species: p.species ?? '',
+          breed: p.breed ?? '',
+          age: p.age ?? '',
+          color: p.color ?? '',
+          ownerName: p.owner_name ?? p.ownerName ?? '',
+          contactNumber: p.contact_number ?? p.contactNumber ?? '',
+          barangay: p.barangay ?? '',
+          address: p.address ?? '',
+          microchipId: p.microchip_id ?? p.microchipId ?? undefined,
+          registrationDate: p.registration_date ?? p.registrationDate ?? '',
+          vaccinationStatus: p.vaccination_status ?? p.vaccinationStatus ?? 'Not Vaccinated',
+          lastVaccinationDate: p.last_vaccination_date ?? p.lastVaccinationDate ?? undefined,
+          nextVaccinationDate: p.next_vaccination_date ?? p.nextVaccinationDate ?? undefined,
+          status: p.status ?? 'Active',
+          photo: p.photo ?? undefined,
+          petTagId: p.pet_tag_id ?? p.petTagId ?? undefined,
+        }));
+        setPets(mappedPets);
       } catch (error) {
         console.error('Error fetching pets:', error);
         toast.error('Failed to load your pets');
@@ -499,6 +521,12 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800">{pet.petName}</h3>
                     <p className="text-sm text-gray-500">{pet.id}</p>
+                    {pet.petTagId && (() => {
+                      const prefix = pet.petTagId.split('-')[0];
+                      const colorMap: Record<string,string> = {BLU:'#2B5EA6',PRP:'#8B5CF6',RED:'#E85D3B',GRY:'#6B7280'};
+                      const bg = colorMap[prefix] || '#6B7280';
+                      return <span style={{display:'inline-block',marginTop:2,padding:'2px 8px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:bg,letterSpacing:'0.04em'}}>{pet.petTagId}</span>;
+                    })()}
                   </div>
                   <PawPrint className="w-6 h-6 text-gray-400" />
                 </div>
@@ -554,7 +582,8 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                     }}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-amber-500 text-amber-600 rounded-md hover:bg-amber-500 hover:text-white transition-colors text-sm"
                   >
-                    💳 Vax Card
+                    <Syringe className="w-4 h-4" />
+                    Vax Card
                   </button>
                 </div>
               </div>

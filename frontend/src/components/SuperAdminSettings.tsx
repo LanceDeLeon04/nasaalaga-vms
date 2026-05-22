@@ -43,7 +43,7 @@ function OtpModal({ onConfirm, onCancel, userEmail }: { onConfirm: () => void; o
           {step === 'send' ? (
             <>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
-                <p className="text-amber-800 text-sm font-semibold">⚠️ This will permanently delete records</p>
+                <p className="text-amber-800 text-sm font-semibold">This will permanently delete records</p>
                 <p className="text-amber-700 text-sm mt-1">An OTP will be sent to your registered personal email.</p>
               </div>
               <p className="text-gray-600 text-sm mb-5">OTP will be sent to: <strong>{userEmail}</strong></p>
@@ -130,7 +130,7 @@ export function SuperAdminSettings({ user }: Props) {
     setShowOtp(false); setClearing(true);
     try {
       await api.clearRecords(clearType);
-      setClearSuccess(`✅ ${clearType === 'all' ? 'All animal' : clearType} records cleared.`);
+      setClearSuccess(`${clearType === 'all' ? 'All animal' : clearType} records cleared.`);
       setTimeout(() => setClearSuccess(''), 6000);
     } catch(e: any) { alert('Failed: ' + e.message); }
     setClearing(false); setClearType(null);
@@ -138,14 +138,14 @@ export function SuperAdminSettings({ user }: Props) {
 
   const saveThresholds = async () => {
     setSaving(true);
-    try { await api.updateThresholds(thresholds); alert('✅ Thresholds saved!'); }
+    try { await api.updateThresholds(thresholds); alert('Thresholds saved!'); }
     catch(e: any) { alert('Error: ' + e.message); }
     setSaving(false);
   };
 
   const saveSettings = async () => {
     setSaving(true);
-    try { await api.updateAdminSettings(settings); alert('✅ Settings saved!'); }
+    try { await api.updateAdminSettings(settings); alert('Settings saved!'); }
     catch(e: any) { alert('Error: ' + e.message); }
     setSaving(false);
   };
@@ -228,7 +228,7 @@ export function SuperAdminSettings({ user }: Props) {
                     <Power className={`w-10 h-10 ${maintenance ? 'text-amber-600' : 'text-green-600'}`} />
                   </div>
                   <h3 className={`text-2xl font-black mb-2 ${maintenance ? 'text-amber-700' : 'text-green-700'}`}>
-                    {maintenance ? '🔒 System Under Maintenance' : '✅ System Online'}
+                    {maintenance ? 'System Under Maintenance' : 'System Online'}
                   </h3>
                   <p className={`text-sm mb-6 max-w-md mx-auto ${maintenance ? 'text-amber-600' : 'text-green-600'}`}>
                     {maintenance
@@ -239,16 +239,16 @@ export function SuperAdminSettings({ user }: Props) {
                     className={`px-8 py-3 rounded-2xl font-bold text-white text-sm shadow-lg disabled:opacity-60 transition-all ${maintenance ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
                     {maintLoading
                       ? <span className="flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> Updating...</span>
-                      : maintenance ? '✅ Restore System Access' : '🔒 Enable Maintenance Mode'}
+                      : maintenance ? 'Restore System Access' : 'Enable Maintenance Mode'}
                   </button>
                 </div>
                 <div className="mt-6 bg-gray-50 rounded-xl p-5 space-y-2">
                   <h4 className="font-bold text-gray-700 text-sm mb-3">What happens in Maintenance Mode:</h4>
                   {[
-                    ['🔒', 'Admin, BAHW, and pet owners see a maintenance page and cannot log in'],
-                    ['👑', 'SuperAdmins can still log in with full access to all features'],
-                    ['⚡', 'Changes take effect immediately — no restart needed'],
-                    ['📢', 'A professional animated maintenance UI is shown to blocked users'],
+                    ['Lock', 'Admin, BAHW, and pet owners see a maintenance page and cannot log in'],
+                    ['Crown', 'SuperAdmins can still log in with full access to all features'],
+                    ['Flash', 'Changes take effect immediately — no restart needed'],
+                    ['Info', 'A professional animated maintenance UI is shown to blocked users'],
                   ].map(([icon, text], i) => (
                     <div key={i} className="flex items-start gap-3 text-sm text-gray-600">
                       <span className="text-lg">{icon}</span><span>{text}</span>
@@ -273,13 +273,13 @@ export function SuperAdminSettings({ user }: Props) {
                   </div>
                 )}
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <p className="text-red-800 text-sm font-bold">⚠️ Danger Zone — these actions are irreversible</p>
+                  <p className="text-red-800 text-sm font-bold">Danger Zone — these actions are irreversible</p>
                   <p className="text-red-600 text-xs mt-1">OTP is sent to the personal email on file (not nexgov email).</p>
                 </div>
                 {([
-                  { type: 'pets' as const, icon: '🐾', label: 'Clear Pet Records', desc: 'Deletes all pet registrations, pre-registrations, and lost/found reports.', color: 'orange' },
-                  { type: 'livestock' as const, icon: '🐄', label: 'Clear Livestock Records', desc: 'Deletes all livestock registrations.', color: 'orange' },
-                  { type: 'all' as const, icon: '🗑️', label: 'Clear ALL Animal Records', desc: 'Deletes ALL pets and livestock. Full animal database reset. Cannot be undone.', color: 'red' },
+                  { type: 'pets' as const, icon: 'pets', label: 'Clear Pet Records', desc: 'Deletes all pet registrations, pre-registrations, and lost/found reports.', color: 'orange' },
+                  { type: 'livestock' as const, icon: 'livestock', label: 'Clear Livestock Records', desc: 'Deletes all livestock registrations.', color: 'orange' },
+                  { type: 'all' as const, icon: 'trash', label: 'Clear ALL Animal Records', desc: 'Deletes ALL pets and livestock. Full animal database reset. Cannot be undone.', color: 'red' },
                 ]).map(({ type, icon, label, desc, color }) => (
                   <div key={type} className={`border-2 rounded-xl p-5 flex items-center justify-between gap-4 ${color === 'red' ? 'border-red-200 bg-red-50/50' : 'border-orange-200 bg-orange-50/50'}`}>
                     <div className="flex items-start gap-3">

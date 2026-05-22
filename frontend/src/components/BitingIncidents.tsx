@@ -223,7 +223,7 @@ export function BitingIncidents({ userRole }: Props) {
         {/* header */}
         <div className="bi-header">
           <div>
-            <h1 className="bi-title">🦷 Biting Incident Reports</h1>
+            <h1 className="bi-title">Biting Incident Reports</h1>
             <p className="bi-sub">Track animal biting cases, 14-day observation windows, and rabies status</p>
           </div>
           {canEdit && (
@@ -237,7 +237,7 @@ export function BitingIncidents({ userRole }: Props) {
             <div className="bi-alert-dot" />
             <div>
               <p style={{margin:'0 0 4px',fontWeight:800,color:'#991b1b',fontSize:14}}>
-                ⚠️ {overdueObs.length} Observation Period Ended — Update Required!
+                {overdueObs.length} Observation Period Ended — Update Required!
               </p>
               <p style={{margin:0,color:'#991b1b',fontSize:13}}>
                 The following pets have completed their 14-day observation but no update has been recorded:&nbsp;
@@ -251,7 +251,7 @@ export function BitingIncidents({ userRole }: Props) {
             <div className="bi-alert-dot" style={{background:'#f59e0b'}} />
             <div>
               <p style={{margin:'0 0 4px',fontWeight:800,color:'#92400e',fontSize:14}}>
-                🔍 {observing.length} Pet(s) Under 14-Day Observation
+                {observing.length} Pet(s) Under 14-Day Observation
               </p>
               {observing.map(i => (
                 <p key={i.id} style={{margin:'2px 0',color:'#92400e',fontSize:13}}>
@@ -284,7 +284,7 @@ export function BitingIncidents({ userRole }: Props) {
           {loading ? (
             <div className="bi-empty"><div className="bi-spinner"/><p>Loading incidents…</p></div>
           ) : filtered.length === 0 ? (
-            <div className="bi-empty"><div style={{fontSize:40,marginBottom:10}}>🦷</div><p>No biting incidents found.</p></div>
+            <div className="bi-empty"><div style={{fontSize:40,marginBottom:10}}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M9 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4"/><path d="M17 2l5 5-10 10H7v-5z"/></svg></div><p>No biting incidents found.</p></div>
           ) : (
             <table className="bi-table">
               <thead>
@@ -318,7 +318,7 @@ export function BitingIncidents({ userRole }: Props) {
                       <td>
                         {inc.observation_end ? (
                           <span className={`bi-badge ${isOverdue?'yes':dl!==null&&dl>=0?'obs':'no'}`}>
-                            {isOverdue ? '⚠️ Overdue' : dl!==null&&dl>=0 ? `🔍 ${dl}d left` : '✅ Done'}
+                            {isOverdue ? 'Overdue' : dl!==null&&dl>=0 ? `${dl}d left` : 'Done'}
                           </span>
                         ) : '—'}
                       </td>
@@ -343,7 +343,7 @@ export function BitingIncidents({ userRole }: Props) {
         <div className="bi-overlay" onClick={()=>!saving&&setShowModal(false)}>
           <div className="bi-modal" onClick={e=>e.stopPropagation()}>
             <div className="bi-modal-hd">
-              <h3 className="bi-modal-title">{editing ? '✏️ Edit Incident Report' : '🦷 Report Biting Incident'}</h3>
+              <h3 className="bi-modal-title">{editing ? 'Edit Incident Report' : 'Report Biting Incident'}</h3>
               <button className="bi-modal-close" onClick={()=>!saving&&setShowModal(false)}>×</button>
             </div>
             <div className="bi-modal-bd">
@@ -351,7 +351,7 @@ export function BitingIncidents({ userRole }: Props) {
               {/* Observation update banner when editing overdue */}
               {editing && editing.observation_end && daysLeft(editing.observation_end) !== null && daysLeft(editing.observation_end)! < 0 && !editing.observation_update && (
                 <div className="bi-obs-box">
-                  ⚠️ <strong>14-Day Observation Period Ended</strong> — Please provide an observation update below.
+                  <strong>14-Day Observation Period Ended</strong> — Please provide an observation update below.
                   The pet has been flagged as <em>not to be vaccinated this year</em>.
                 </div>
               )}
@@ -388,11 +388,11 @@ export function BitingIncidents({ userRole }: Props) {
               <div className="bi-checkbox-row">
                 <label>
                   <input type="checkbox" checked={form.confirmedRabies} onChange={e=>setForm(p=>({...p,confirmedRabies:e.target.checked}))} />
-                  ⚠️ Confirmed Rabies
+                  Confirmed Rabies
                 </label>
                 <label style={{marginLeft:20}}>
                   <input type="checkbox" checked={form.vaccinated} onChange={e=>setForm(p=>({...p,vaccinated:e.target.checked}))} />
-                  ✅ Pet was Vaccinated
+                  Pet was Vaccinated
                 </label>
               </div>
 
@@ -422,7 +422,7 @@ export function BitingIncidents({ userRole }: Props) {
 
               {!editing && form.incidentDate && (
                 <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:10,padding:'10px 14px',fontSize:12.5,color:'#92400e',marginBottom:12}}>
-                  🔍 <strong>14-Day Observation</strong> will be set from <strong>{new Date(form.incidentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong> to&nbsp;
+                  <strong>14-Day Observation</strong> will be set from <strong>{new Date(form.incidentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong> to&nbsp;
                   <strong>{new Date(new Date(form.incidentDate).getTime()+14*86400000).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong>.
                   The City Vet will be notified. The pet's vaccination status will be flagged this year.
                 </div>

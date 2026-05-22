@@ -153,9 +153,9 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
       <div className="vax-overlay no-print" onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="vax-modal">
           <div className="vax-topbar no-print">
-            <h3>💉 Anti-Rabies Vaccination Card — {pet.pet_name}</h3>
+            <h3 style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 2v2m4-2v2M5 10l14 4-3 3-5-5-3 3-3-5z"/><path d="m18 14-3 3"/></svg>Anti-Rabies Vaccination Card — {pet.pet_name}</h3>
             <div className="vax-actions">
-              <button className="btn-print" onClick={handlePrint}>🖨️ Print Card</button>
+              <button className="btn-print" onClick={handlePrint} style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print Card</button>
               <button className="btn-close"  onClick={onClose}>✕ Close</button>
             </div>
           </div>
@@ -197,7 +197,7 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
                 <div className="card-right">
                   <div className="city-header">
                     <div className="city-logo-row">
-                      <div className="city-logo">🏛️<br/>CALACA</div>
+                      <div className="city-logo"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg><br/>CALACA</div>
                     </div>
                     <div className="city-name">CITY OF CALACA</div>
                     <div className="city-office">OFFICE OF THE CITY VETERINARIAN</div>

@@ -281,7 +281,7 @@ export function PetPreRegistration({ ownerId: propOwnerId, ownerEmail: propOwner
                 </Field>
 
                 <div className="pr-alert warn" style={{ marginTop: 16 }}>
-                  <strong>⚠️ Reminder:</strong> After submitting, you must bring your pet to the <strong>Calaca City Veterinary Office (CVO)</strong> within <strong>14 days</strong> for physical validation. Your pre-registration will expire after this period.
+                  <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{display:"inline",marginRight:4}}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Reminder:</strong> After submitting, you must bring your pet to the <strong>Calaca City Veterinary Office (CVO)</strong> within <strong>14 days</strong> for physical validation. Your pre-registration will expire after this period.
                 </div>
 
                 <div className="pr-actions">
@@ -310,7 +310,7 @@ export function PetPreRegistration({ ownerId: propOwnerId, ownerEmail: propOwner
                 </div>
 
                 <div className="pr-alert info">
-                  <strong>📧 Confirmation Email</strong><br />
+                  <strong>Confirmation Email</strong><br />
                   {form.ownerEmail
                     ? <>A confirmation with your Pre-Registration ID will be sent to <strong>{form.ownerEmail}</strong>.</>
                     : <>No email provided — you may add one. Your Pre-Registration ID will be shown after submission.</>
@@ -318,14 +318,14 @@ export function PetPreRegistration({ ownerId: propOwnerId, ownerEmail: propOwner
                 </div>
 
                 <div className="pr-alert warn">
-                  <strong>⚠️ 14-Day Validation Window</strong><br />
+                  <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{display:"inline",marginRight:4}}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>14-Day Validation Window</strong><br />
                   Bring your pet to the CVO within <strong>14 days</strong>. Failure to do so will expire this pre-registration.
                 </div>
 
                 <div className="pr-actions">
                   <button className="pr-btn-secondary" onClick={() => setStep('details')}><IconArrow className="" /> Edit Details</button>
                   <button className="pr-btn-primary" onClick={handleSubmit} disabled={loading}>
-                    {loading ? <><span className="pr-spinner" />Submitting…</> : '✅ Confirm & Submit'}
+                    {loading ? <><span className="pr-spinner" />Submitting…</> : <><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{display:"inline",marginRight:4}}><polyline points="20 6 9 17 4 12"/></svg>Confirm &amp; Submit</>}
                   </button>
                 </div>
               </>
@@ -355,17 +355,17 @@ export function PetPreRegistration({ ownerId: propOwnerId, ownerEmail: propOwner
 
                 {result.emailSent && (
                   <div className="pr-alert success">
-                    <strong>📧 Email Sent!</strong> A confirmation email with your Pre-Registration ID has been sent to <strong>{form.ownerEmail}</strong>.
+                    <strong>Email Sent!</strong> A confirmation email with your Pre-Registration ID has been sent to <strong>{form.ownerEmail}</strong>.
                   </div>
                 )}
                 {!result.emailSent && form.ownerEmail && (
                   <div className="pr-alert warn">
-                    <strong>⚠️ Email not delivered</strong> — please save your Pre-Registration ID manually.
+                    <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{display:"inline",marginRight:4}}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Email not delivered</strong> — please save your Pre-Registration ID manually.
                   </div>
                 )}
 
                 <div className="pr-alert warn" style={{ textAlign: 'left' }}>
-                  <strong>📋 Next Steps:</strong>
+                  <strong style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{display:"inline",marginRight:4}}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Next Steps:</strong>
                   <ol style={{ margin: '8px 0 0 0', paddingLeft: 20, lineHeight: 2 }}>
                     <li>Bring your pet to the <strong>Calaca City Veterinary Office (CVO)</strong>.</li>
                     <li>Provide your Pre-Registration ID: <strong>{result.preRegNumber}</strong></li>

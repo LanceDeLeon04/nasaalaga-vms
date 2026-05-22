@@ -215,7 +215,7 @@ function printReport(iv: Intervention) {
 
   <div class="header">
     <div class="logo-block">
-      <div class="logo-circle">🐾</div>
+      <div class="logo-circle"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg></div>
       <div class="org">
         <h1>NASaAlaga — Veterinary Management System</h1>
         <p>City Government of Calaca, Batangas · Office of the City Veterinarian</p>
@@ -230,8 +230,8 @@ function printReport(iv: Intervention) {
   <div class="title-band">
     <h2>${iv.issue}</h2>
     <div class="meta-row">
-      <span class="meta-pill">📍 ${iv.barangay}</span>
-      <span class="meta-pill">🐾 ${iv.affectedAnimals.toLocaleString()} animals affected</span>
+      <span class="meta-pill">${iv.barangay}</span>
+      <span class="meta-pill">${iv.affectedAnimals.toLocaleString()} animals affected</span>
       <span class="meta-pill">Priority #${iv.priority}</span>
       <span class="meta-pill">${typeMeta.label}</span>
     </div>
@@ -274,11 +274,11 @@ function printReport(iv: Intervention) {
     <div class="section-title">Resource Requirements</div>
     <div class="resource-grid">
       <div class="resource-box staff">
-        <div class="rlabel">👥 Personnel Required</div>
+        <div class="rlabel">Personnel Required</div>
         <div class="rvalue">${iv.estimatedStaff} staff members</div>
       </div>
       <div class="resource-box meds">
-        <div class="rlabel">💊 Medicine &amp; Supplies</div>
+        <div class="rlabel">Medicine &amp; Supplies</div>
         <div class="rvalue" style="font-size:12px;line-height:1.5">${iv.estimatedMedicines}</div>
       </div>
     </div>

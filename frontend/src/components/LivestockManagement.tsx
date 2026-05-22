@@ -63,8 +63,8 @@ const PURPOSES      = ['Meat','Dairy','Draft','Egg','Mixed','Breeding','Pet'];
 const RECORD_TYPES  = ['Vaccination','Checkup','Treatment','Deworming','Dehorning','Castration','Other'];
 
 const TYPE_ICON: Record<string,string> = {
-  Cattle:'🐄', Swine:'🐷', Poultry:'🐔', Goats:'🐐', Carabao:'🦬',
-  Horse:'🐴', Sheep:'🐑', Duck:'🦆', Rabbit:'🐰',
+  Cattle:'C', Swine:'S', Poultry:'P', Goats:'G', Carabao:'C',
+  Horse:'H', Sheep:'Sh', Duck:'D', Rabbit:'R',
 };
 const TYPE_COLOR: Record<string,string> = {
   Cattle:'#2B5EA6', Swine:'#f59e0b', Poultry:'#e68a00', Goats:'#8b5cf6',
@@ -128,7 +128,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-xl">🐄</div>
+            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-xl font-bold text-white">{item.animal_type.charAt(0)}</div>
             <div><p className="font-bold text-white">Register New Livestock</p><p className="text-white/60 text-xs">Fields marked * are required</p></div>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
@@ -252,11 +252,11 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
         {/* Header */}
         <div className="px-6 py-5 flex items-center justify-between shrink-0" style={{background:`linear-gradient(135deg,${hc}cc,${hc})`}}>
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-3xl">{TYPE_ICON[item.animal_type]||'🐄'}</div>
+            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white">{item.animal_type.charAt(0)}</div>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="px-2 py-0.5 bg-white/25 text-white text-xs font-bold rounded-full font-mono">{item.id}</span>
-                {item.tag_number&&<span className="px-2 py-0.5 bg-white/20 text-white text-xs rounded-full">🏷 {item.tag_number}</span>}
+                {item.tag_number&&<span className="px-2 py-0.5 bg-white/20 text-white text-xs rounded-full flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>{item.tag_number}</span>}
               </div>
               <p className="font-black text-white text-xl">{item.animal_type} · {item.breed||'Unspecified'}</p>
               <p className="text-white/80 text-sm">{fmtNum(item.quantity)} head · {item.barangay}</p>
@@ -336,7 +336,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
                       <p className="text-xs text-gray-400">{fmtDate(r.date)}</p>
                     </div>
                     {r.diagnosis&&<p className="text-sm text-gray-700 mb-1"><span className="font-semibold">Dx:</span> {r.diagnosis}</p>}
-                    {r.medicine_used&&<p className="text-sm text-gray-600 mb-1"><span className="font-semibold">💊</span> {r.medicine_used}</p>}
+                    {r.medicine_used&&<p className="text-sm text-gray-600 mb-1"><span className="font-semibold">Medicine:</span> {r.medicine_used}</p>}
                     {r.notes&&<p className="text-xs text-gray-500 italic mt-1">{r.notes}</p>}
                     <div className="flex items-center justify-between mt-2">
                       <p className="text-xs text-gray-400">By: {r.veterinarian||r.created_by}</p>
@@ -493,7 +493,7 @@ export function LivestockManagement() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">🐄 Livestock Management</h2>
+          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>Livestock Management</h2>
           <p className="text-gray-500 text-sm mt-0.5">Calaca CVO · Registration · Health Records · Disease Monitoring</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -547,7 +547,7 @@ export function LivestockManagement() {
 
           {/* KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total Head" value={fmtNum(totals.total||0)} sub="All species combined" icon="🐾" color="text-blue-600" bg="bg-blue-100"/>
+            <StatCard label="Total Head" value={fmtNum(totals.total||0)} sub="All species combined" icon="" color="text-blue-600" bg="bg-blue-100"/>
             <StatCard label="Healthy" value={fmtNum(totals.healthy||0)} sub={totals.total?`${Math.round(((totals.healthy||0)/totals.total)*100)}% of herd`:''} icon={<CheckCircle className="w-5 h-5"/>} color="text-green-600" bg="bg-green-100"/>
             <StatCard label="Sick / Quarantine" value={fmtNum((totals.sick||0)+(totals.quarantine||0))} sub="Needs attention" icon={<AlertTriangle className="w-5 h-5"/>} color="text-red-600" bg="bg-red-100" onClick={()=>{setFHealth('Sick');mt('records');}}/>
             <StatCard label="Vaccinated" value={fmtNum(totals.vaccinated||0)} sub={totals.total?`${Math.round(((totals.vaccinated||0)/totals.total)*100)}% coverage`:''} icon={<Syringe className="w-5 h-5"/>} color="text-purple-600" bg="bg-purple-100"/>
@@ -647,8 +647,8 @@ export function LivestockManagement() {
                 <tbody className="divide-y divide-gray-50">
                   {filteredLivestock.map(l=>(
                     <tr key={l.id} className={`hover:bg-blue-50/30 transition-colors ${l.health_status==='Quarantine'?'bg-amber-50/30':l.health_status==='Sick'?'bg-red-50/20':''}`}>
-                      <td className="py-3 px-3"><p className="text-xs font-bold font-mono text-gray-600">{l.id}</p>{l.tag_number&&<p className="text-xs text-gray-400">🏷 {l.tag_number}</p>}</td>
-                      <td className="py-3 px-3"><div className="flex items-center gap-2"><span className="text-xl">{TYPE_ICON[l.animal_type]||'🐾'}</span><div><p className="font-semibold text-gray-800">{l.animal_type}</p><p className="text-xs text-gray-500">{l.breed||'—'}</p></div></div></td>
+                      <td className="py-3 px-3"><p className="text-xs font-bold font-mono text-gray-600">{l.id}</p>{l.tag_number&&<p className="text-xs text-gray-400">{l.tag_number}</p>}</td>
+                      <td className="py-3 px-3"><div className="flex items-center gap-2"><span className="text-xs font-bold text-gray-500">{l.animal_type.charAt(0)}</span><div><p className="font-semibold text-gray-800">{l.animal_type}</p><p className="text-xs text-gray-500">{l.breed||'—'}</p></div></div></td>
                       <td className="py-3 px-3 font-black text-gray-900 text-base">{fmtNum(l.quantity)}</td>
                       <td className="py-3 px-3"><p className="font-semibold text-gray-800 text-sm">{l.owner_name}</p><p className="text-xs text-gray-500">{l.contact_number||'—'}</p></td>
                       <td className="py-3 px-3 text-sm text-gray-600 whitespace-nowrap">{l.barangay}</td>
@@ -679,7 +679,7 @@ export function LivestockManagement() {
           {livestock.filter(l=>l.last_checkup_date).sort((a,b)=>new Date(b.last_checkup_date!).getTime()-new Date(a.last_checkup_date!).getTime()).map(l=>(
             <div key={l.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-xl hover:shadow-sm transition-all">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{TYPE_ICON[l.animal_type]||'🐄'}</span>
+                <span className="text-2xl">{l.animal_type.charAt(0)}</span>
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">{l.animal_type} · {l.breed||'—'} <span className="font-mono text-gray-400 text-xs">({l.id})</span></p>
                   <p className="text-xs text-gray-500">{l.owner_name} · {l.barangay}</p>
@@ -728,7 +728,7 @@ export function LivestockManagement() {
               <div className={`h-1.5 ${e.status==='Active'?'bg-gradient-to-r from-red-500 to-orange-400':'bg-gradient-to-r from-green-500 to-emerald-400'}`}/>
               <div className="p-5 flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 ${e.status==='Active'?'bg-red-100':'bg-green-100'}`}>{TYPE_ICON[e.animal_type]||'🐾'}</div>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 ${e.status==='Active'?'bg-red-100':'bg-green-100'}`}>{e.animal_type.charAt(0)}</div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${e.status==='Active'?'bg-red-100 text-red-700':'bg-green-100 text-green-700'}`}>{e.status}</span>
@@ -782,7 +782,7 @@ export function LivestockManagement() {
               <tbody className="divide-y divide-gray-50">
                 {mortality.map(m=>(
                   <tr key={m.id} className="hover:bg-red-50/20">
-                    <td className="py-3 px-3 text-sm font-semibold">{TYPE_ICON[m.animal_type]||'🐾'} {m.animal_type}</td>
+                    <td className="py-3 px-3 text-sm font-semibold">{m.animal_type}</td>
                     <td className="py-3 px-3 text-sm text-gray-600">{m.breed||'—'}</td>
                     <td className="py-3 px-3 text-sm text-gray-700">{m.owner_name}</td>
                     <td className="py-3 px-3 text-sm text-gray-600 whitespace-nowrap">{m.barangay}</td>

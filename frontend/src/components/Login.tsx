@@ -13,7 +13,7 @@ import type { UserRole } from "../App";
 
 const SLIDES = [
   {
-    tag: "🐾 Veterinary Digital Platform",
+    tag: "Veterinary Digital Platform",
     tagColor: "#F39C3A",
     headline: "Modern Pet & Animal\nHealthcare Records",
     sub: "Digitally manage vaccination records, consultations, treatment history, animal profiling, and owner information through a centralized veterinary management platform.",
@@ -21,7 +21,7 @@ const SLIDES = [
     bg: "linear-gradient(150deg,#1b2d4a 0%,#2B5EA6 55%,#1a3d72 100%)",
   },
   {
-    tag: "💉 Vaccination Monitoring",
+    tag: "Vaccination Monitoring",
     tagColor: "#60A85C",
     headline: "Track Vaccines,\nSchedules & Alerts",
     sub: "Automated reminders and real-time monitoring for anti-rabies, deworming, vaccination campaigns, and animal health management across the city veterinary office.",
@@ -29,7 +29,7 @@ const SLIDES = [
     bg: "linear-gradient(150deg,#162018 0%,#295b36 55%,#1d3d27 100%)",
   },
   {
-    tag: "🏛️ LGU Veterinary Operations",
+    tag: "LGU Veterinary Operations",
     tagColor: "#E85D3B",
     headline: "Smart City Veterinary\nManagement System",
     sub: "Empowering the City Veterinary Office with analytics, reports, census tracking, treatment monitoring, and secure government-grade digital services.",
@@ -753,7 +753,7 @@ export function Login() {
 
               {/* header */}
               <div className="login-header">
-                <h1 className="login-title">Welcome back 👋</h1>
+                <h1 className="login-title">Welcome back</h1>
                 <p className="login-subtitle">
                   Sign in to continue managing veterinary records, vaccinations, pet monitoring, and LGU animal welfare services through NASaAlaga.
                 </p>
@@ -794,7 +794,7 @@ export function Login() {
                       {showPass ? <IconEyeOff /> : <IconEye />}
                     </button>
                   </div>
-                  {error && <div className="login-error">⚠ {error}</div>}
+                  {error && <div className="login-error" style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>{error}</div>}
                 </div>
 
                 {/* submit */}

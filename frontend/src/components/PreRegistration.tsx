@@ -128,7 +128,7 @@ export function PreRegistration({ currentUserId, onBack }: PreRegistrationProps)
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-amber-900 mb-2">⚠ Important Notice</p>
+                  <p className="font-semibold text-amber-900 mb-2" style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Important Notice</p>
                   <ul className="text-sm text-amber-800 space-y-1">
                     <li>• Your pre-registration must be validated by the City Veterinary Office (CVO).</li>
                     <li>• <strong>Bring your pet to the CVO within 14 days</strong> for in-person validation.</li>

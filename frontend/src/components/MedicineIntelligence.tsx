@@ -216,7 +216,7 @@ function InvestigateModal({
               {med.name}
             </p>
             <p className="text-violet-600 text-xs">
-              📍 {med.barangay} · +{med.percentChange}% above
+              {med.barangay} · +{med.percentChange}% above
               normal
             </p>
           </div>
@@ -522,7 +522,7 @@ export function MedicineIntelligence() {
       ),
     );
     push(
-      "🔍 Investigation Dispatched",
+      "Investigation Dispatched",
       `Field team assigned to ${med.barangay} for ${med.name} anomaly.`,
       "info",
     );
@@ -538,7 +538,7 @@ export function MedicineIntelligence() {
       ),
     );
     push(
-      "✅ Resupply Ordered",
+      "Resupply Ordered",
       `${qty} doses of ${med.name} ordered for ${med.barangay}. ETA: 24–48 hrs.`,
       "success",
     );
@@ -580,7 +580,7 @@ export function MedicineIntelligence() {
     a.download = `Medicine_Intelligence_Report_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     push(
-      "📥 Report Downloaded",
+      "Report Downloaded",
       "Medicine intelligence CSV saved to your downloads.",
       "info",
     );
@@ -588,14 +588,14 @@ export function MedicineIntelligence() {
 
   const handleRefresh = () =>
     push(
-      "🔄 Data Refreshed",
+      "Data Refreshed",
       "Medicine consumption data updated from all barangay sources.",
       "info",
     );
 
   const handleLinkAlert = (med: Medicine) =>
     push(
-      "🔗 Linked to Disease Alert",
+      "Linked to Disease Alert",
       `${med.name} usage spike linked to disease alert system for ${med.barangay}.`,
       "warning",
     );
@@ -810,7 +810,7 @@ export function MedicineIntelligence() {
                               >
                                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                                 <p className="text-xs text-amber-800 font-medium flex-1">
-                                  ⚠️ Linked: {med.linkedDisease}
+                                  Linked: {med.linkedDisease}
                                 </p>
                                 <ChevronRight className="w-3.5 h-3.5 text-amber-500 group-hover:translate-x-0.5 transition-transform" />
                               </button>
@@ -1131,7 +1131,7 @@ export function MedicineIntelligence() {
                     action: "View Details",
                     onAction: () =>
                       push(
-                        "📊 Deworming Details",
+                        "Deworming Details",
                         "Deworming program is stable across all Poblacion areas. No action required.",
                         "info",
                       ),
