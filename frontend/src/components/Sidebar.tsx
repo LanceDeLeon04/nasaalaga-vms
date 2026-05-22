@@ -2,8 +2,7 @@ import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
   ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint
-} from 'lucide-react';
-import type { ActiveView } from './AdminDashboard';
+} from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 
 interface SidebarProps {
@@ -18,7 +17,8 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
   const menuItems = [
     { id: 'dashboard' as ActiveView, label: 'Dashboard',        icon: LayoutDashboard, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'rabies'    as ActiveView, label: 'Pets Management',  icon: PawPrint,        roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'rabies'      as ActiveView, label: 'Pets Management',  icon: PawPrint,    roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'vaccination' as ActiveView, label: 'Vaccination',       icon: Syringe,     roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'preregistered' as ActiveView, label: 'Pre-Registered Pets', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },

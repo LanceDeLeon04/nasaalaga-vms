@@ -564,6 +564,88 @@ const createTables = async () => {
     // ── Ensure cityHealth role is valid (no constraint change needed — role is free-text VARCHAR) ──
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS department VARCHAR(100)`);
 
+    // ── Veterinarian license number on users ────────────────────────────────
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vet_license VARCHAR(100)`);
+
+    // ── Vaccination History table ───────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS vaccination_history (
+        id VARCHAR(50) PRIMARY KEY,
+        pet_id VARCHAR(50) NOT NULL,
+        date_of_vaccination DATE NOT NULL DEFAULT CURRENT_DATE,
+        vaccine_name VARCHAR(255) NOT NULL,
+        lot_number VARCHAR(100),
+        batch_number VARCHAR(100),
+        vaccine_barcode VARCHAR(100),
+        veterinarian VARCHAR(255),
+        vet_license VARCHAR(100),
+        medicine_id VARCHAR(50),
+        notes TEXT,
+        administered_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`ALTER TABLE vaccination_history ADD COLUMN IF NOT EXISTS vaccine_barcode VARCHAR(100)`);
+    await client.query(`ALTER TABLE vaccination_history ADD COLUMN IF NOT EXISTS medicine_id VARCHAR(50)`);
+
+    // ── Seed demo medicine inventory (anti-rabies vaccine) ─────────────────
+    await client.query(`
+      INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, quantity, unit, reorder_level, unit_cost, description, created_by)
+      VALUES
+        ('MED-DEMO-001','RABVAC-2025-001','Rabisin Anti-Rabies Vaccine','Rabies Vaccine Inactivated','Vaccine','Anti-Rabies','LOT-RABVAC-2025','2026-12-31',500,'vials',50,100.00,'Inactivated rabies vaccine for dogs and cats. 1ml per dose.','system'),
+        ('MED-DEMO-002','RABVAC-2025-002','Nobivac Rabies','Rabies Vaccine','Vaccine','Anti-Rabies','LOT-NOBIVAC-2025','2026-06-30',300,'vials',50,120.00,'Single dose rabies vaccine. Store at 2-8°C.','system'),
+        ('MED-DEMO-003','DISTEMPER-2025','Canigen DHPPiL','Distemper/Parvo/Leptospira','Vaccine','Multi-Valent','LOT-DHTPPIL-2025','2026-09-30',150,'vials',30,250.00,'5-in-1 vaccine for dogs.','system')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    await client.query(`
+      INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, quantity, unit, reorder_level, unit_cost, description, created_by)
+      VALUES
+        ('MED-DEMO-001','RABVAC-2025-001','Rabisin Anti-Rabies Vaccine','Rabies Vaccine Inactivated','Vaccine','Anti-Rabies','LOT-RABVAC-2025','2026-12-31',500,'vials',50,100.00,'Inactivated rabies vaccine for dogs and cats. 1ml per dose.','system'),
+        ('MED-DEMO-002','RABVAC-2025-002','Nobivac Rabies','Rabies Vaccine','Vaccine','Anti-Rabies','LOT-NOBIVAC-2025','2026-06-30',300,'vials',50,120.00,'Single dose rabies vaccine. Store at 2-8°C.','system'),
+        ('MED-DEMO-003','DISTEMPER-2025','Canigen DHPPiL','Distemper/Parvo/Leptospira','Vaccine','Multi-Valent','LOT-DHTPPIL-2025','2026-09-30',150,'vials',30,250.00,'5-in-1 vaccine for dogs.','system')
+      ON CONFLICT (barcode) DO NOTHING;
+    `);
+
+    // ── Seed demo vaccination history for existing pets ─────────────────────
+    await client.query(`
+      INSERT INTO vaccination_history (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number, vaccine_barcode, veterinarian, vet_license, medicine_id, administered_by)
+      SELECT
+        'VAX-SEED-' || p.id || '-001',
+        p.id,
+        CURRENT_DATE - INTERVAL '180 days',
+        'Rabisin Anti-Rabies Vaccine',
+        'LOT-RABVAC-2025',
+        'BATCH-001',
+        'RABVAC-2025-001',
+        'Dr. Roberto Santos',
+        'VET-LIC-2024-001',
+        'MED-DEMO-001',
+        'Dr. Roberto Santos'
+      FROM pets p
+      WHERE p.status = 'Active'
+      LIMIT 10
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    await client.query(`
+      INSERT INTO vaccination_history (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number, vaccine_barcode, veterinarian, vet_license, medicine_id, administered_by)
+      SELECT
+        'VAX-SEED-' || p.id || '-002',
+        p.id,
+        CURRENT_DATE - INTERVAL '30 days',
+        'Rabisin Anti-Rabies Vaccine',
+        'LOT-RABVAC-2025',
+        'BATCH-002',
+        'RABVAC-2025-001',
+        'Dr. Roberto Santos',
+        'VET-LIC-2024-001',
+        'MED-DEMO-001',
+        'Dr. Roberto Santos'
+      FROM pets p
+      WHERE p.status = 'Active'
+      LIMIT 5
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
     await client.query('COMMIT');
     console.log('✅ All tables created successfully');
   } catch (err) {

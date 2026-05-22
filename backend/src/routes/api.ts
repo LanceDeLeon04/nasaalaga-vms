@@ -892,4 +892,92 @@ router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, re
   }
 });
 
+// ── Vaccination History ─────────────────────────────────────────────────────
+router.get('/vaccination-history/:petId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM vaccination_history WHERE pet_id=$1 ORDER BY date_of_vaccination DESC`,
+      [req.params.petId]
+    );
+    return res.json({ history: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/vaccination-history', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','bahw'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `VAX-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+
+    // Get vet license from user profile
+    const userRow = await query(`SELECT vet_license, username FROM users WHERE username=$1`, [req.user?.username]);
+    const vetLicense = d.vetLicense || userRow.rows[0]?.vet_license || '';
+    const vetName = d.veterinarian || userRow.rows[0]?.username || req.user?.username || '';
+
+    // Get vaccine details from inventory if barcode provided
+    let vaccineDetails: any = {};
+    if (d.vaccineBarcode) {
+      const medRow = await query(`SELECT * FROM medicine_inventory WHERE barcode=$1`, [d.vaccineBarcode]);
+      if (medRow.rows[0]) {
+        vaccineDetails = medRow.rows[0];
+        // Deduct 1 unit from inventory
+        if (vaccineDetails.quantity > 0) {
+          await query(
+            `UPDATE medicine_inventory SET quantity = quantity - 1, updated_at=NOW() WHERE barcode=$1`,
+            [d.vaccineBarcode]
+          );
+          await query(
+            `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by)
+             VALUES ($1,'medicine','dispense',1,$2,$3,'Vaccination administered to pet '||$4,$5)`,
+            [vaccineDetails.id, vaccineDetails.quantity, vaccineDetails.quantity - 1, d.petId, vetName]
+          );
+        }
+      }
+    }
+
+    const vaccineName = d.vaccineName || vaccineDetails.name || '';
+    const lotNumber   = d.lotNumber   || vaccineDetails.lot_number || '';
+    const batchNumber = d.batchNumber || vaccineDetails.lot_number || '';
+    const medicineId  = d.medicineId  || vaccineDetails.id || null;
+
+    await query(
+      `INSERT INTO vaccination_history (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number, vaccine_barcode, veterinarian, vet_license, medicine_id, notes, administered_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [id, d.petId, d.dateOfVaccination || new Date().toISOString().split('T')[0],
+       vaccineName, lotNumber, batchNumber, d.vaccineBarcode || null,
+       vetName, vetLicense, medicineId, d.notes || null, vetName]
+    );
+
+    // Update pet vaccination status and dates
+    const nextDate = new Date();
+    nextDate.setFullYear(nextDate.getFullYear() + 1);
+    await query(
+      `UPDATE pets SET vaccination_status='Vaccinated', last_vaccination_date=$1, next_vaccination_date=$2, updated_at=NOW() WHERE id=$3`,
+      [d.dateOfVaccination || new Date().toISOString().split('T')[0], nextDate.toISOString().split('T')[0], d.petId]
+    );
+
+    const record = (await query(`SELECT * FROM vaccination_history WHERE id=$1`, [id])).rows[0];
+    return res.json({ success: true, record, vetName, vetLicense });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Lookup pet by ID (for vax module barcode scan) ──────────────────────────
+router.get('/pets/lookup/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM pets WHERE id=$1`, [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Pet not found' });
+    return res.json({ pet: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Lookup vaccine by barcode ───────────────────────────────────────────────
+router.get('/inventory/lookup-barcode/:barcode', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM medicine_inventory WHERE barcode=$1`, [decodeURIComponent(req.params.barcode)]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Vaccine not found' });
+    return res.json({ medicine: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
 export default router;

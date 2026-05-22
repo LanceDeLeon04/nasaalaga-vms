@@ -1428,6 +1428,7 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 import { BitingIncidents } from './BitingIncidents';
+import { VaccinationCard } from './VaccinationCard';
 
 export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [pets, setPets] = useState<Pet[]>([]);
@@ -1436,6 +1437,9 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [survey, setSurvey] = useState<SurveyData|null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"schedule"|"biting">("overview");
+  const [vaxCardPet, setVaxCardPet] = useState<any>(null);
+  const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
+  const [vaxCardLoading, setVaxCardLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [filterVax, setFilterVax] = useState("all");
@@ -1724,6 +1728,16 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                         <div className="flex gap-1">
                           <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><Eye className="w-3 h-3"/>View</button>
                           {vs(pet)!=="Vaccinated"&&<button onClick={()=>{setVaccinatePet(pet);setShowVaccinate(true);}} className="px-2.5 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><Syringe className="w-3 h-3"/>Vax</button>}
+                          <button onClick={async()=>{
+                            setVaxCardLoading(true);
+                            try{
+                              const h = await api.getVaccinationHistory(pet.id);
+                              setVaxCardPet(pet); setVaxCardHistory(h.history||[]);
+                            }catch{ toast.error('Could not load vaccination history'); }
+                            finally{ setVaxCardLoading(false); }
+                          }} className="px-2.5 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 flex items-center gap-1">
+                            💳 Card
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -2027,6 +2041,13 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
       {showPhoto && <PetPhotoCapture petName={np.petName} onCapture={url=>{setNp(p=>({...p,photoUrl:url}));setShowPhoto(false);}} onClose={()=>setShowPhoto(false)}/>}
       {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}}/>}
       {viewReport && <LostFoundModal report={viewReport} all={reports} pets={pets} onClose={()=>setViewReport(null)} onResolve={handleResolve}/>}
+      {vaxCardPet && (
+        <VaccinationCard
+          pet={vaxCardPet}
+          history={vaxCardHistory}
+          onClose={()=>{ setVaxCardPet(null); setVaxCardHistory([]); }}
+        />
+      )}
       {manageSchedule && (
         <ScheduleManageModal
           schedule={manageSchedule}

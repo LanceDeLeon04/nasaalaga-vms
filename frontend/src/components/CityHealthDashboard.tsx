@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { BitingIncidents } from './BitingIncidents';
+import { VaccinationCard } from './VaccinationCard';
+import { api } from '../lib/api';
 import type { User } from '../App';
 
 interface Props { user: User; onLogout: () => void; }
@@ -97,6 +99,9 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
   const [petsLoaded, setPetsLoaded] = useState(false);
   const [incLoaded, setIncLoaded]   = useState(false);
   const [search, setSearch] = useState('');
+
+  const [vaxCardPet, setVaxCardPet] = useState<any>(null);
+  const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
 
   const loadPets = async () => {
     if (petsLoaded) return;
@@ -244,7 +249,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                     </thead>
                     <tbody>
                       {filteredPets.length === 0 ? (
-                        <tr><td colSpan={7} style={{textAlign:'center',padding:40,color:'#9ca3af'}}>No pets found.</td></tr>
+                        <tr><td colSpan={8} style={{textAlign:'center',padding:40,color:'#9ca3af'}}>No pets found.</td></tr>
                       ) : filteredPets.map(p => (
                         <tr key={p.id}>
                           <td>
@@ -269,6 +274,16 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                             }
                           </td>
                           <td style={{fontFamily:'monospace',fontSize:12}}>{p.pet_tag_id || '—'}</td>
+                          <td>
+                            <button onClick={async()=>{
+                              try{
+                                const h = await api.getVaccinationHistory(p.id);
+                                setVaxCardPet(p); setVaxCardHistory(h.history||[]);
+                              }catch{}
+                            }} style={{height:30,padding:'0 10px',background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                              💳 View
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -280,6 +295,14 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
             {/* ── BITING INCIDENTS ── */}
             {view === 'biting' && (
               <BitingIncidents userRole={user.role || 'cityHealth'} />
+            )}
+
+            {vaxCardPet && (
+              <VaccinationCard
+                pet={vaxCardPet}
+                history={vaxCardHistory}
+                onClose={()=>{ setVaxCardPet(null); setVaxCardHistory([]); }}
+              />
             )}
 
             {/* ── NOTIFICATIONS ── */}

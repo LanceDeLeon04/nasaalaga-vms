@@ -5,6 +5,8 @@ import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, S
 import { toast } from 'sonner';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
 import { PetPreRegistration } from './PetPreRegistration';
+import { VaccinationCard } from './VaccinationCard';
+import { api } from '../lib/api';
 import type { User as UserType } from '../App';
 
 
@@ -75,6 +77,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
   const [lostFoundFilter, setLostFoundFilter] = useState<'all' | 'Lost' | 'Found'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [vaxCardPet, setVaxCardPet] = useState<any>(null);
+  const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
+
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [lostFoundReports, setLostFoundReports] = useState<LostFoundReport[]>([]);
@@ -538,6 +543,18 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                   >
                     <Download className="w-4 h-4" />
                     Certificate
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const h = await api.getVaccinationHistory(pet.id);
+                        setVaxCardPet(pet);
+                        setVaxCardHistory(h.history || []);
+                      } catch { toast.error('Could not load vaccination card'); }
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-amber-500 text-amber-600 rounded-md hover:bg-amber-500 hover:text-white transition-colors text-sm"
+                  >
+                    💳 Vax Card
                   </button>
                 </div>
               </div>
@@ -1273,6 +1290,14 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
             // Optionally refresh pets list
             toast.success('Pre-registration submitted! Check your email for confirmation.');
           }}
+        />
+      )}
+
+      {vaxCardPet && (
+        <VaccinationCard
+          pet={vaxCardPet}
+          history={vaxCardHistory}
+          onClose={() => { setVaxCardPet(null); setVaxCardHistory([]); }}
         />
       )}
 

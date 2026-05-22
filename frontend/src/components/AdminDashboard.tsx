@@ -14,6 +14,7 @@ import { FeedbackComplaints } from './FeedbackComplaints';
 import { WildlifeTracking } from './WildlifeTracking';
 import { SuperAdminSettings } from './SuperAdminSettings';
 import { InventoryPage } from './InventoryPage';
+import { VaccinationModule } from './VaccinationModule';
 import { Footer } from './Footer';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { User } from '../App';
@@ -24,19 +25,10 @@ interface AdminDashboardProps {
 }
 
 export type ActiveView =
-  | 'dashboard'
-  | 'livestock'
-  | 'rabies'
-  | 'preregistered'
-  | 'outbreak'
-  | 'services'
-  | 'reports'
-  | 'users'
-  | 'audit'
-  | 'feedback'
-  | 'wildlife'
-  | 'inventory'
-  | 'settings';
+  | 'dashboard' | 'livestock' | 'rabies' | 'preregistered'
+  | 'outbreak'  | 'services'  | 'reports'| 'users'
+  | 'audit'     | 'feedback'  | 'wildlife'| 'inventory'
+  | 'vaccination'| 'settings';
 
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -48,8 +40,9 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
     switch (activeView) {
       case 'dashboard':    return <DashboardOverview />;
       case 'livestock':    return <LivestockManagement />;
-      case 'rabies':       return <PetRegistration userRole={user.role} />;
-      case 'preregistered':return <PreRegisteredPets />;
+      case 'rabies':        return <PetRegistration userRole={user.role} />;
+      case 'vaccination':   return <VaccinationModule user={user} />;
+      case 'preregistered': return <PreRegisteredPets />;
       case 'outbreak':     return <OutbreakMonitoring />;
       case 'services':     return <VeterinaryServices userRole={user.role} />;
       case 'reports':      return <ReportsCertificates />;

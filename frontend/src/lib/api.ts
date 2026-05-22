@@ -153,6 +153,10 @@ export const api = {
   deleteSupply: (id: string) =>
     request('/inventory/supplies/' + id, { method: 'DELETE' }),
   getInventoryTransactions: () => request('/inventory/transactions'),
+  lookupVaccineBarcode: (barcode: string) => request('/inventory/lookup-barcode/' + encodeURIComponent(barcode)),
+  getPetById: (id: string) => request('/pets/lookup/' + id),
+  getVaccinationHistory: (petId: string) => request('/vaccination-history/' + petId),
+  recordVaccination: (data: any) => request('/vaccination-history', { method: 'POST', body: JSON.stringify(data) }),
   getAuditLogs: () => request('/audit-logs'),
   logAudit: (data: any) =>
     request('/audit-logs', { method: 'POST', body: JSON.stringify(data) }),
