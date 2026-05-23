@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import type { FC } from "react";
 import {
   Plus, Search, Syringe, Download, Calendar, PawPrint,
   AlertCircle, Heart, X, CheckCircle, Camera, Upload,
@@ -13,6 +14,21 @@ import {
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadialBarChart, RadialBar
 } from "recharts";
 import { api } from "../lib/api";
+
+// ── Icon type compatibility shim (lucide-react + @types/react version mismatch) ──
+type IconComponent = FC<{ className?: string; size?: number; color?: string; strokeWidth?: number }>;
+const I = (Icon: any): IconComponent => (props) => React.createElement(Icon, props);
+const IPlus = I(Plus), ISearch = I(Search), ISyringe = I(Syringe), IDownload = I(Download),
+  ICalendar = I(Calendar), IPawPrint = I(PawPrint), IAlertCircle = I(AlertCircle),
+  IHeart = I(Heart), IX = I(X), ICheckCircle = I(CheckCircle), ICamera = I(Camera),
+  IUpload = I(Upload), IRefreshCw = I(RefreshCw), IImagePlus = I(ImagePlus),
+  IFlipHorizontal = I(FlipHorizontal), IChevronLeft = I(ChevronLeft),
+  IChevronRight = I(ChevronRight), IPhone = I(Phone), IMapPin = I(MapPin),
+  IClock = I(Clock), IUsers = I(Users), IEye = I(Eye), IZap = I(Zap),
+  ITag = I(Tag), IFileText = I(FileText), IArrowRight = I(ArrowRight),
+  ITriangleAlert = I(TriangleAlert), IInfo = I(Info), IBarChart3 = I(BarChart3),
+  ITrendingUp = I(TrendingUp), IShield = I(Shield), IActivity = I(Activity),
+  IScissors = I(Scissors);
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -79,13 +95,13 @@ const CALACA_BARANGAYS = [
   "Caluangan","Camastilisan","Coral Ni Bacal","Coral Ni Lopez","Dacanlao","Dila",
   "Loma","Lumbang Calzada","Lumbang Na Bata","Lumbang Na Matanda","Madalunot",
   "Makina","Matipok","Munting Coral","Niyugan","Pantay","Poblacion 1","Poblacion 2",
-  "Poblacion 3","Poblacion 4","Poblacion 5","Poblacion 6","Putting Bato East",
-  "Putting Bato West","Quisumbing","Salong","San Rafael","Sinisian","Taklang Anak",
+  "Poblacion 3","Poblacion 4","Poblacion 5","Poblacion 6","Puting Bato East",
+  "Puting Bato West","Quisumbing","Salong","San Rafael","Sinisian","Taklang Anak",
   "Talisay","Tamayo","Timbain"
 ];
 
 const ZONE_COLORS: Record<string,string> = {
-  North: "#6B7280", West: "#8B5CF6", East: "#2B5EA6", Red: "#E85D3B"
+  North: "#6B7280", West: "#8B5CF6", East: "#2B5EA6", "Baybay-Highway": "#E85D3B", Red: "#E85D3B"
 };
 
 const PIE_COLORS = ["#2B5EA6","#60A85C","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
@@ -189,9 +205,9 @@ function adjacentBarangay(a: string, b: string): boolean {
     "Caluangan":"East","Coral Ni Bacal":"East","Dila":"East","Lumbang Na Bata":"East",
     "Lumbang Na Matanda":"East","Poblacion 1":"East","Poblacion 2":"East","Poblacion 3":"East",
     "Poblacion 4":"East","Poblacion 6":"East",
-    "Camastilisan":"Red","Lumbang Calzada":"Red","Poblacion 5":"Red","Putting Bato East":"Red",
-    "Putting Bato West":"Red","Quisumbing":"Red","Salong":"Red","San Rafael":"Red",
-    "Sinisian":"Red","Talisay":"Red",
+    "Camastilisan":"Baybay-Highway","Lumbang Calzada":"Baybay-Highway","Poblacion 5":"Baybay-Highway","Puting Bato East":"Baybay-Highway",
+    "Puting Bato West":"Baybay-Highway","Quisumbing":"Baybay-Highway","Salong":"Baybay-Highway","San Rafael":"Baybay-Highway",
+    "Sinisian":"Baybay-Highway","Talisay":"Baybay-Highway",
   };
   return zones[a] !== undefined && zones[a] === zones[b];
 }
@@ -389,7 +405,7 @@ function PetPhotoCapture({ onCapture, onClose, petName }: { onCapture:(d:string)
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><Camera className="w-4 h-4 text-white"/></div>
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><ICamera className="w-4 h-4 text-white"/></div>
             <div><p className="font-bold text-white text-sm">Pet Photo</p><p className="text-white/60 text-xs">{petName||"New Pet"}</p></div>
           </div>
           <button onClick={()=>{stop();onClose();}} className="text-white/60 hover:text-white"><X className="w-5 h-5"/></button>
@@ -399,11 +415,11 @@ function PetPhotoCapture({ onCapture, onClose, petName }: { onCapture:(d:string)
             <div className="space-y-3">
               <p className="text-sm text-gray-400 text-center mb-4">Add a photo to help identify this pet</p>
               <button onClick={()=>{setMode("camera");startCam(facing);}} className="w-full flex items-center gap-4 p-4 border-2 border-dashed border-[#2B5EA6]/30 rounded-xl hover:border-[#2B5EA6] hover:bg-blue-50 transition-all group">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 shrink-0"><Camera className="w-6 h-6 text-[#2B5EA6]"/></div>
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 shrink-0"><ICamera className="w-6 h-6 text-[#2B5EA6]"/></div>
                 <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Open Camera</p><p className="text-xs text-gray-400">Take a live photo now</p></div>
               </button>
               <button onClick={()=>fileInputRef.current?.click()} className="w-full flex items-center gap-4 p-4 border-2 border-dashed border-gray-200 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-all group">
-                <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-gray-200 shrink-0"><Upload className="w-6 h-6 text-gray-500"/></div>
+                <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center group-hover:bg-gray-200 shrink-0"><IUpload className="w-6 h-6 text-gray-500"/></div>
                 <div className="text-left"><p className="font-semibold text-gray-800 text-sm">Upload from Gallery</p><p className="text-xs text-gray-400">Choose an existing photo</p></div>
               </button>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={onFile} className="hidden"/>
@@ -414,13 +430,13 @@ function PetPhotoCapture({ onCapture, onClose, petName }: { onCapture:(d:string)
             <div className="space-y-3">
               <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
                 <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover"/>
-                {camErr&&<div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 text-white p-4 text-center"><Camera className="w-8 h-8 mb-2 opacity-40"/><p className="text-sm">{camErr}</p><button onClick={()=>fileInputRef.current?.click()} className="mt-3 px-4 py-1.5 bg-white text-gray-800 rounded-lg text-xs font-semibold">Upload instead</button></div>}
+                {camErr&&<div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 text-white p-4 text-center"><ICamera className="w-8 h-8 mb-2 opacity-40"/><p className="text-sm">{camErr}</p><button onClick={()=>fileInputRef.current?.click()} className="mt-3 px-4 py-1.5 bg-white text-gray-800 rounded-lg text-xs font-semibold">Upload instead</button></div>}
               </div>
               <canvas ref={canvasRef} className="hidden"/>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={onFile} className="hidden"/>
               <div className="flex gap-2">
-                <button onClick={()=>{const nf=facing==="environment"?"user":"environment";setFacing(nf);startCam(nf);}} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 text-sm"><FlipHorizontal className="w-4 h-4"/>Flip</button>
-                <button onClick={snap} disabled={!!camErr||!camReady} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#2B5EA6] text-white rounded-lg font-semibold hover:bg-[#234a85] disabled:opacity-40"><Camera className="w-4 h-4"/>Capture</button>
+                <button onClick={()=>{const nf=facing==="environment"?"user":"environment";setFacing(nf);startCam(nf);}} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 text-sm"><IFlipHorizontal className="w-4 h-4"/>Flip</button>
+                <button onClick={snap} disabled={!!camErr||!camReady} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#2B5EA6] text-white rounded-lg font-semibold hover:bg-[#234a85] disabled:opacity-40"><ICamera className="w-4 h-4"/>Capture</button>
               </div>
               <button onClick={()=>{stop();setMode("choose");}} className="w-full py-1.5 text-sm text-gray-400 hover:text-gray-600">← Back</button>
             </div>
@@ -429,11 +445,11 @@ function PetPhotoCapture({ onCapture, onClose, petName }: { onCapture:(d:string)
             <div className="space-y-3">
               <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden">
                 <img src={preview} alt="Preview" className="w-full h-full object-cover"/>
-                <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1"><CheckCircle className="w-3 h-3"/>Ready</div>
+                <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1"><ICheckCircle className="w-3 h-3"/>Ready</div>
               </div>
               <div className="flex gap-2">
-                <button onClick={()=>{setPreview(null);setMode("camera");startCam(facing);}} className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 text-sm"><RefreshCw className="w-4 h-4"/>Retake</button>
-                <button onClick={()=>{onCapture(preview);stop();}} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#60A85C] text-white rounded-lg font-semibold hover:bg-[#4a8a47]"><CheckCircle className="w-4 h-4"/>Use Photo</button>
+                <button onClick={()=>{setPreview(null);setMode("camera");startCam(facing);}} className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 text-sm"><IRefreshCw className="w-4 h-4"/>Retake</button>
+                <button onClick={()=>{onCapture(preview);stop();}} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#60A85C] text-white rounded-lg font-semibold hover:bg-[#4a8a47]"><ICheckCircle className="w-4 h-4"/>Use Photo</button>
               </div>
             </div>
           )}
@@ -492,27 +508,27 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
       {/* ── KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Registered" value={totalPets} sub="All species · Calaca"
-          icon={<PawPrint className="w-5 h-5"/>} color="text-blue-600" bg="bg-blue-100" ring="border-blue-200"
+          icon={<IPawPrint className="w-5 h-5"/>} color="text-blue-600" bg="bg-blue-100" ring="border-blue-200"
           onClick={() => onTab("pets")} />
         <StatCard label="Vaccinated" value={totalVax} sub={`${vaxRate}% coverage rate`}
-          icon={<Syringe className="w-5 h-5"/>} color="text-green-600" bg="bg-green-100" ring="border-green-200" />
+          icon={<ISyringe className="w-5 h-5"/>} color="text-green-600" bg="bg-green-100" ring="border-green-200" />
         <StatCard label="Impounded" value={survey.impounded} sub="Currently in pound"
-          icon={<Shield className="w-5 h-5"/>} color="text-orange-600" bg="bg-orange-100" ring="border-orange-200" />
+          icon={<IShield className="w-5 h-5"/>} color="text-orange-600" bg="bg-orange-100" ring="border-orange-200" />
         <StatCard label="Lost & Found" value={openLost + openFound} sub={`${openLost} lost · ${openFound} found open`}
-          icon={<Heart className="w-5 h-5"/>} color="text-red-600" bg="bg-red-100" ring="border-red-200"
+          icon={<IHeart className="w-5 h-5"/>} color="text-red-600" bg="bg-red-100" ring="border-red-200"
           onClick={() => onTab("lost-found")} />
       </div>
 
       {/* Smart Match Alert */}
       {totalMatches > 0 && (
         <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center shrink-0"><Zap className="w-6 h-6 text-white"/></div>
+          <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center shrink-0"><IZap className="w-6 h-6 text-white"/></div>
           <div className="flex-1">
             <p className="font-bold text-amber-800">{totalMatches} Lost Pet{totalMatches>1?"s":""} with Smart Match{totalMatches>1?"es":""}!</p>
             <p className="text-sm text-amber-600">AI matching found potential Lost/Found connections. Review now.</p>
           </div>
           <button onClick={() => onTab("lost-found")} className="px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 flex items-center gap-1.5 shrink-0">
-            Review <ArrowRight className="w-4 h-4"/>
+            Review <IArrowRight className="w-4 h-4"/>
           </button>
         </div>
       )}
@@ -522,7 +538,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
         {/* Vaccination breakdown */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-5">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><Syringe className="w-4 h-4 text-green-600"/></div>
+            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><ISyringe className="w-4 h-4 text-green-600"/></div>
             <div>
               <p className="font-bold text-gray-900">Vaccination Status</p>
               <p className="text-xs text-gray-500">Across all registered pets</p>
@@ -548,7 +564,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
         {/* Pets per barangay */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-5">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><BarChart3 className="w-4 h-4 text-blue-600"/></div>
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><IBarChart3 className="w-4 h-4 text-blue-600"/></div>
             <div>
               <p className="font-bold text-gray-900">Pets per Barangay</p>
               <p className="text-xs text-gray-500">Top 10 barangays by count</p>
@@ -576,7 +592,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
         {/* Spayed & Neutered */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><Scissors className="w-4 h-4 text-purple-600"/></div>
+            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><IScissors className="w-4 h-4 text-purple-600"/></div>
             <div>
               <p className="font-bold text-gray-900">Spayed / Neutered</p>
               <p className="text-xs text-gray-500">Reproductive control</p>
@@ -606,7 +622,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
         {/* Lost & Found */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center"><Heart className="w-4 h-4 text-red-600"/></div>
+            <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center"><IHeart className="w-4 h-4 text-red-600"/></div>
             <div>
               <p className="font-bold text-gray-900">Lost & Found</p>
               <p className="text-xs text-gray-500">Open reports only</p>
@@ -636,7 +652,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
         {/* Impounded */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center"><Shield className="w-4 h-4 text-orange-600"/></div>
+            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center"><IShield className="w-4 h-4 text-orange-600"/></div>
             <div>
               <p className="font-bold text-gray-900">Impounded Pets</p>
               <p className="text-xs text-gray-500">Currently in custody</p>
@@ -660,7 +676,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
       {/* ── Registration Rate */}
       <div className="bg-gradient-to-br from-[#1a3a6e] to-[#2B5EA6] rounded-2xl p-6 text-white">
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-5 h-5"/>
+          <ITrendingUp className="w-5 h-5"/>
           <p className="font-bold">Survey vs Registration Rate</p>
           <span className="ml-auto text-xs bg-white/20 px-2 py-0.5 rounded-full">Based on CSWD Survey Data</span>
         </div>
@@ -685,11 +701,11 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
       {/* ── Upcoming Schedules */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
-          <p className="font-bold text-gray-800 flex items-center gap-2"><Calendar className="w-4 h-4 text-[#2B5EA6]"/>Upcoming Schedules</p>
+          <p className="font-bold text-gray-800 flex items-center gap-2"><ICalendar className="w-4 h-4 text-[#2B5EA6]"/>Upcoming Schedules</p>
           <button onClick={() => onTab("schedule")} className="text-xs text-[#2B5EA6] font-semibold hover:underline">View All →</button>
         </div>
         {schedules.filter(s=>s.status==="Upcoming").length === 0
-          ? <div className="text-center py-6 text-gray-300"><Calendar className="w-8 h-8 mx-auto mb-2"/><p className="text-sm text-gray-400">No upcoming schedules</p></div>
+          ? <div className="text-center py-6 text-gray-300"><ICalendar className="w-8 h-8 mx-auto mb-2"/><p className="text-sm text-gray-400">No upcoming schedules</p></div>
           : <div className="space-y-2">
               {schedules.filter(s=>s.status==="Upcoming").sort((a,b)=>new Date(a.date).getTime()-new Date(b.date).getTime()).slice(0,3).map(s=>{
                 const reg = s.registered || s.registeredPets || 0;
@@ -729,7 +745,7 @@ function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>vo
           <div className="flex items-center gap-4">
             {petPhoto(pet)
               ? <img src={petPhoto(pet)} alt={pn(pet)} className="w-16 h-16 rounded-xl object-cover border-2 border-white/40"/>
-              : <div className="w-16 h-16 rounded-xl bg-white/20 flex items-center justify-center"><PawPrint className="w-8 h-8 text-white"/></div>
+              : <div className="w-16 h-16 rounded-xl bg-white/20 flex items-center justify-center"><IPawPrint className="w-8 h-8 text-white"/></div>
             }
             <div>
               <h3 className="text-xl font-bold text-white">{pn(pet)}</h3>
@@ -760,14 +776,14 @@ function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>vo
           <div className="border-t pt-4">
             <p className="text-xs text-gray-400 uppercase tracking-wide mb-3 font-semibold">Owner Information</p>
             <div className="space-y-2">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><Users className="w-4 h-4 text-blue-600"/></div><div><p className="text-xs text-gray-400">Owner</p><p className="text-sm font-semibold text-gray-800">{on(pet)}</p></div></div>
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><Phone className="w-4 h-4 text-green-600"/></div><div><p className="text-xs text-gray-400">Contact</p><p className="text-sm font-semibold text-gray-800">{pet.contact_number||pet.ownerContact||"—"}</p></div></div>
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><MapPin className="w-4 h-4 text-purple-600"/></div><div><p className="text-xs text-gray-400">Address</p><p className="text-sm font-semibold text-gray-800">{pet.address||pet.ownerAddress||"—"}, {brgy(pet)}</p></div></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><IUsers className="w-4 h-4 text-blue-600"/></div><div><p className="text-xs text-gray-400">Owner</p><p className="text-sm font-semibold text-gray-800">{on(pet)}</p></div></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><IPhone className="w-4 h-4 text-green-600"/></div><div><p className="text-xs text-gray-400">Contact</p><p className="text-sm font-semibold text-gray-800">{pet.contact_number||pet.ownerContact||"—"}</p></div></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><IMapPin className="w-4 h-4 text-purple-600"/></div><div><p className="text-xs text-gray-400">Address</p><p className="text-sm font-semibold text-gray-800">{pet.address||pet.ownerAddress||"—"}, {brgy(pet)}</p></div></div>
             </div>
           </div>
           {isImpounded && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-              <p className="text-xs font-bold text-orange-700 uppercase mb-2 flex items-center gap-1"><Shield className="w-3 h-3"/>Impound Record</p>
+              <p className="text-xs font-bold text-orange-700 uppercase mb-2 flex items-center gap-1"><IShield className="w-3 h-3"/>Impound Record</p>
               <p className="text-sm text-orange-800">{pet.impound_reason||"—"}</p>
               {pet.impound_date && <p className="text-xs text-orange-600 mt-1">Date: {fmtDate(pet.impound_date)}</p>}
             </div>
@@ -779,7 +795,7 @@ function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>vo
                 {(pet.last_vaccination_date||pet.lastVaccinationDate)&&<p className="text-xs text-gray-500 mt-0.5">Last: {fmtDate(pet.last_vaccination_date||pet.lastVaccinationDate)}</p>}
                 {(pet.next_vaccination_date||pet.nextVaccinationDate)&&<p className="text-xs text-gray-500">Next: {fmtDate(pet.next_vaccination_date||pet.nextVaccinationDate)}</p>}
               </div>
-              {vacStatus!=="Vaccinated"&&<button onClick={()=>{onVaccinate(pet);onClose();}} className="px-3 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><Syringe className="w-3 h-3"/>Vaccinate</button>}
+              {vacStatus!=="Vaccinated"&&<button onClick={()=>{onVaccinate(pet);onClose();}} className="px-3 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><ISyringe className="w-3 h-3"/>Vaccinate</button>}
             </div>
           </div>
         </div>
@@ -889,13 +905,13 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: {
           {linkedPet && (
             <div className="border border-blue-200 bg-blue-50 rounded-xl p-4">
               <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                <Tag className="w-3.5 h-3.5"/>Linked Pet Record
+                <ITag className="w-3.5 h-3.5"/>Linked Pet Record
               </p>
               <div className="flex items-center gap-3">
                 {petPhoto(linkedPet)
                   ? <img src={petPhoto(linkedPet)} className="w-14 h-14 rounded-xl object-cover border border-blue-200" alt=""/>
                   : <div className="w-14 h-14 rounded-xl bg-blue-200 flex items-center justify-center">
-                      <PawPrint className="w-7 h-7 text-blue-600"/>
+                      <IPawPrint className="w-7 h-7 text-blue-600"/>
                     </div>
                 }
                 <div>
@@ -911,7 +927,7 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center">
-                <Zap className="w-4 h-4 text-amber-600"/>
+                <IZap className="w-4 h-4 text-amber-600"/>
               </div>
               <p className="font-bold text-gray-900">Smart Match Engine</p>
               {matches.length > 0 && (
@@ -924,7 +940,7 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: {
             {matches.length === 0 ? (
               <div className="bg-gray-50 border border-gray-100 rounded-2xl p-8 text-center">
                 <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <AlertCircle className="w-7 h-7 text-gray-300"/>
+                  <IAlertCircle className="w-7 h-7 text-gray-300"/>
                 </div>
                 <p className="text-sm font-semibold text-gray-500">No matches found yet</p>
                 <p className="text-xs text-gray-400 mt-1">
@@ -994,10 +1010,10 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: {
                         className="w-full flex items-center justify-between text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors"
                       >
                         <span className="flex items-center gap-1.5">
-                          <Activity className="w-3.5 h-3.5"/>
+                          <IActivity className="w-3.5 h-3.5"/>
                           Factor Breakdown · {m.factors.filter(f=>f.matched).length}/{m.factors.length} criteria matched
                         </span>
-                        <ChevronRight className={`w-4 h-4 transition-transform ${expandedMatch===m.report.id?"rotate-90":""}`}/>
+                        <IChevronRight className={`w-4 h-4 transition-transform ${expandedMatch===m.report.id?"rotate-90":""}`}/>
                       </button>
 
                       {expandedMatch === m.report.id && (
@@ -1014,13 +1030,13 @@ function LostFoundModal({ report, all, pets, onClose, onResolve }: {
                           onClick={() => { onResolve(report.id, m.report.id); onClose(); }}
                           className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-xl hover:bg-green-700 transition-colors"
                         >
-                          <CheckCircle className="w-3.5 h-3.5"/>Mark as Reunited
+                          <ICheckCircle className="w-3.5 h-3.5"/>Mark as Reunited
                         </button>
                         <a
                           href={`tel:${m.report.contact_number || m.report.contactNumber || ""}`}
                           className="flex items-center gap-1.5 px-4 py-2 bg-blue-100 text-blue-700 text-xs font-bold rounded-xl hover:bg-blue-200 transition-colors"
                         >
-                          <Phone className="w-3.5 h-3.5"/>Contact Reporter
+                          <IPhone className="w-3.5 h-3.5"/>Contact Reporter
                         </a>
                       </div>
                     )}
@@ -1151,7 +1167,7 @@ function ScheduleManageModal({ schedule, onClose, onSave }: {
               className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
             <button onClick={handleSave} disabled={saving}
               className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-60 flex items-center justify-center gap-2">
-              {saving ? <><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</> : "Save Changes"}
+              {saving ? <><IRefreshCw className="w-4 h-4 animate-spin"/>Saving…</> : "Save Changes"}
             </button>
           </div>
         </div>
@@ -1234,7 +1250,7 @@ function ScheduleCalendar({ schedules, onAdd, onManage, onStatusChange }: {
           <button
             onClick={() => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); } else setViewMonth(m => m-1); }}
             className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-colors"
-          ><ChevronLeft className="w-5 h-5 text-white"/></button>
+          ><IChevronLeft className="w-5 h-5 text-white"/></button>
           <div className="text-center">
             <p className="text-white font-bold text-xl">{MONTHS[viewMonth]} {viewYear}</p>
             <p className="text-white/60 text-xs">{allThisMonth.length} schedule{allThisMonth.length !== 1 ? "s" : ""} this month</p>
@@ -1242,7 +1258,7 @@ function ScheduleCalendar({ schedules, onAdd, onManage, onStatusChange }: {
           <button
             onClick={() => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); } else setViewMonth(m => m+1); }}
             className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-colors"
-          ><ChevronRight className="w-5 h-5 text-white"/></button>
+          ><IChevronRight className="w-5 h-5 text-white"/></button>
         </div>
         <div className="p-4">
           <div className="grid grid-cols-7 mb-2">
@@ -1309,13 +1325,13 @@ function ScheduleCalendar({ schedules, onAdd, onManage, onStatusChange }: {
           </select>
           <button onClick={onAdd}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl text-xs font-bold hover:bg-[#234a85] transition-colors">
-            <Plus className="w-3.5 h-3.5"/>Add Schedule
+            <IPlus className="w-3.5 h-3.5"/>Add Schedule
           </button>
         </div>
 
         {filteredThisMonth.length === 0 ? (
           <div className="p-10 text-center">
-            <Calendar className="w-10 h-10 text-gray-200 mx-auto mb-2"/>
+            <ICalendar className="w-10 h-10 text-gray-200 mx-auto mb-2"/>
             <p className="text-gray-400 text-sm">No schedules match your filters</p>
           </div>
         ) : (
@@ -1350,8 +1366,8 @@ function ScheduleCalendar({ schedules, onAdd, onManage, onStatusChange }: {
                           <span className="text-xs text-gray-400 font-mono">{s.id}</span>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
-                          <span className="flex items-center gap-1"><Clock className="w-3 h-3"/>{s.time_start || s.time || "—"}</span>
-                          <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/>{s.venue || s.location || "—"}</span>
+                          <span className="flex items-center gap-1"><IClock className="w-3 h-3"/>{s.time_start || s.time || "—"}</span>
+                          <span className="flex items-center gap-1"><IMapPin className="w-3 h-3"/>{s.venue || s.location || "—"}</span>
                         </div>
                         {/* Progress bar */}
                         <div className="flex items-center gap-2 mt-2">
@@ -1401,23 +1417,23 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div className="bg-gradient-to-r from-green-600 to-emerald-500 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><Syringe className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Record Vaccination</p></div>
+          <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><ISyringe className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Record Vaccination</p></div>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
         </div>
         <div className="p-6 space-y-4">
           <div className="flex items-center gap-4 bg-green-50 rounded-xl p-4">
-            {petPhoto(pet)?<img src={petPhoto(pet)} className="w-14 h-14 rounded-xl object-cover" alt=""/>:<div className="w-14 h-14 bg-green-200 rounded-xl flex items-center justify-center"><PawPrint className="w-7 h-7 text-green-600"/></div>}
+            {petPhoto(pet)?<img src={petPhoto(pet)} className="w-14 h-14 rounded-xl object-cover" alt=""/>:<div className="w-14 h-14 bg-green-200 rounded-xl flex items-center justify-center"><IPawPrint className="w-7 h-7 text-green-600"/></div>}
             <div><p className="font-bold text-gray-800">{pn(pet)}</p><p className="text-sm text-gray-600">{pet.species} · {pet.breed}</p><p className="text-xs text-gray-500">Owner: {on(pet)}</p></div>
           </div>
           <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-700 space-y-1">
-            <p className="font-semibold flex items-center gap-1.5"><Info className="w-4 h-4"/>What will be recorded:</p>
+            <p className="font-semibold flex items-center gap-1.5"><IInfo className="w-4 h-4"/>What will be recorded:</p>
             <p>• Vaccination date: <strong>Today ({fmtDate(new Date().toISOString().split("T")[0])})</strong></p>
             <p>• Next due date: <strong>1 year from today</strong></p>
             <p>• Status: <strong>Vaccinated</strong></p>
           </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
-            <button onClick={()=>onConfirm(pet)} className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 flex items-center justify-center gap-1.5"><Syringe className="w-4 h-4"/>Confirm</button>
+            <button onClick={()=>onConfirm(pet)} className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 flex items-center justify-center gap-1.5"><ISyringe className="w-4 h-4"/>Confirm</button>
           </div>
         </div>
       </div>
@@ -1705,27 +1721,27 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-            <PawPrint className="w-6 h-6 text-[#2B5EA6]"/>Pets Management
+            <IPawPrint className="w-6 h-6 text-[#2B5EA6]"/>Pets Management
           </h2>
           <p className="text-gray-500 text-sm mt-0.5">Calaca CVO · Rabies Program · Lost & Found · Vaccination Schedules</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={loadAll} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500"><RefreshCw className="w-4 h-4"/></button>
-          <button onClick={()=>setShowNewPet(true)} className="flex items-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl font-semibold text-sm hover:bg-[#234a85] shadow-sm transition-all hover:shadow-md"><Plus className="w-4 h-4"/>Register Pet</button>
-          <button onClick={()=>setShowLFDialog(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 shadow-sm"><AlertCircle className="w-4 h-4"/>Report Lost/Found</button>
-          <button onClick={()=>{setActiveTab("schedule");setShowScheduleAdd(true);}} className="flex items-center gap-2 px-4 py-2 bg-[#60A85C] text-white rounded-xl font-semibold text-sm hover:bg-[#4a8a47] shadow-sm"><Calendar className="w-4 h-4"/>Add Schedule</button>
+          <button onClick={loadAll} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500"><IRefreshCw className="w-4 h-4"/></button>
+          <button onClick={()=>setShowNewPet(true)} className="flex items-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl font-semibold text-sm hover:bg-[#234a85] shadow-sm transition-all hover:shadow-md"><IPlus className="w-4 h-4"/>Register Pet</button>
+          <button onClick={()=>setShowLFDialog(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 shadow-sm"><IAlertCircle className="w-4 h-4"/>Report Lost/Found</button>
+          <button onClick={()=>{setActiveTab("schedule");setShowScheduleAdd(true);}} className="flex items-center gap-2 px-4 py-2 bg-[#60A85C] text-white rounded-xl font-semibold text-sm hover:bg-[#4a8a47] shadow-sm"><ICalendar className="w-4 h-4"/>Add Schedule</button>
         </div>
       </div>
 
       {/* ── Tabs */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1 flex-wrap">
         {([
-          ["overview","Overview",<Activity className="w-4 h-4"/>],
-          ["pets",`Pet Records (${pets.length})`,<PawPrint className="w-4 h-4"/>],
-          ["biting","Biting Incidents",<AlertCircle className="w-4 h-4"/>],
-          ["lost-found",`Lost & Found (${openReports.length})`,<Heart className="w-4 h-4"/>],
-          ["impounded",`Impounded (${impoundedReports.length})`,<Shield className="w-4 h-4"/>],
-          ["schedule","Schedules",<Calendar className="w-4 h-4"/>],
+          ["overview","Overview",<IActivity className="w-4 h-4"/>],
+          ["pets",`Pet Records (${pets.length})`,<IPawPrint className="w-4 h-4"/>],
+          ["biting","Biting Incidents",<IAlertCircle className="w-4 h-4"/>],
+          ["lost-found",`Lost & Found (${openReports.length})`,<IHeart className="w-4 h-4"/>],
+          ["impounded",`Impounded (${impoundedReports.length})`,<IShield className="w-4 h-4"/>],
+          ["schedule","Schedules",<ICalendar className="w-4 h-4"/>],
         ] as [string,string,any][]).map(([key,label,icon])=>(
           <button key={key} onClick={()=>setActiveTab(key as any)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${activeTab===key?"bg-[#2B5EA6] text-white shadow-sm":"text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
             {icon}{label}
@@ -1743,7 +1759,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <div className="flex flex-wrap gap-3">
-              <div className="flex-1 min-w-[200px] relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input placeholder="Search pets, owners, IDs…" value={search} onChange={e=>setSearch(e.target.value)} className={`${INPUT} pl-9`}/></div>
+              <div className="flex-1 min-w-[200px] relative"><ISearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input placeholder="Search pets, owners, IDs…" value={search} onChange={e=>setSearch(e.target.value)} className={`${INPUT} pl-9`}/></div>
               <select value={filterVax} onChange={e=>setFilterVax(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
                 <option value="all">All Status</option><option value="vaccinated">Vaccinated</option><option value="not-vaccinated">Not Vaccinated</option><option value="due-soon">Due Soon</option>
               </select>
@@ -1756,7 +1772,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
               <select value={filterImpound} onChange={e=>setFilterImpound(e.target.value as any)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
                 <option value="all">All</option><option value="impounded">Impounded Only</option>
               </select>
-              <button onClick={handleExportPets} className="flex items-center gap-2 px-4 py-2.5 bg-[#60A85C] text-white rounded-xl text-sm font-semibold hover:bg-[#4a8a47]"><Download className="w-4 h-4"/>Export CSV</button>
+              <button onClick={handleExportPets} className="flex items-center gap-2 px-4 py-2.5 bg-[#60A85C] text-white rounded-xl text-sm font-semibold hover:bg-[#4a8a47]"><IDownload className="w-4 h-4"/>Export CSV</button>
             </div>
             <p className="text-xs text-gray-400 mt-2">{filteredPets.length} of {pets.length} records shown</p>
           </div>
@@ -1770,7 +1786,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                   {filteredPets.map(pet=>(
                     <tr key={pet.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="py-3 px-3">
-                        {petPhoto(pet)?<img src={petPhoto(pet)} alt={pn(pet)} className="w-10 h-10 rounded-xl object-cover border border-gray-200"/>:<div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300"><PawPrint className="w-4 h-4 text-gray-400"/></div>}
+                        {petPhoto(pet)?<img src={petPhoto(pet)} alt={pn(pet)} className="w-10 h-10 rounded-xl object-cover border border-gray-200"/>:<div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300"><IPawPrint className="w-4 h-4 text-gray-400"/></div>}
                       </td>
                       <td className="py-3 px-3">
   {(()=>{
@@ -1782,9 +1798,9 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
       "Caluangan":"East","Coral Ni Bacal":"East","Dila":"East","Lumbang Na Bata":"East",
       "Lumbang Na Matanda":"East","Poblacion 1":"East","Poblacion 2":"East","Poblacion 3":"East",
       "Poblacion 4":"East","Poblacion 6":"East",
-      "Camastilisan":"Red","Lumbang Calzada":"Red","Poblacion 5":"Red","Putting Bato East":"Red",
-      "Putting Bato West":"Red","Quisumbing":"Red","Salong":"Red","San Rafael":"Red",
-      "Sinisian":"Red","Talisay":"Red",
+      "Camastilisan":"Baybay-Highway","Lumbang Calzada":"Baybay-Highway","Poblacion 5":"Baybay-Highway","Puting Bato East":"Baybay-Highway",
+      "Puting Bato West":"Baybay-Highway","Quisumbing":"Baybay-Highway","Salong":"Baybay-Highway","San Rafael":"Baybay-Highway",
+      "Sinisian":"Baybay-Highway","Talisay":"Baybay-Highway",
     };
     const ZONE_BG: Record<string,string> = { North:"#6B7280", West:"#8B5CF6", East:"#2B5EA6", Red:"#E85D3B" };
     const ZONE_LABEL: Record<string,string> = { North:"North", West:"West", East:"East", Red:"Red" };
@@ -1812,13 +1828,13 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                       </td>
                       <td className="py-3 px-3">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${vs(pet)==="Vaccinated"?"bg-green-100 text-green-700":vs(pet)==="Due Soon"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-700"}`}>
-                          {vs(pet)==="Vaccinated"?<CheckCircle className="w-3 h-3"/>:<AlertCircle className="w-3 h-3"/>}
+                          {vs(pet)==="Vaccinated"?<ICheckCircle className="w-3 h-3"/>:<IAlertCircle className="w-3 h-3"/>}
                           {vs(pet)}
                         </span>
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex gap-1">
-                          <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><Eye className="w-3 h-3"/>View</button>
+                          <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><IEye className="w-3 h-3"/>View</button>
                           <button onClick={async()=>{
                             setVaxCardLoading(true);
                             try{
@@ -1833,7 +1849,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                       </td>
                     </tr>
                   ))}
-                  {filteredPets.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><PawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
+                  {filteredPets.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><IPawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1850,7 +1866,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center"><p className="text-3xl font-black text-amber-600">{totalMatches}</p><p className="text-xs text-amber-600 font-semibold mt-1">Smart Matches</p></div>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap gap-3">
-            <div className="flex-1 min-w-[180px] relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input placeholder="Search reports…" value={search} onChange={e=>setSearch(e.target.value)} className={`${INPUT} pl-9`}/></div>
+            <div className="flex-1 min-w-[180px] relative"><ISearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input placeholder="Search reports…" value={search} onChange={e=>setSearch(e.target.value)} className={`${INPUT} pl-9`}/></div>
             <div className="flex gap-1 p-1 bg-gray-100 rounded-xl">
               {(["all","Lost","Found"] as const).map(t=><button key={t} onClick={()=>setFilterType(t)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filterType===t?"bg-white shadow text-gray-800":"text-gray-500 hover:text-gray-700"}`}>{t==="all"?"All":t}</button>)}
             </div>
@@ -1865,30 +1881,30 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${r.type==="Lost"?"bg-red-100":"bg-green-100"}`}>
-                          {r.type==="Lost"?<AlertCircle className="w-6 h-6 text-red-500"/>:<Heart className="w-6 h-6 text-green-500"/>}
+                          {r.type==="Lost"?<IAlertCircle className="w-6 h-6 text-red-500"/>:<IHeart className="w-6 h-6 text-green-500"/>}
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${r.type==="Lost"?"bg-red-100 text-red-700":"bg-green-100 text-green-700"}`}>{r.type}</span>
                             <span className="text-xs text-gray-400">{r.id}</span>
                             <span className={`px-2 py-0.5 text-xs rounded-full ${r.status==="Open"?"bg-yellow-100 text-yellow-700":"bg-gray-100 text-gray-500"}`}>{r.status}</span>
-                            {matches.length>0&&r.status==="Open"&&<span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-700 flex items-center gap-0.5"><Zap className="w-3 h-3"/>{matches.length} match{matches.length>1?"es":""}</span>}
+                            {matches.length>0&&r.status==="Open"&&<span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-700 flex items-center gap-0.5"><IZap className="w-3 h-3"/>{matches.length} match{matches.length>1?"es":""}</span>}
                           </div>
                           <p className="font-bold text-gray-800">{r.pet_name||r.petName} <span className="font-normal text-gray-500 text-sm">· {r.breed} · {r.color}</span></p>
-                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3"/>{r.last_seen_location||r.lastSeenLocation||"—"}, {r.barangay}</p>
+                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><IMapPin className="w-3 h-3"/>{r.last_seen_location||r.lastSeenLocation||"—"}, {r.barangay}</p>
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xs text-gray-400">{fmtDate(r.date_reported||r.dateReported)}</p>
                         <p className="text-sm font-semibold text-gray-700 mt-0.5">{r.reported_by||r.reportedBy}</p>
-                        <button onClick={()=>setViewReport(r)} className="mt-2 px-3 py-1.5 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#234a85] flex items-center gap-1 ml-auto"><Eye className="w-3 h-3"/>Details</button>
+                        <button onClick={()=>setViewReport(r)} className="mt-2 px-3 py-1.5 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#234a85] flex items-center gap-1 ml-auto"><IEye className="w-3 h-3"/>Details</button>
                       </div>
                     </div>
                   </div>
                 </div>
               );
             })}
-            {filteredReports.length===0&&<div className="bg-white rounded-2xl shadow-sm border border-gray-100 py-12 text-center"><AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm text-gray-400">No reports found</p></div>}
+            {filteredReports.length===0&&<div className="bg-white rounded-2xl shadow-sm border border-gray-100 py-12 text-center"><IAlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm text-gray-400">No reports found</p></div>}
           </div>
         </div>
       )}
@@ -1927,14 +1943,14 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
           {/* Post new impound button */}
           <div className="flex justify-end">
             <button onClick={()=>setShowImpoundForm(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 shadow-sm">
-              <Plus className="w-4 h-4"/>Post Impounded Pet
+              <IPlus className="w-4 h-4"/>Post Impounded Pet
             </button>
           </div>
 
           {/* Impound form */}
           {showImpoundForm && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-4">
-              <p className="font-bold text-amber-800 flex items-center gap-2"><Shield className="w-4 h-4"/>New Impounded Pet Record</p>
+              <p className="font-bold text-amber-800 flex items-center gap-2"><IShield className="w-4 h-4"/>New Impounded Pet Record</p>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Pet Name / Description *</label><input value={impoundForm.petName} onChange={e=>setImpoundForm(p=>({...p,petName:e.target.value}))} className={INPUT} placeholder="e.g., Brown male aspin"/></div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Species</label><select value={impoundForm.species} onChange={e=>setImpoundForm(p=>({...p,species:e.target.value}))} className={INPUT}><option>Dog</option><option>Cat</option><option>Other</option></select></div>
@@ -1951,7 +1967,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                 <button onClick={()=>setShowImpoundForm(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
                 <button onClick={handleSaveImpound} disabled={!impoundForm.petName||!impoundForm.barangay||!impoundForm.impoundLocation||savingImpound}
                   className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-50 flex items-center justify-center gap-2">
-                  {savingImpound?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:<><Shield className="w-4 h-4"/>Post Record</>}
+                  {savingImpound?<><IRefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:<><IShield className="w-4 h-4"/>Post Record</>}
                 </button>
               </div>
             </div>
@@ -1961,7 +1977,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
           <div className="space-y-3">
             {impoundedReports.length === 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 py-12 text-center">
-                <Shield className="w-8 h-8 mx-auto mb-2 text-gray-200"/>
+                <IShield className="w-8 h-8 mx-auto mb-2 text-gray-200"/>
                 <p className="text-sm text-gray-400">No impounded pets on record</p>
               </div>
             )}
@@ -1979,7 +1995,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
                         <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                          <Shield className="w-6 h-6 text-amber-600"/>
+                          <IShield className="w-6 h-6 text-amber-600"/>
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1988,13 +2004,13 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                             <span className={`px-2 py-0.5 text-xs rounded-full ${r.status==="Open"?"bg-yellow-100 text-yellow-700":"bg-green-100 text-green-700"}`}>{r.status==="Open"?"In Pound":"Released"}</span>
                             {lostMatches.length > 0 && r.status === "Open" && (
                               <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 flex items-center gap-0.5">
-                                <Zap className="w-3 h-3"/>{lostMatches.length} lost match{lostMatches.length>1?"es":""}
+                                <IZap className="w-3 h-3"/>{lostMatches.length} lost match{lostMatches.length>1?"es":""}
                               </span>
                             )}
                           </div>
                           <p className="font-bold text-gray-800">{r.pet_name||r.petName} <span className="font-normal text-gray-500 text-sm">· {r.breed||"—"} · {r.color||"—"}</span></p>
-                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3"/>Found: {r.last_seen_location||r.lastSeenLocation||"—"}, {r.barangay}</p>
-                          {(r as any).impound_location && <p className="text-sm text-amber-700 font-semibold flex items-center gap-1 mt-0.5"><Shield className="w-3 h-3"/>Pound: {(r as any).impound_location}</p>}
+                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><IMapPin className="w-3 h-3"/>Found: {r.last_seen_location||r.lastSeenLocation||"—"}, {r.barangay}</p>
+                          {(r as any).impound_location && <p className="text-sm text-amber-700 font-semibold flex items-center gap-1 mt-0.5"><IShield className="w-3 h-3"/>Pound: {(r as any).impound_location}</p>}
                           {(r as any).impound_officer && <p className="text-xs text-gray-400 mt-0.5">Officer: {(r as any).impound_officer}</p>}
                         </div>
                       </div>
@@ -2003,18 +2019,18 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                         {r.status === "Open" && (
                           <button onClick={()=>handleResolveImpound(r.id)}
                             className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 flex items-center gap-1 ml-auto">
-                            <CheckCircle className="w-3 h-3"/>Mark Released
+                            <ICheckCircle className="w-3 h-3"/>Mark Released
                           </button>
                         )}
                         <button onClick={()=>setViewReport(r)} className="px-3 py-1.5 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#234a85] flex items-center gap-1 ml-auto">
-                          <Eye className="w-3 h-3"/>Details
+                          <IEye className="w-3 h-3"/>Details
                         </button>
                       </div>
                     </div>
                     {/* Lost matches */}
                     {lostMatches.length > 0 && r.status === "Open" && (
                       <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
-                        <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3"/>Possible owner reports:</p>
+                        <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1"><IZap className="w-3 h-3"/>Possible owner reports:</p>
                         {lostMatches.slice(0,2).map(lr=>(
                           <div key={lr.id} className="flex items-center justify-between text-xs text-blue-800 py-1">
                             <span>{lr.pet_name||lr.petName} · {lr.reported_by||lr.reportedBy}</span>
@@ -2048,7 +2064,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-4 flex items-center justify-between z-10">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><PawPrint className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Register New Pet</p></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><IPawPrint className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Register New Pet</p></div>
               <button onClick={()=>setShowNewPet(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6 space-y-5">
@@ -2059,12 +2075,12 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                   ? <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
                       <img src={np.photoUrl} className="w-20 h-20 rounded-xl object-cover border border-gray-300" alt=""/>
                       <div className="space-y-2">
-                        <button onClick={()=>setShowPhoto(true)} className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100"><RefreshCw className="w-3.5 h-3.5"/>Change</button>
+                        <button onClick={()=>setShowPhoto(true)} className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-100"><IRefreshCw className="w-3.5 h-3.5"/>Change</button>
                         <button onClick={()=>setNp({...np,photoUrl:""})} className="flex items-center gap-2 text-red-500 text-sm hover:text-red-700"><X className="w-3.5 h-3.5"/>Remove</button>
                       </div>
                     </div>
                   : <button onClick={()=>setShowPhoto(true)} className="w-full flex items-center gap-4 p-4 border-2 border-dashed border-[#2B5EA6]/30 rounded-xl hover:border-[#2B5EA6] hover:bg-blue-50 transition-all group">
-                      <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 shrink-0"><ImagePlus className="w-6 h-6 text-[#2B5EA6]"/></div>
+                      <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 shrink-0"><IImagePlus className="w-6 h-6 text-[#2B5EA6]"/></div>
                       <div className="text-left"><p className="text-sm font-semibold text-gray-700">Add Pet Photo</p><p className="text-xs text-gray-400">Camera or gallery upload</p></div>
                     </button>
                 }
@@ -2081,7 +2097,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Color</label><input value={np.color} onChange={e=>setNp({...np,color:e.target.value})} className={INPUT} placeholder="e.g., Brown"/></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Gender</label><select value={np.gender} onChange={e=>setNp({...np,gender:e.target.value})} className={INPUT}><option value="">Select…</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Microchip ID</label><input value={np.microchipId} onChange={e=>setNp({...np,microchipId:e.target.value})} className={INPUT} placeholder="Optional"/></div>
-                  {(()=>{const BZONE:Record<string,string>={'Caluangan':'East','Coral Ni Bacal':'East','Dila':'East','Lumbang Na Bata':'East','Lumbang Na Matanda':'East','Poblacion 1':'East','Poblacion 2':'East','Poblacion 3':'East','Poblacion 4':'East','Poblacion 6':'East','Bagong Tubig':'West','Cahil':'West','Calantas':'West','Coral Ni Lopez':'West','Dacanlao':'West','Loma':'West','Makina':'West','Pantay':'West','Taklang Anak':'West','Timbain':'West','Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North','Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North','Camastilisan':'Red','Lumbang Calzada':'Red','Poblacion 5':'Red','Putting Bato East':'Red','Putting Bato West':'Red','Quisumbing':'Red','Salong':'Red','San Rafael':'Red','Sinisian':'Red','Talisay':'Red'};const ZPFX:Record<string,string>={East:'BLU',West:'PRP',North:'GRY',Red:'RED'};const ZCOL:Record<string,string>={BLU:'#2B5EA6',PRP:'#8B5CF6',GRY:'#6B7280',RED:'#E85D3B'};const zone=BZONE[np.barangay]||'East';const pfx=ZPFX[zone]||'BLU';const col=ZCOL[pfx]||'#2B5EA6';const numPad=(np.tagNumber||'').replace(/\D/g,'').padStart(4,'0');const preview=np.tagNumber?`${pfx}-${numPad}`:'';return(<div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Tag Number <span className="font-normal text-gray-400">(number only — prefix auto by zone)</span></label><div className="flex items-center gap-2"><span className="px-3 py-2.5 rounded-xl font-mono font-black text-white text-sm flex-shrink-0" style={{background:col}}>{pfx}-</span><input type="text" inputMode="numeric" value={np.tagNumber} onChange={e=>setNp({...np,tagNumber:e.target.value.replace(/\D/g,'').slice(0,6)})} className={INPUT} placeholder={np.barangay?`e.g. 0001`:'Select barangay first'} disabled={!np.barangay}/></div>{preview&&<div className="mt-2 flex items-center gap-2"><span className="text-xs text-gray-400">Full tag ID:</span><span className="font-mono font-black text-white text-xs px-2 py-0.5 rounded" style={{background:col}}>{preview}</span><span className="text-xs text-gray-400">({zone} Zone)</span></div>}{!np.barangay&&<p className="text-xs text-amber-600 mt-1">Select barangay first — prefix is auto by zone</p>}</div>);})()}
+                  {(()=>{const BZONE:Record<string,string>={'Caluangan':'East','Coral Ni Bacal':'East','Dila':'East','Lumbang Na Bata':'East','Lumbang Na Matanda':'East','Poblacion 1':'East','Poblacion 2':'East','Poblacion 3':'East','Poblacion 4':'East','Poblacion 6':'East','Bagong Tubig':'West','Cahil':'West','Calantas':'West','Coral Ni Lopez':'West','Dacanlao':'West','Loma':'West','Makina':'West','Pantay':'West','Taklang Anak':'West','Timbain':'West','Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North','Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North','Camastilisan':'Baybay-Highway','Lumbang Calzada':'Baybay-Highway','Poblacion 5':'Baybay-Highway','Puting Bato East':'Baybay-Highway','Puting Bato West':'Baybay-Highway','Quisumbing':'Baybay-Highway','Salong':'Baybay-Highway','San Rafael':'Baybay-Highway','Sinisian':'Baybay-Highway','Talisay':'Baybay-Highway'};const ZPFX:Record<string,string>={East:'BLU',West:'PRP',North:'GRY','Baybay-Highway':'RED'};const ZCOL:Record<string,string>={BLU:'#2B5EA6',PRP:'#8B5CF6',GRY:'#6B7280',RED:'#E85D3B'};const zone=BZONE[np.barangay]||'East';const pfx=ZPFX[zone]||'BLU';const col=ZCOL[pfx]||'#2B5EA6';const numPad=(np.tagNumber||'').replace(/\D/g,'').padStart(4,'0');const preview=np.tagNumber?`${pfx}-${numPad}`:'';return(<div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Tag Number <span className="font-normal text-gray-400">(number only — prefix auto by zone)</span></label><div className="flex items-center gap-2"><span className="px-3 py-2.5 rounded-xl font-mono font-black text-white text-sm flex-shrink-0" style={{background:col}}>{pfx}-</span><input type="text" inputMode="numeric" value={np.tagNumber} onChange={e=>setNp({...np,tagNumber:e.target.value.replace(/\D/g,'').slice(0,6)})} className={INPUT} placeholder={np.barangay?`e.g. 0001`:'Select barangay first'} disabled={!np.barangay}/></div>{preview&&<div className="mt-2 flex items-center gap-2"><span className="text-xs text-gray-400">Full tag ID:</span><span className="font-mono font-black text-white text-xs px-2 py-0.5 rounded" style={{background:col}}>{preview}</span><span className="text-xs text-gray-400">({zone} Zone)</span></div>}{!np.barangay&&<p className="text-xs text-amber-600 mt-1">Select barangay first — prefix is auto by zone</p>}</div>);})()}
                   {/* Spay / Neuter */}
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-gray-600 mb-2">Reproductive Status</label>
@@ -2198,7 +2214,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
               <div className="flex gap-2 pt-2">
                 <button onClick={()=>setShowNewPet(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
                 <button onClick={handleAddPet} disabled={!np.petName||!np.species||!np.breed||!np.ownerName||!np.barangay||saving} className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                  {saving?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:<><PawPrint className="w-4 h-4"/>Register Pet</>}
+                  {saving?<><IRefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:<><IPawPrint className="w-4 h-4"/>Register Pet</>}
                 </button>
               </div>
             </div>
@@ -2211,7 +2227,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4 flex items-center justify-between z-10">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><AlertCircle className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Report Lost / Found Pet</p></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><IAlertCircle className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Report Lost / Found Pet</p></div>
               <button onClick={()=>setShowLFDialog(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6 space-y-4">
@@ -2284,7 +2300,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
               <div className="flex gap-2 pt-2">
                 <button onClick={()=>setShowLFDialog(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
                 <button onClick={handleAddLF} disabled={!lfForm.reportedBy||!lfForm.contactNumber||!lfForm.barangay||!lfForm.description||saving} className={`flex-1 py-2.5 text-white rounded-xl text-sm font-bold disabled:opacity-40 ${lfForm.type==="Lost"?"bg-red-500 hover:bg-red-600":"bg-green-600 hover:bg-green-700"} flex items-center justify-center gap-2`}>
-                  {saving?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:`Submit ${lfForm.type} Report`}
+                  {saving?<><IRefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:`Submit ${lfForm.type} Report`}
                 </button>
               </div>
             </div>
@@ -2297,7 +2313,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="bg-gradient-to-r from-[#3a7a35] to-[#60A85C] px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><Calendar className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Add Vaccination Schedule</p></div>
+              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center"><ICalendar className="w-4 h-4 text-white"/></div><p className="font-bold text-white">Add Vaccination Schedule</p></div>
               <button onClick={()=>setShowScheduleAdd(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6 space-y-4">
@@ -2311,7 +2327,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
               <div className="flex gap-2 pt-2">
                 <button onClick={()=>setShowScheduleAdd(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
                 <button onClick={handleAddSchedule} disabled={!schForm.barangay||!schForm.date||!schForm.time||!schForm.location||saving} className="flex-1 py-2.5 bg-[#60A85C] text-white rounded-xl text-sm font-bold hover:bg-[#4a8a47] disabled:opacity-40 flex items-center justify-center gap-2">
-                  {saving?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:"Add Schedule"}
+                  {saving?<><IRefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:"Add Schedule"}
                 </button>
               </div>
             </div>

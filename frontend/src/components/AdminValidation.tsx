@@ -19,13 +19,13 @@ const BARANGAY_ZONE: Record<string, string> = {
   'Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North',
   'Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North',
   // Red → RED
-  'Camastilisan':'Red','Lumbang Calzada':'Red','Poblacion 5':'Red','Putting Bato East':'Red',
-  'Putting Bato West':'Red','Quisumbing':'Red','Salong':'Red','San Rafael':'Red',
-  'Sinisian':'Red','Talisay':'Red',
+  'Camastilisan':'Baybay-Highway','Lumbang Calzada':'Baybay-Highway','Poblacion 5':'Baybay-Highway','Puting Bato East':'Baybay-Highway',
+  'Puting Bato West':'Baybay-Highway','Quisumbing':'Baybay-Highway','Salong':'Baybay-Highway','San Rafael':'Baybay-Highway',
+  'Sinisian':'Baybay-Highway','Talisay':'Baybay-Highway',
 };
 
 const ZONE_PREFIX: Record<string, string> = {
-  East: 'BLU', West: 'PRP', North: 'GRY', Red: 'RED',
+  East: 'BLU', West: 'PRP', North: 'GRY', Red: 'RED', 'Baybay-Highway': 'RED',
 };
 
 const ZONE_COLOR: Record<string, string> = {
@@ -33,7 +33,7 @@ const ZONE_COLOR: Record<string, string> = {
 };
 
 const ZONE_LABEL: Record<string, string> = {
-  BLU: 'East Zone', PRP: 'West Zone', GRY: 'North Zone', RED: 'Red Zone',
+  BLU: 'East Zone', PRP: 'West Zone', GRY: 'North Zone', RED: 'Baybay-Highway Zone',
 };
 
 function getPrefix(barangay: string): string {

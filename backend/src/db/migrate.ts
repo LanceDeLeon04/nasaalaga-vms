@@ -171,50 +171,68 @@ const createTables = async () => {
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS owner_email VARCHAR(255)`);
     await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS temp_id VARCHAR(100)`);
 
-    // ── Enforce uniqueness of color-coded pet tag IDs (BLU-0001, PRP-0001 are different) ──
-    // Uses a partial unique index so NULL values are excluded (unregistered pets have no tag yet)
+    // ── Enforce uniqueness of color-coded pet tag IDs ──────────────────────
+    // Drop any old column-level unique constraint if it exists (from prior migrations)
+    // then create a partial unique index so NULL values are excluded.
     await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS pets_pet_tag_id_unique
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'pets_pet_tag_id_unique' AND contype = 'u'
+        ) THEN
+          ALTER TABLE pets DROP CONSTRAINT pets_pet_tag_id_unique;
+        END IF;
+      END$$;
+    `);
+    await client.query(`
+      DROP INDEX IF EXISTS pets_pet_tag_id_unique;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS pets_pet_tag_id_idx
       ON pets (pet_tag_id)
       WHERE pet_tag_id IS NOT NULL;
     `);
 
-    // ── Backfill existing pets that have PET-NNN style ids as pet_tag_id ────
-    // Re-generate their tag IDs from barangay zone so they follow the color scheme.
-    // Only updates rows where pet_tag_id is NULL or still uses old PET-/TAG- prefixes.
+    // ── Backfill existing pets that have PET-NNN / TAG- style ids ───────────
+    // Clear old-format tag IDs first so the renumbering CTE has no conflicts.
     await client.query(`
-      UPDATE pets p
-      SET pet_tag_id = (
-        SELECT
+      UPDATE pets
+      SET pet_tag_id = NULL
+      WHERE pet_tag_id LIKE 'PET-%'
+         OR pet_tag_id LIKE 'TAG-%';
+    `);
+
+    // Re-generate tag IDs from barangay zone for rows that still lack one.
+    await client.query(`
+      WITH ranked AS (
+        SELECT p.id,
           CASE b.zone
-            WHEN 'East'  THEN 'BLU'
-            WHEN 'West'  THEN 'PRP'
-            WHEN 'North' THEN 'GRY'
-            WHEN 'Red'   THEN 'RED'
+            WHEN 'East'           THEN 'BLU'
+            WHEN 'West'           THEN 'PRP'
+            WHEN 'North'          THEN 'GRY'
+            WHEN 'Baybay-Highway' THEN 'RED'
             ELSE 'BLU'
-          END
-          || '-'
-          || LPAD(
-               CAST(ROW_NUMBER() OVER (
-                 PARTITION BY
-                   CASE b.zone
-                     WHEN 'East'  THEN 'BLU'
-                     WHEN 'West'  THEN 'PRP'
-                     WHEN 'North' THEN 'GRY'
-                     WHEN 'Red'   THEN 'RED'
-                     ELSE 'BLU'
-                   END
-                 ORDER BY p2.registration_date, p2.id
-               ) AS TEXT),
-               4, '0'
-             )
-        FROM pets p2
-        LEFT JOIN barangays b ON LOWER(b.name) = LOWER(p2.barangay)
-        WHERE p2.id = p.id
+          END AS prefix,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              CASE b.zone
+                WHEN 'East'           THEN 'BLU'
+                WHEN 'West'           THEN 'PRP'
+                WHEN 'North'          THEN 'GRY'
+                WHEN 'Baybay-Highway' THEN 'RED'
+                ELSE 'BLU'
+              END
+            ORDER BY p.registration_date, p.id
+          ) AS rn
+        FROM pets p
+        LEFT JOIN barangays b ON LOWER(b.name) = LOWER(p.barangay)
+        WHERE p.pet_tag_id IS NULL
       )
-      WHERE p.pet_tag_id IS NULL
-         OR p.pet_tag_id LIKE 'PET-%'
-         OR p.pet_tag_id LIKE 'TAG-%';
+      UPDATE pets p
+      SET pet_tag_id = r.prefix || '-' || LPAD(r.rn::TEXT, 4, '0')
+      FROM ranked r
+      WHERE p.id = r.id;
     `);
 
     // Pet pre-registrations table

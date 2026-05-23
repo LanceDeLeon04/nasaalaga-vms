@@ -18,7 +18,7 @@ interface Livestock {
   quantity: number; gender?: string; age?: string; color_markings?: string;
   purpose?: string; source?: string; tag_number?: string;
   owner_name: string; contact_number?: string; barangay: string;
-  farm_address?: string; farm_type?: string; health_status: string; vaccination_status: string;
+  farm_address?: string; farm_type?: string; health_status: string;
   last_checkup_date?: string; registration_date?: string;
   quarantine_date?: string; quarantine_reason?: string; notes?: string;
 }
@@ -52,8 +52,8 @@ const CALACA_BARANGAYS = [
   'Caluangan','Camastilisan','Coral Ni Bacal','Coral Ni Lopez','Dacanlao','Dila',
   'Loma','Lumbang Calzada','Lumbang Na Bata','Lumbang Na Matanda','Madalunot',
   'Makina','Matipok','Munting Coral','Niyugan','Pantay','Poblacion 1','Poblacion 2',
-  'Poblacion 3','Poblacion 4','Poblacion 5','Poblacion 6','Putting Bato East',
-  'Putting Bato West','Quisumbing','Salong','San Rafael','Sinisian','Taklang Anak',
+  'Poblacion 3','Poblacion 4','Poblacion 5','Poblacion 6','Puting Bato East',
+  'Puting Bato West','Quisumbing','Salong','San Rafael','Sinisian','Taklang Anak',
   'Talisay','Tamayo','Timbain',
 ];
 
@@ -467,7 +467,7 @@ export function LivestockManagement() {
   ].filter(d=>d.value>0);
 
   const topBrgy = (summary?.byBarangay||[]).slice(0,8).map(b=>({
-    name:b.barangay.replace('Poblacion','Pob.').replace('Putting Bato','PB').replace('Lumbang','Lmb').replace('Coral Ni ','CN '),
+    name:b.barangay.replace('Poblacion','Pob.').replace('Puting Bato','PB').replace('Lumbang','Lmb').replace('Coral Ni ','CN '),
     cattle:parseInt(b.cattle||'0'), swine:parseInt(b.swine||'0'),
     poultry:parseInt(b.poultry||'0'), goats:parseInt(b.goats||'0'), carabao:parseInt(b.carabao||'0'),
   }));
