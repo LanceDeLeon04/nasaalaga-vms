@@ -1440,6 +1440,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [showImpoundForm, setShowImpoundForm] = useState(false);
   const [impoundForm, setImpoundForm] = useState({ petName:'', species:'Dog', breed:'', color:'', barangay:'', lastSeenLocation:'', description:'', impoundLocation:'', impoundOfficer:'', impoundDate:new Date().toISOString().split('T')[0] });
   const [savingImpound, setSavingImpound] = useState(false);
+  const [impoundedReports, setImpoundedReports] = useState<any[]>([]);
   const [vaxCardPet, setVaxCardPet] = useState<any>(null);
   const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
   const [vaxCardLoading, setVaxCardLoading] = useState(false);
@@ -1476,6 +1477,9 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [generatedTempId, setGeneratedTempId]   = useState<string|null>(null);
   const [showOwnerSugg, setShowOwnerSugg]       = useState(false);
   const [lfForm, setLfForm] = useState({ petId:"",type:"Lost" as "Lost"|"Found", reportedBy:"",contactNumber:"",lastSeenLocation:"",barangay:"",description:"",species:"",breed:"",color:"" });
+  const [lfPetSearch, setLfPetSearch] = useState("");
+  const [lfPetSuggestions, setLfPetSuggestions] = useState<Pet[]>([]);
+  const [showLfPetSugg, setShowLfPetSugg] = useState(false);
   const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",location:"",capacity:"100" });
 
   useEffect(() => { loadAll(); }, []);
@@ -1563,6 +1567,8 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         setPets(prev => prev.map(p => p.id === pet.id ? { ...p, status: "Lost" } : p));
       }
       setLfForm({ petId:"",type:"Lost",reportedBy:"",contactNumber:"",lastSeenLocation:"",barangay:"",description:"",species:"",breed:"",color:"" });
+      setLfPetSearch("");
+      setShowLfPetSugg(false);
       setShowLFDialog(false);
       await loadAll();
     } catch(e:any) { alert("Error: " + e.message); }
@@ -1575,6 +1581,61 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
       if (matchId) await api.updateLostFound(matchId, { status: "Resolved" });
       setReports(prev => prev.map(r => r.id===id||r.id===matchId ? { ...r, status:"Resolved" } : r));
     } catch(e:any) { alert("Error: " + e.message); }
+  };
+
+  const handleSaveImpound = async () => {
+    if (!impoundForm.petName || !impoundForm.barangay || !impoundForm.impoundLocation) return;
+    setSavingImpound(true);
+    try {
+      // Create a Lost/Found report for the impounded pet so the matching algo can find potential owners
+      const res = await api.createLostFound({
+        petId: "IMPOUND",
+        petName: impoundForm.petName,
+        species: impoundForm.species,
+        breed: impoundForm.breed,
+        color: impoundForm.color,
+        type: "Found",
+        reportedBy: impoundForm.impoundOfficer || "Pound Officer",
+        contactNumber: "",
+        lastSeenLocation: impoundForm.lastSeenLocation || impoundForm.impoundLocation,
+        barangay: impoundForm.barangay,
+        description: `[IMPOUNDED] ${impoundForm.description} | Impound Facility: ${impoundForm.impoundLocation}`,
+        impoundDate: impoundForm.impoundDate,
+        impoundLocation: impoundForm.impoundLocation,
+        isImpound: true,
+      });
+      const newRecord = {
+        id: res.report?.id || `IMP-${Date.now()}`,
+        petName: impoundForm.petName,
+        species: impoundForm.species,
+        breed: impoundForm.breed,
+        color: impoundForm.color,
+        barangay: impoundForm.barangay,
+        lastSeenLocation: impoundForm.lastSeenLocation,
+        impoundLocation: impoundForm.impoundLocation,
+        impoundOfficer: impoundForm.impoundOfficer,
+        impoundDate: impoundForm.impoundDate,
+        description: impoundForm.description,
+        status: "Open",
+        lostFoundId: res.report?.id,
+      };
+      setImpoundedReports(prev => [newRecord, ...prev]);
+      // Also add to reports so matching algo sees it
+      if (res.report) setReports(prev => [res.report, ...prev]);
+      setImpoundForm({ petName:'', species:'Dog', breed:'', color:'', barangay:'', lastSeenLocation:'', description:'', impoundLocation:'', impoundOfficer:'', impoundDate:new Date().toISOString().split('T')[0] });
+      setShowImpoundForm(false);
+    } catch(e:any) { alert("Error saving impound record: " + e.message); }
+    setSavingImpound(false);
+  };
+
+  const handleResolveImpound = (id: string) => {
+    setImpoundedReports(prev => prev.map(r => r.id === id ? { ...r, status: "Resolved" } : r));
+    // Also resolve the linked LF report if any
+    const imp = impoundedReports.find(r => r.id === id);
+    if (imp?.lostFoundId) {
+      api.updateLostFound(imp.lostFoundId, { status: "Resolved" }).catch(() => {});
+      setReports(prev => prev.map(r => r.id === imp.lostFoundId ? { ...r, status: "Resolved" } : r));
+    }
   };
 
   const handleAddSchedule = async () => {
@@ -1625,8 +1686,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     return m&&t;
   });
 
-  const openReports = reports.filter(r=>r.status==="Open" && r.type !== "Impounded");
-  const impoundedReports = reports.filter(r=>r.type==="Impounded");
+  const openReports = reports.filter(r=>r.status==="Open");
   const totalMatches = openReports.filter(r=>r.type==="Lost").reduce((a,r)=>a+(getMatches(r,reports).length>0?1:0),0);
 
   if (loading) return (
@@ -1703,7 +1763,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead><tr className="bg-gray-50 border-b border-gray-100">
-                  {["Photo","ID","Pet","Owner","Barangay","S/N","Vaccination","Impound","Actions"].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}
+                  {["Photo","ID","Pet","Owner","Barangay","S/N","Vaccination","Actions"].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredPets.map(pet=>(
@@ -1712,15 +1772,32 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                         {petPhoto(pet)?<img src={petPhoto(pet)} alt={pn(pet)} className="w-10 h-10 rounded-xl object-cover border border-gray-200"/>:<div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center border border-dashed border-gray-300"><PawPrint className="w-4 h-4 text-gray-400"/></div>}
                       </td>
                       <td className="py-3 px-3">
-  <p className="text-xs font-bold text-gray-600">{pet.id}</p>
-  {(pet.pet_tag_id||pet.petTagId)&&(()=>{
-    const tag=pet.pet_tag_id||pet.petTagId||'';
-    const prefix=tag.split('-')[0];
-    const colorMap:Record<string,string>={BLU:'#2B5EA6',PRP:'#8B5CF6',RED:'#E85D3B',GRY:'#6B7280'};
-    const bg=colorMap[prefix]||'#6B7280';
-    return <span style={{display:'inline-block',marginTop:2,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:bg,letterSpacing:'0.04em'}}>{tag}</span>;
+  {(()=>{
+    const BARANGAY_ZONES: Record<string,string> = {
+      "Baclas":"North","Balimbing":"North","Bambang":"North","Bisaya":"North",
+      "Madalunot":"North","Matipok":"North","Munting Coral":"North","Niyugan":"North","Tamayo":"North",
+      "Bagong Tubig":"West","Cahil":"West","Calantas":"West","Coral Ni Lopez":"West",
+      "Dacanlao":"West","Loma":"West","Makina":"West","Pantay":"West","Taklang Anak":"West","Timbain":"West",
+      "Caluangan":"East","Coral Ni Bacal":"East","Dila":"East","Lumbang Na Bata":"East",
+      "Lumbang Na Matanda":"East","Poblacion 1":"East","Poblacion 2":"East","Poblacion 3":"East",
+      "Poblacion 4":"East","Poblacion 6":"East",
+      "Camastilisan":"Red","Lumbang Calzada":"Red","Poblacion 5":"Red","Putting Bato East":"Red",
+      "Putting Bato West":"Red","Quisumbing":"Red","Salong":"Red","San Rafael":"Red",
+      "Sinisian":"Red","Talisay":"Red",
+    };
+    const ZONE_BG: Record<string,string> = { North:"#6B7280", West:"#8B5CF6", East:"#2B5EA6", Red:"#E85D3B" };
+    const ZONE_LABEL: Record<string,string> = { North:"North", West:"West", East:"East", Red:"Red" };
+    const petBarangay = brgy(pet);
+    const zone = BARANGAY_ZONES[petBarangay] || "East";
+    const zoneBg = ZONE_BG[zone] || "#6B7280";
+    const tag = pet.pet_tag_id || pet.petTagId || "";
+    return (<>
+      <p className="text-xs font-bold text-gray-600">{pet.id}</p>
+      <span style={{display:'inline-block',marginTop:2,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:zoneBg,letterSpacing:'0.04em'}}>{ZONE_LABEL[zone]} Zone</span>
+      {tag && <span style={{display:'inline-block',marginLeft:3,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:zoneBg,background:`${zoneBg}22`,border:`1px solid ${zoneBg}55`,letterSpacing:'0.04em'}}>{tag}</span>}
+      {pet.status!=="Active"&&<span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded ${pet.status==="Lost"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{pet.status}</span>}
+    </>);
   })()}
-  {pet.status!=="Active"&&<span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded ${pet.status==="Lost"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{pet.status}</span>}
 </td>
                       <td className="py-3 px-3"><p className="font-semibold text-gray-800 text-sm">{pn(pet)}</p><p className="text-xs text-gray-500">{pet.species} · {pet.breed} · {pet.color}</p></td>
                       <td className="py-3 px-3"><p className="text-sm font-semibold text-gray-800">{on(pet)}</p><p className="text-xs text-gray-500">{pet.contact_number||pet.ownerContact||"—"}</p></td>
@@ -1738,7 +1815,6 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                           {vs(pet)}
                         </span>
                       </td>
-                      <td className="py-3 px-3">{impound(pet)?<span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">{impound(pet)}</span>:<span className="text-gray-300 text-xs">—</span>}</td>
                       <td className="py-3 px-3">
                         <div className="flex gap-1">
                           <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><Eye className="w-3 h-3"/>View</button>
@@ -1756,7 +1832,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                       </td>
                     </tr>
                   ))}
-                  {filteredPets.length===0&&<tr><td colSpan={9} className="py-12 text-center text-gray-400"><PawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
+                  {filteredPets.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><PawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -2141,7 +2217,59 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                 {(["Lost","Found"] as const).map(t=><button key={t} onClick={()=>setLfForm({...lfForm,type:t})} className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-all ${lfForm.type===t?t==="Lost"?"border-red-500 bg-red-50 text-red-700":"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>{t==="Lost"?"Lost Pet":"Found Pet"}</button>)}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Linked Pet from Registry (if known)</label><select value={lfForm.petId} onChange={e=>setLfForm({...lfForm,petId:e.target.value})} className={INPUT}><option value="">Unknown / Not Registered</option>{pets.map(p=><option key={p.id} value={p.id}>{p.id} – {pn(p)} ({on(p)})</option>)}</select></div>
+                <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Linked Pet from Registry (if known)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={lfPetSearch}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setLfPetSearch(val);
+                        if (!val) { setLfForm({...lfForm, petId:""}); setLfPetSuggestions([]); setShowLfPetSugg(false); return; }
+                        const filtered = pets.filter(p =>
+                          pn(p).toLowerCase().includes(val.toLowerCase()) ||
+                          on(p).toLowerCase().includes(val.toLowerCase()) ||
+                          p.id.toLowerCase().includes(val.toLowerCase()) ||
+                          (p.breed||"").toLowerCase().includes(val.toLowerCase())
+                        ).slice(0, 8);
+                        setLfPetSuggestions(filtered);
+                        setShowLfPetSugg(true);
+                      }}
+                      onFocus={() => { if (lfPetSearch) setShowLfPetSugg(true); }}
+                      onBlur={() => setTimeout(() => setShowLfPetSugg(false), 150)}
+                      className={INPUT}
+                      placeholder="Type pet name, ID, owner, or breed…"
+                    />
+                    {lfForm.petId && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-green-600 font-bold">✓ Linked</span>}
+                    {showLfPetSugg && lfPetSuggestions.length > 0 && (
+                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+                        <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase border-b">Select from registry</div>
+                        {lfPetSuggestions.map(p => (
+                          <button key={p.id} type="button"
+                            onMouseDown={() => {
+                              setLfForm({...lfForm, petId: p.id, species: p.species||"", breed: p.breed||"", color: p.color||""});
+                              setLfPetSearch(`${pn(p)} (${p.id})`);
+                              setShowLfPetSugg(false);
+                            }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0">
+                            <p className="text-sm font-semibold text-gray-800">{pn(p)} <span className="text-xs font-mono text-gray-400">{p.id}</span></p>
+                            <p className="text-xs text-gray-500">{p.species} · {p.breed} · {on(p)} · {brgy(p)}</p>
+                          </button>
+                        ))}
+                        <button type="button"
+                          onMouseDown={() => { setLfForm({...lfForm, petId:""}); setLfPetSearch("Unknown / Not in Registry"); setShowLfPetSugg(false); }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-gray-50 text-xs text-gray-500 italic border-t">
+                          Unknown / Not in Registry
+                        </button>
+                      </div>
+                    )}
+                    {showLfPetSugg && lfPetSearch.length > 0 && lfPetSuggestions.length === 0 && (
+                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 px-3 py-3 text-sm text-gray-400 text-center">
+                        No matching pets found in registry
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Species</label><select value={lfForm.species} onChange={e=>setLfForm({...lfForm,species:e.target.value})} className={INPUT}><option value="">Select…</option><option value="Dog">Dog</option><option value="Cat">Cat</option><option value="Other">Other</option></select></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Breed</label><input value={lfForm.breed} onChange={e=>setLfForm({...lfForm,breed:e.target.value})} className={INPUT} placeholder="e.g., Aspin"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Color</label><input value={lfForm.color} onChange={e=>setLfForm({...lfForm,color:e.target.value})} className={INPUT} placeholder="e.g., Brown, White"/></div>
