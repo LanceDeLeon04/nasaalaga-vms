@@ -208,8 +208,8 @@ const seed = async () => {
          ON CONFLICT (id) DO NOTHING`,
         [l.id, l.owner_id, l.animal_type, l.breed, l.quantity, l.gender, l.age,
          l.color_markings, l.purpose, l.owner_name, l.contact_number, l.barangay,
-         l.farm_address, l.health_status, l.last_checkup_date, l.vaccination_status,
-         l.tag_number || null, l.registration_date,
+         l.farm_address, l.health_status, l.last_checkup_date, (l as any).farm_type || "Backyard",
+         (l as any).tag_number || null, l.registration_date,
          (l as any).quarantine_date || null, (l as any).quarantine_reason || null]
       );
     }
