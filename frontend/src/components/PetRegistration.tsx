@@ -1625,7 +1625,8 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     return m&&t;
   });
 
-  const openReports = reports.filter(r=>r.status==="Open");
+  const openReports = reports.filter(r=>r.status==="Open" && r.type !== "Impounded");
+  const impoundedReports = reports.filter(r=>r.type==="Impounded");
   const totalMatches = openReports.filter(r=>r.type==="Lost").reduce((a,r)=>a+(getMatches(r,reports).length>0?1:0),0);
 
   if (loading) return (
