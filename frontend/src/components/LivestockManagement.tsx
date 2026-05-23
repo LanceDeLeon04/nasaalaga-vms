@@ -3,7 +3,7 @@ import {
   Plus, Search, Download, Eye, RefreshCw, X, CheckCircle,
   AlertTriangle, Activity, BarChart3, TrendingUp, Shield, MapPin,
   Phone, FileText, Users, Syringe, Skull, Tag,
-  ClipboardList, Stethoscope, TriangleAlert, Info, Edit2
+  ClipboardList, Stethoscope, TriangleAlert, Info, Edit2, Home
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
@@ -18,7 +18,7 @@ interface Livestock {
   quantity: number; gender?: string; age?: string; color_markings?: string;
   purpose?: string; source?: string; tag_number?: string;
   owner_name: string; contact_number?: string; barangay: string;
-  farm_address?: string; health_status: string; vaccination_status: string;
+  farm_address?: string; farm_type?: string; health_status: string; vaccination_status: string;
   last_checkup_date?: string; registration_date?: string;
   quarantine_date?: string; quarantine_reason?: string; notes?: string;
 }
@@ -63,8 +63,8 @@ const PURPOSES      = ['Meat','Dairy','Draft','Egg','Mixed','Breeding','Pet'];
 const RECORD_TYPES  = ['Vaccination','Checkup','Treatment','Deworming','Dehorning','Castration','Other'];
 
 const TYPE_ICON: Record<string,string> = {
-  Cattle:'C', Swine:'S', Poultry:'P', Goats:'G', Carabao:'C',
-  Horse:'H', Sheep:'Sh', Duck:'D', Rabbit:'R',
+  Cattle:'🐄', Swine:'🐷', Poultry:'🐔', Goats:'🐐', Carabao:'🦬',
+  Horse:'🐴', Sheep:'🐑', Duck:'🦆', Rabbit:'🐰',
 };
 const TYPE_COLOR: Record<string,string> = {
   Cattle:'#2B5EA6', Swine:'#f59e0b', Poultry:'#e68a00', Goats:'#8b5cf6',
@@ -116,7 +116,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
   const [f, setF] = useState({
     animalType:'', breed:'', quantity:'1', gender:'', age:'', colorMarkings:'',
     purpose:'Mixed', source:'', tagNumber:'', ownerName:'', contactNumber:'',
-    barangay:'', farmAddress:'', healthStatus:'Healthy', vaccinationStatus:'Not Vaccinated',
+    barangay:'', farmAddress:'', farmType:'Backyard', healthStatus:'Healthy',
     notes:'', quarantineDate:'', quarantineReason:'',
   });
   const [saving, setSaving] = useState(false);
@@ -128,7 +128,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-xl font-bold text-white">{item.animal_type.charAt(0)}</div>
+            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-2xl">🐄</div>
             <div><p className="font-bold text-white">Register New Livestock</p><p className="text-white/60 text-xs">Fields marked * are required</p></div>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
@@ -164,7 +164,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Health Status</p>
             <div className="grid grid-cols-2 gap-3">
               <SelectField label="Health Status" value={f.healthStatus} onChange={s('healthStatus')} options={HEALTH_STATUSES}/>
-              <SelectField label="Vaccination Status" value={f.vaccinationStatus} onChange={s('vaccinationStatus')} options={['Not Vaccinated','Vaccinated','Due Soon']}/>
+              <SelectField label="Farm Type" value={f.farmType} onChange={s('farmType')} options={['Backyard','Commercial Farm','Semi-Commercial']}/>
               {(f.healthStatus === 'Quarantine' || f.healthStatus === 'Sick') && (
                 <>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quarantine Date</label><input type="date" value={f.quarantineDate} onChange={t('quarantineDate')} className={INPUT}/></div>
@@ -203,7 +203,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
   });
   const [ef, setEf] = useState({
     quantity:String(item.quantity), healthStatus:item.health_status,
-    vaccinationStatus:item.vaccination_status,
+    farmType:(item as any).farm_type||'Backyard',
     lastCheckupDate:item.last_checkup_date?.split('T')[0]||'',
     notes:item.notes||'', quarantineDate:item.quarantine_date?.split('T')[0]||'',
     quarantineReason:item.quarantine_reason||'',
@@ -235,7 +235,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
     try {
       await api.updateLivestock(item.id,{
         quantity:parseInt(ef.quantity)||item.quantity,
-        healthStatus:ef.healthStatus, vaccinationStatus:ef.vaccinationStatus,
+        healthStatus:ef.healthStatus, farmType:ef.farmType,
         lastCheckupDate:ef.lastCheckupDate||null, notes:ef.notes,
         quarantineDate:ef.quarantineDate||null, quarantineReason:ef.quarantineReason||null,
       });
@@ -252,7 +252,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
         {/* Header */}
         <div className="px-6 py-5 flex items-center justify-between shrink-0" style={{background:`linear-gradient(135deg,${hc}cc,${hc})`}}>
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white">{item.animal_type.charAt(0)}</div>
+            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-3xl">{TYPE_ICON[item.animal_type]||item.animal_type.charAt(0)}</div>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="px-2 py-0.5 bg-white/25 text-white text-xs font-bold rounded-full font-mono">{item.id}</span>
@@ -292,7 +292,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
                 <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{color:hc}}>Health</p>
                 <div className="flex flex-wrap gap-2">
                   <span className="px-3 py-1 rounded-full text-xs font-bold text-white" style={{background:hc}}>{item.health_status}</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${item.vaccination_status==='Vaccinated'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{item.vaccination_status}</span>
+<span className={`px-3 py-1 rounded-full text-xs font-bold ${(item as any).farm_type==='Commercial Farm'?'bg-blue-100 text-blue-700':(item as any).farm_type==='Semi-Commercial'?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'}`}>{(item as any).farm_type||'Backyard'}</span>
                 </div>
                 {item.quarantine_reason&&<p className="text-sm mt-2" style={{color:hc}}>{item.quarantine_reason}</p>}
                 {item.notes&&<p className="text-xs text-gray-600 mt-2 italic">{item.notes}</p>}
@@ -354,7 +354,7 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity</label><input type="number" min="0" value={ef.quantity} onChange={e=>setEf(p=>({...p,quantity:e.target.value}))} className={INPUT}/></div>
                 <SelectField label="Health Status" value={ef.healthStatus} onChange={(v:string)=>setEf(p=>({...p,healthStatus:v}))} options={HEALTH_STATUSES}/>
-                <SelectField label="Vaccination Status" value={ef.vaccinationStatus} onChange={(v:string)=>setEf(p=>({...p,vaccinationStatus:v}))} options={['Not Vaccinated','Vaccinated','Due Soon']}/>
+                <SelectField label="Farm Type" value={ef.farmType} onChange={(v:string)=>setEf(p=>({...p,farmType:v}))} options={['Backyard','Commercial Farm','Semi-Commercial']}/>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Last Checkup Date</label><input type="date" value={ef.lastCheckupDate} onChange={e=>setEf(p=>({...p,lastCheckupDate:e.target.value}))} className={INPUT}/></div>
                 {(ef.healthStatus==='Quarantine'||ef.healthStatus==='Sick')&&<>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quarantine Date</label><input type="date" value={ef.quarantineDate} onChange={e=>setEf(p=>({...p,quarantineDate:e.target.value}))} className={INPUT}/></div>
@@ -443,7 +443,7 @@ export function LivestockManagement() {
 
   const handleExport = ()=>{
     const csv = ['ID,Type,Breed,Qty,Owner,Contact,Barangay,Health,Vaccination,Last Checkup',
-      ...filteredLivestock.map(l=>`${l.id},${l.animal_type},${l.breed||''},${l.quantity},${l.owner_name},${l.contact_number||''},${l.barangay},${l.health_status},${l.vaccination_status},${l.last_checkup_date||''}`)
+      ...filteredLivestock.map(l=>`${l.id},${l.animal_type},${l.breed||''},${l.quantity},${l.owner_name},${l.contact_number||''},${l.barangay},${l.health_status},${(l as any).farm_type||'Backyard'},${l.last_checkup_date||''}`)
     ].join('\n');
     const a = document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='livestock.csv'; a.click();
   };
@@ -456,7 +456,6 @@ export function LivestockManagement() {
     acc.healthy=(acc.healthy||0)+parseInt(r.healthy||'0');
     acc.sick=(acc.sick||0)+parseInt(r.sick||'0');
     acc.quarantine=(acc.quarantine||0)+parseInt(r.quarantine||'0');
-    acc.vaccinated=(acc.vaccinated||0)+parseInt(r.vaccinated||'0');
     return acc;
   },{}) || {};
 
@@ -538,7 +537,7 @@ export function LivestockManagement() {
               <div key={type} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer" onClick={()=>{setFType(type);mt('records');}}>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{type}</p>
-                  <span className="text-2xl">{TYPE_ICON[type]}</span>
+<span className="text-2xl">{TYPE_ICON[type]||type.charAt(0)}</span>
                 </div>
                 <p className="text-3xl font-black text-gray-900">{fmtNum(totals[type.toLowerCase()]||0)}</p>
               </div>
@@ -550,7 +549,7 @@ export function LivestockManagement() {
             <StatCard label="Total Head" value={fmtNum(totals.total||0)} sub="All species combined" icon="" color="text-blue-600" bg="bg-blue-100"/>
             <StatCard label="Healthy" value={fmtNum(totals.healthy||0)} sub={totals.total?`${Math.round(((totals.healthy||0)/totals.total)*100)}% of herd`:''} icon={<CheckCircle className="w-5 h-5"/>} color="text-green-600" bg="bg-green-100"/>
             <StatCard label="Sick / Quarantine" value={fmtNum((totals.sick||0)+(totals.quarantine||0))} sub="Needs attention" icon={<AlertTriangle className="w-5 h-5"/>} color="text-red-600" bg="bg-red-100" onClick={()=>{setFHealth('Sick');mt('records');}}/>
-            <StatCard label="Vaccinated" value={fmtNum(totals.vaccinated||0)} sub={totals.total?`${Math.round(((totals.vaccinated||0)/totals.total)*100)}% coverage`:''} icon={<Syringe className="w-5 h-5"/>} color="text-purple-600" bg="bg-purple-100"/>
+<StatCard label="Registered Farms" value={fmtNum(livestock.length)} sub="All farm types" icon={<Users className="w-5 h-5"/>} color="text-purple-600" bg="bg-purple-100"/>
           </div>
 
           {/* Charts row */}
@@ -642,7 +641,7 @@ export function LivestockManagement() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="bg-gray-50 border-b border-gray-100">
-                  {['ID','Animal','Qty','Owner','Barangay','Health','Vaccination','Last Checkup','Actions'].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}
+                  {['ID','Animal','Qty','Owner','Barangay','Health','Farm Type','Last Checkup','Actions'].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredLivestock.map(l=>(
@@ -653,7 +652,7 @@ export function LivestockManagement() {
                       <td className="py-3 px-3"><p className="font-semibold text-gray-800 text-sm">{l.owner_name}</p><p className="text-xs text-gray-500">{l.contact_number||'—'}</p></td>
                       <td className="py-3 px-3 text-sm text-gray-600 whitespace-nowrap">{l.barangay}</td>
                       <td className="py-3 px-3"><span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold text-white whitespace-nowrap" style={{background:HEALTH_COLOR[l.health_status]||'#374151'}}>{l.health_status}</span></td>
-                      <td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${l.vaccination_status==='Vaccinated'?'bg-green-100 text-green-700':l.vaccination_status==='Due Soon'?'bg-amber-100 text-amber-700':'bg-red-100 text-red-700'}`}>{l.vaccination_status}</span></td>
+<td className="py-3 px-3"><span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${(l as any).farm_type==='Commercial Farm'?'bg-blue-100 text-blue-700':(l as any).farm_type==='Semi-Commercial'?'bg-purple-100 text-purple-700':'bg-amber-100 text-amber-700'}`}>{(l as any).farm_type||'Backyard'}</span></td>
                       <td className="py-3 px-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.last_checkup_date)}</td>
                       <td className="py-3 px-3"><div className="flex gap-1">
                         <button onClick={()=>setViewItem(l)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><Eye className="w-3 h-3"/>View</button>
@@ -679,7 +678,7 @@ export function LivestockManagement() {
           {livestock.filter(l=>l.last_checkup_date).sort((a,b)=>new Date(b.last_checkup_date!).getTime()-new Date(a.last_checkup_date!).getTime()).map(l=>(
             <div key={l.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-xl hover:shadow-sm transition-all">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{l.animal_type.charAt(0)}</span>
+  <span className="text-2xl">{TYPE_ICON[l.animal_type]||l.animal_type.charAt(0)}</span>
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">{l.animal_type} · {l.breed||'—'} <span className="font-mono text-gray-400 text-xs">({l.id})</span></p>
                   <p className="text-xs text-gray-500">{l.owner_name} · {l.barangay}</p>
@@ -728,7 +727,7 @@ export function LivestockManagement() {
               <div className={`h-1.5 ${e.status==='Active'?'bg-gradient-to-r from-red-500 to-orange-400':'bg-gradient-to-r from-green-500 to-emerald-400'}`}/>
               <div className="p-5 flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 ${e.status==='Active'?'bg-red-100':'bg-green-100'}`}>{e.animal_type.charAt(0)}</div>
+<div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0 ${e.status==='Active'?'bg-red-100':'bg-green-100'}`}>{TYPE_ICON[e.animal_type]||e.animal_type.charAt(0)}</div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${e.status==='Active'?'bg-red-100 text-red-700':'bg-green-100 text-green-700'}`}>{e.status}</span>

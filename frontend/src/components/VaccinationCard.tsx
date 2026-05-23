@@ -11,17 +11,22 @@ interface VaxRecord {
 
 interface Pet {
   id: string;
-  pet_name: string;
+  // Accepts both snake_case (DB rows) and camelCase (mapped objects)
+  pet_name?: string;
+  petName?: string;
   species: string;
   gender?: string;
   age?: string | number;
   breed?: string;
   color?: string;
   owner_name?: string;
+  ownerName?: string;
   address?: string;
   barangay?: string;
   pet_tag_id?: string;
+  petTagId?: string;
   registration_date?: string;
+  registrationDate?: string;
   photo?: string;
 }
 
@@ -139,8 +144,15 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
     window.print();
   };
 
+  // Normalize: accept both snake_case (DB) and camelCase (mapped) pet objects
+  const petName   = pet.pet_name || (pet as any).petName || '';
+  const ownerName = pet.owner_name || (pet as any).ownerName || '';
+  const tagId     = pet.pet_tag_id || (pet as any).petTagId || pet.id;
+  const regDate   = pet.registration_date || (pet as any).registrationDate || '';
+  const petPhoto  = pet.photo || '';
+
   const address = [pet.address, pet.barangay ? `Brgy. ${pet.barangay}` : '', 'Calaca City, Batangas'].filter(Boolean).join(', ');
-  const regNo   = pet.pet_tag_id || pet.id;
+  const regNo   = tagId;
 
   // Split history into 2 columns of 6 rows each (12 total slots)
   const slots = Array.from({ length: 12 }, (_, i) => history[i] || null);
@@ -153,7 +165,7 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
       <div className="vax-overlay no-print" onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="vax-modal">
           <div className="vax-topbar no-print">
-            <h3 style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 2v2m4-2v2M5 10l14 4-3 3-5-5-3 3-3-5z"/><path d="m18 14-3 3"/></svg>Anti-Rabies Vaccination Card — {pet.pet_name}</h3>
+            <h3 style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 2v2m4-2v2M5 10l14 4-3 3-5-5-3 3-3-5z"/><path d="m18 14-3 3"/></svg>Anti-Rabies Vaccination Card — {petName}</h3>
             <div className="vax-actions">
               <button className="btn-print" onClick={handlePrint} style={{display:"flex",alignItems:"center",gap:6}}><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print Card</button>
               <button className="btn-close"  onClick={onClose}>✕ Close</button>
@@ -215,7 +227,7 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
                       <tr>
                         <td style={{ width: '100%' }} colSpan={2}>
                           <span className="info-label">Name of Pet</span>
-                          <span className="info-value">{pet.pet_name}</span>
+                          <span className="info-value">{petName}</span>
                         </td>
                       </tr>
                       <tr>
@@ -247,7 +259,7 @@ export function VaccinationCard({ pet, history, onClose, onPrint }: Props) {
                       <tr>
                         <td colSpan={2}>
                           <span className="info-label">Name of Owner</span>
-                          <span className="info-value">{pet.owner_name || '—'}</span>
+                          <span className="info-value">{ownerName || '—'}</span>
                         </td>
                       </tr>
                       <tr>

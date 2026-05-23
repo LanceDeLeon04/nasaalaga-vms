@@ -40,9 +40,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     const newId = `LF-${String(count + 1).padStart(3, '0')}`;
 
     await query(
-      `INSERT INTO lost_found_reports (id, pet_id, pet_name, species, breed, color, type, reported_by, reported_by_role, owner_id, contact_number, last_seen_location, barangay, description, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Open')`,
-      [newId, d.petId || 'UNKNOWN', d.petName, d.species, d.breed, d.color, d.type, d.reportedBy, d.reportedByRole, d.ownerId || null, d.contactNumber, d.lastSeenLocation, d.barangay, d.description]
+      `INSERT INTO lost_found_reports (id, pet_id, pet_name, species, breed, color, type, reported_by, reported_by_role, owner_id, contact_number, last_seen_location, barangay, description, status, impound_location, impound_date, impound_officer)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Open',$15,$16,$17)`,
+      [newId, d.petId || 'UNKNOWN', d.petName, d.species, d.breed, d.color, d.type, d.reportedBy, d.reportedByRole, d.ownerId || null, d.contactNumber, d.lastSeenLocation, d.barangay, d.description, d.impoundLocation || null, d.impoundDate || null, d.impoundOfficer || null]
     );
 
     // If lost registered pet, mark as Lost
@@ -65,6 +65,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const fieldMap: Record<string, string> = {
       status: 'status', description: 'description',
       lastSeenLocation: 'last_seen_location',
+      impoundLocation: 'impound_location',
+      impoundDate: 'impound_date',
+      impoundOfficer: 'impound_officer',
     };
 
     const setClauses: string[] = ['updated_at=NOW()'];

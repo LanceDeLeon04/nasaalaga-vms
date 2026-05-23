@@ -1436,7 +1436,10 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
   const [survey, setSurvey] = useState<SurveyData|null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"schedule"|"biting">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"impounded"|"schedule"|"biting">("overview");
+  const [showImpoundForm, setShowImpoundForm] = useState(false);
+  const [impoundForm, setImpoundForm] = useState({ petName:'', species:'Dog', breed:'', color:'', barangay:'', lastSeenLocation:'', description:'', impoundLocation:'', impoundOfficer:'', impoundDate:new Date().toISOString().split('T')[0] });
+  const [savingImpound, setSavingImpound] = useState(false);
   const [vaxCardPet, setVaxCardPet] = useState<any>(null);
   const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
   const [vaxCardLoading, setVaxCardLoading] = useState(false);
@@ -1659,6 +1662,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
           ["pets",`Pet Records (${pets.length})`,<PawPrint className="w-4 h-4"/>],
           ["biting","Biting Incidents",<AlertCircle className="w-4 h-4"/>],
           ["lost-found",`Lost & Found (${openReports.length})`,<Heart className="w-4 h-4"/>],
+          ["impounded",`Impounded (${impoundedReports.length})`,<Shield className="w-4 h-4"/>],
           ["schedule","Schedules",<Calendar className="w-4 h-4"/>],
         ] as [string,string,any][]).map(([key,label,icon])=>(
           <button key={key} onClick={()=>setActiveTab(key as any)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${activeTab===key?"bg-[#2B5EA6] text-white shadow-sm":"text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
@@ -1737,7 +1741,6 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                       <td className="py-3 px-3">
                         <div className="flex gap-1">
                           <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><Eye className="w-3 h-3"/>View</button>
-                          {vs(pet)!=="Vaccinated"&&<button onClick={()=>{setVaccinatePet(pet);setShowVaccinate(true);}} className="px-2.5 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><Syringe className="w-3 h-3"/>Vax</button>}
                           <button onClick={async()=>{
                             setVaxCardLoading(true);
                             try{
@@ -1808,6 +1811,144 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
               );
             })}
             {filteredReports.length===0&&<div className="bg-white rounded-2xl shadow-sm border border-gray-100 py-12 text-center"><AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm text-gray-400">No reports found</p></div>}
+          </div>
+        </div>
+      )}
+
+      {/* ══ IMPOUNDED */}
+      {activeTab==="impounded" && (
+        <div className="space-y-4">
+          {/* Header stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+              <p className="text-3xl font-black text-amber-600">{impoundedReports.filter(r=>r.status==="Open").length}</p>
+              <p className="text-xs text-amber-600 font-semibold mt-1">Currently Impounded</p>
+            </div>
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
+              <p className="text-3xl font-black text-green-600">{impoundedReports.filter(r=>r.status==="Resolved").length}</p>
+              <p className="text-xs text-green-600 font-semibold mt-1">Released / Claimed</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
+              <p className="text-3xl font-black text-blue-600">{
+                (() => {
+                  const imp = impoundedReports.filter(r=>r.status==="Open");
+                  const lost = reports.filter(r=>r.type==="Lost"&&r.status==="Open");
+                  let matches = 0;
+                  imp.forEach(ir => {
+                    lost.forEach(lr => {
+                      if ((lr.species||'').toLowerCase()===(ir.species||'').toLowerCase() && (lr.barangay||'')===(ir.barangay||'')) matches++;
+                    });
+                  });
+                  return matches;
+                })()
+              }</p>
+              <p className="text-xs text-blue-600 font-semibold mt-1">Potential Lost Matches</p>
+            </div>
+          </div>
+
+          {/* Post new impound button */}
+          <div className="flex justify-end">
+            <button onClick={()=>setShowImpoundForm(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 shadow-sm">
+              <Plus className="w-4 h-4"/>Post Impounded Pet
+            </button>
+          </div>
+
+          {/* Impound form */}
+          {showImpoundForm && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-4">
+              <p className="font-bold text-amber-800 flex items-center gap-2"><Shield className="w-4 h-4"/>New Impounded Pet Record</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Pet Name / Description *</label><input value={impoundForm.petName} onChange={e=>setImpoundForm(p=>({...p,petName:e.target.value}))} className={INPUT} placeholder="e.g., Brown male aspin"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Species</label><select value={impoundForm.species} onChange={e=>setImpoundForm(p=>({...p,species:e.target.value}))} className={INPUT}><option>Dog</option><option>Cat</option><option>Other</option></select></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Breed</label><input value={impoundForm.breed} onChange={e=>setImpoundForm(p=>({...p,breed:e.target.value}))} className={INPUT} placeholder="e.g., Aspin, Puspin"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Color / Markings</label><input value={impoundForm.color} onChange={e=>setImpoundForm(p=>({...p,color:e.target.value}))} className={INPUT} placeholder="e.g., Brown with white chest"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Barangay Found *</label><select value={impoundForm.barangay} onChange={e=>setImpoundForm(p=>({...p,barangay:e.target.value}))} className={INPUT}><option value="">Select Barangay</option>{CALACA_BARANGAYS.map(b=><option key={b}>{b}</option>)}</select></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Location Where Found</label><input value={impoundForm.lastSeenLocation} onChange={e=>setImpoundForm(p=>({...p,lastSeenLocation:e.target.value}))} className={INPUT} placeholder="Specific location"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Impound Facility *</label><input value={impoundForm.impoundLocation} onChange={e=>setImpoundForm(p=>({...p,impoundLocation:e.target.value}))} className={INPUT} placeholder="e.g., Calaca City Pound"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Impound Date</label><input type="date" value={impoundForm.impoundDate} onChange={e=>setImpoundForm(p=>({...p,impoundDate:e.target.value}))} className={INPUT}/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Officer / By</label><input value={impoundForm.impoundOfficer} onChange={e=>setImpoundForm(p=>({...p,impoundOfficer:e.target.value}))} className={INPUT} placeholder="Name of officer"/></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Description / Condition</label><input value={impoundForm.description} onChange={e=>setImpoundForm(p=>({...p,description:e.target.value}))} className={INPUT} placeholder="Health condition, behavior…"/></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={()=>setShowImpoundForm(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+                <button onClick={handleSaveImpound} disabled={!impoundForm.petName||!impoundForm.barangay||!impoundForm.impoundLocation||savingImpound}
+                  className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                  {savingImpound?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:<><Shield className="w-4 h-4"/>Post Record</>}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Impounded list */}
+          <div className="space-y-3">
+            {impoundedReports.length === 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 py-12 text-center">
+                <Shield className="w-8 h-8 mx-auto mb-2 text-gray-200"/>
+                <p className="text-sm text-gray-400">No impounded pets on record</p>
+              </div>
+            )}
+            {impoundedReports.map(r => {
+              // Check for lost pet matches
+              const lostMatches = reports.filter(lr =>
+                lr.type === "Lost" && lr.status === "Open" &&
+                (lr.species||'').toLowerCase() === (r.species||'').toLowerCase() &&
+                (lr.barangay||'') === (r.barangay||'')
+              );
+              return (
+                <div key={r.id} className={`bg-white rounded-2xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${r.status==="Resolved"?"border-gray-200 opacity-70":"border-amber-200"}`}>
+                  <div className="h-1.5 bg-gradient-to-r from-amber-500 to-orange-400"/>
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                          <Shield className="w-6 h-6 text-amber-600"/>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-700">Impounded</span>
+                            <span className="text-xs text-gray-400 font-mono">{r.id}</span>
+                            <span className={`px-2 py-0.5 text-xs rounded-full ${r.status==="Open"?"bg-yellow-100 text-yellow-700":"bg-green-100 text-green-700"}`}>{r.status==="Open"?"In Pound":"Released"}</span>
+                            {lostMatches.length > 0 && r.status === "Open" && (
+                              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 flex items-center gap-0.5">
+                                <Zap className="w-3 h-3"/>{lostMatches.length} lost match{lostMatches.length>1?"es":""}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-bold text-gray-800">{r.pet_name||r.petName} <span className="font-normal text-gray-500 text-sm">· {r.breed||"—"} · {r.color||"—"}</span></p>
+                          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><MapPin className="w-3 h-3"/>Found: {r.last_seen_location||r.lastSeenLocation||"—"}, {r.barangay}</p>
+                          {(r as any).impound_location && <p className="text-sm text-amber-700 font-semibold flex items-center gap-1 mt-0.5"><Shield className="w-3 h-3"/>Pound: {(r as any).impound_location}</p>}
+                          {(r as any).impound_officer && <p className="text-xs text-gray-400 mt-0.5">Officer: {(r as any).impound_officer}</p>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 space-y-1">
+                        <p className="text-xs text-gray-400">{fmtDate(r.date_reported||r.dateReported)}</p>
+                        {r.status === "Open" && (
+                          <button onClick={()=>handleResolveImpound(r.id)}
+                            className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 flex items-center gap-1 ml-auto">
+                            <CheckCircle className="w-3 h-3"/>Mark Released
+                          </button>
+                        )}
+                        <button onClick={()=>setViewReport(r)} className="px-3 py-1.5 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#234a85] flex items-center gap-1 ml-auto">
+                          <Eye className="w-3 h-3"/>Details
+                        </button>
+                      </div>
+                    </div>
+                    {/* Lost matches */}
+                    {lostMatches.length > 0 && r.status === "Open" && (
+                      <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                        <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1"><Zap className="w-3 h-3"/>Possible owner reports:</p>
+                        {lostMatches.slice(0,2).map(lr=>(
+                          <div key={lr.id} className="flex items-center justify-between text-xs text-blue-800 py-1">
+                            <span>{lr.pet_name||lr.petName} · {lr.reported_by||lr.reportedBy}</span>
+                            <button onClick={()=>setViewReport(lr)} className="text-blue-600 underline font-semibold">View</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

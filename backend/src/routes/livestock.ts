@@ -70,14 +70,14 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       `INSERT INTO livestock
         (id, owner_id, animal_type, breed, quantity, gender, age, color_markings,
          purpose, source, tag_number, owner_name, contact_number, barangay, farm_address,
-         health_status, vaccination_status, notes, registration_date)
+         health_status, farm_type, notes, registration_date)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,CURRENT_DATE)
        RETURNING *`,
       [newId, d.ownerId || null, d.animalType, d.breed || null, d.quantity || 1,
        d.gender || null, d.age || null, d.colorMarkings || null,
        d.purpose || 'Mixed', d.source || null, d.tagNumber || null,
        d.ownerName, d.contactNumber || null, d.barangay, d.farmAddress || null,
-       d.healthStatus || 'Healthy', d.vaccinationStatus || 'Not Vaccinated', d.notes || null]
+       d.healthStatus || 'Healthy', d.farmType || 'Backyard', d.notes || null]
     );
     return res.json({ livestock: result.rows[0], success: true });
   } catch (err: any) {
@@ -96,7 +96,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       purpose: 'purpose', source: 'source', tagNumber: 'tag_number',
       ownerName: 'owner_name', contactNumber: 'contact_number',
       barangay: 'barangay', farmAddress: 'farm_address',
-      healthStatus: 'health_status', vaccinationStatus: 'vaccination_status',
+      healthStatus: 'health_status', farmType: 'farm_type',
       lastCheckupDate: 'last_checkup_date', notes: 'notes',
       quarantineDate: 'quarantine_date', quarantineReason: 'quarantine_reason',
     };

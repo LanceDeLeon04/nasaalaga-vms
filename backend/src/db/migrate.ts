@@ -99,6 +99,7 @@ const createTables = async () => {
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS tag_number VARCHAR(100)`);
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_date DATE`);
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_reason TEXT`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS farm_type VARCHAR(50) DEFAULT 'Backyard'`);
     await client.query(`ALTER TABLE livestock ALTER COLUMN owner_id DROP NOT NULL`);
 
     // ── Health records table ───────────────────────────────────────────────
@@ -234,7 +235,7 @@ const createTables = async () => {
         species VARCHAR(100),
         breed VARCHAR(255),
         color VARCHAR(100),
-        type VARCHAR(20) NOT NULL,
+        type VARCHAR(20) NOT NULL, -- Lost, Found, Impounded
         reported_by VARCHAR(255),
         reported_by_role VARCHAR(50),
         owner_id VARCHAR(100),
@@ -244,10 +245,17 @@ const createTables = async () => {
         date_reported DATE DEFAULT CURRENT_DATE,
         description TEXT,
         status VARCHAR(50) DEFAULT 'Open',
+        impound_location TEXT,
+        impound_date DATE,
+        impound_officer VARCHAR(255),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+    // Add impound columns if not exist
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_location TEXT`);
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_date DATE`);
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_officer VARCHAR(255)`);
 
     // Vaccination schedules table
     await client.query(`
