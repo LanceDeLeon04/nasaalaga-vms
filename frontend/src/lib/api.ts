@@ -94,6 +94,7 @@ export const api = {
   updateLostFound: (id: string, data: any) =>
     request('/lost-found/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   getSchedules: () => request('/schedules'),
+  updateSchedule: (id: string, data: any) => request('/schedules/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   createSchedule: (data: any) =>
     request('/schedules', { method: 'POST', body: JSON.stringify(data) }),
   getLivestockStats: () => request('/statistics/livestock-by-barangay'),
@@ -157,7 +158,14 @@ export const api = {
   getPetById: (id: string) => request('/pets/lookup/' + id),
   getVaccinationHistory: (petId: string) => request('/vaccination-history/' + petId),
   recordVaccination: (data: any) => request('/vaccination-history', { method: 'POST', body: JSON.stringify(data) }),
-  getAuditLogs: () => request('/audit-logs'),
+  getAuditLogs: (params?: { action?: string; search?: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.action) p.set('action', params.action);
+    if (params?.search) p.set('search', params.search);
+    if (params?.limit) p.set('limit', String(params.limit));
+    return request('/audit-logs?' + p.toString());
+  },
+  getAuditLogStats: () => request('/audit-logs/stats'),
   logAudit: (data: any) =>
     request('/audit-logs', { method: 'POST', body: JSON.stringify(data) }),
   getFeedback: () => request('/feedback'),
@@ -165,6 +173,23 @@ export const api = {
     request('/feedback', { method: 'POST', body: JSON.stringify(data) }),
   updateFeedback: (id: number, data: any) =>
     request('/feedback/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  getCVOForms: () => request('/cvo-forms'),
+  createCVOForm: (data: any) => request('/cvo-forms', { method: 'POST', body: JSON.stringify(data) }),
+  updateCVOForm: (id: string, data: any) => request('/cvo-forms/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCVOForm: (id: string) => request('/cvo-forms/' + id, { method: 'DELETE' }),
+  respondToFeedback: (id: number, data: any) => request('/feedback/' + id + '/respond', { method: 'PUT', body: JSON.stringify(data) }),
+  getReportsSummary: (params?: { startDate?: string; endDate?: string; barangay?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.startDate) p.set('startDate', params.startDate);
+    if (params?.endDate) p.set('endDate', params.endDate);
+    if (params?.barangay) p.set('barangay', params.barangay);
+    return request('/reports/summary?' + p.toString());
+  },
+  getVaccinationCoverageReport: () => request('/reports/vaccination-coverage'),
+  getMedicineMovementReport: () => request('/reports/medicine-movement'),
+  getDashboardMedicineIntel: () => request('/dashboard/medicine-intel'),
+  getDashboardAnimalPopulation: () => request('/dashboard/animal-population'),
+  getDashboardDiseaseIntel: () => request('/dashboard/disease-intel'),
 };
 
 export default api;

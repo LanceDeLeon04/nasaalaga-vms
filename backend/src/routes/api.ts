@@ -4,6 +4,14 @@ import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+// ── Audit log helper ───────────────────────────────────────────────────────
+const logAudit = (req: AuthRequest, action: string, resource: string, resourceId?: string, details?: object) => {
+  query(
+    `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [req.user?.id, req.user?.username, action, resource, resourceId || null, JSON.stringify(details || {}), req.ip]
+  ).catch(() => {});
+};
+
 // ── Health ─────────────────────────────────────────────────────────────────
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -338,6 +346,7 @@ router.put('/users/:id', authenticate, async (req: AuthRequest, res: Response) =
       `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, updated_at=NOW() WHERE id=$5 RETURNING id, email, username, role, barangay, verified`,
       [username, role, barangay, verified, req.params.id]
     );
+    logAudit(req, 'Update', 'User', req.params.id, { username, role });
     return res.json({ success: true, user: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -977,6 +986,285 @@ router.get('/inventory/lookup-barcode/:barcode', authenticate, async (req: AuthR
     const result = await query(`SELECT * FROM medicine_inventory WHERE barcode=$1`, [decodeURIComponent(req.params.barcode)]);
     if (!result.rows[0]) return res.status(404).json({ error: 'Vaccine not found' });
     return res.json({ medicine: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── CVO Forms (Other CVO Services) ─────────────────────────────────────────
+router.get('/cvo-forms', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM cvo_forms ORDER BY category, sort_order, created_at DESC`);
+    return res.json({ success: true, forms: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/cvo-forms', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `FORM-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO cvo_forms (id, title, description, category, requirements, procedure_steps, processing_fee, sort_order, is_active, uploaded_by, file_name, file_data, file_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [id, d.title, d.description, d.category, JSON.stringify(d.requirements||[]),
+       JSON.stringify(d.procedureSteps||[]), d.processingFee||0, d.sortOrder||0,
+       true, req.user?.username, d.fileName||null, d.fileData||null, d.fileType||null]
+    );
+    await query(`INSERT INTO audit_logs (user_id,username,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [req.user?.id, req.user?.username, 'Upload', 'CVO Form', id, JSON.stringify({title:d.title}), req.ip]);
+    return res.json({ success: true, form: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.put('/cvo-forms/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE cvo_forms SET title=$1,description=$2,category=$3,requirements=$4,procedure_steps=$5,processing_fee=$6,sort_order=$7,is_active=$8,file_name=$9,file_data=$10,file_type=$11,updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
+      [d.title, d.description, d.category, JSON.stringify(d.requirements||[]),
+       JSON.stringify(d.procedureSteps||[]), d.processingFee||0, d.sortOrder||0,
+       d.isActive!==false, d.fileName||null, d.fileData||null, d.fileType||null, req.params.id]
+    );
+    return res.json({ success: true, form: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/cvo-forms/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query(`DELETE FROM cvo_forms WHERE id=$1`, [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Feedback with admin response ────────────────────────────────────────────
+router.put('/feedback/:id/respond', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { response, status } = req.body;
+    const result = await query(
+      `UPDATE feedback SET admin_response=$1, responded_by=$2, responded_at=NOW(), status=$3 WHERE id=$4 RETURNING *`,
+      [response, req.user?.username, status||'Resolved', req.params.id]
+    );
+    await query(`INSERT INTO audit_logs (user_id,username,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [req.user?.id, req.user?.username, 'Respond', 'Feedback', req.params.id, JSON.stringify({status}), req.ip]);
+    return res.json({ success: true, feedback: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Real Reports API ────────────────────────────────────────────────────────
+router.get('/reports/summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { startDate, endDate, barangay } = req.query as any;
+    const fromDate = startDate || new Date(new Date().setMonth(new Date().getMonth()-1)).toISOString().split('T')[0];
+    const toDate = endDate || new Date().toISOString().split('T')[0];
+
+    const [pets, livestock, vaccinations, biting, feedback, lostFound, inventory, mortality] = await Promise.all([
+      query(`SELECT species, COUNT(*) as count, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated,
+                    COUNT(CASE WHEN status='Active' THEN 1 END) as active,
+                    COUNT(CASE WHEN impound_status!='None' THEN 1 END) as impounded
+             FROM pets ${barangay ? "WHERE barangay=$1" : ""} GROUP BY species`, barangay?[barangay]:[]),
+      query(`SELECT animal_type, SUM(quantity) as total, COUNT(*) as farm_count,
+                    SUM(CASE WHEN health_status='Healthy' THEN quantity ELSE 0 END) as healthy,
+                    SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick,
+                    SUM(CASE WHEN health_status='Quarantine' THEN quantity ELSE 0 END) as quarantine,
+                    SUM(CASE WHEN vaccination_status='Vaccinated' THEN quantity ELSE 0 END) as vaccinated
+             FROM livestock ${barangay ? "WHERE barangay=$1" : ""} GROUP BY animal_type`, barangay?[barangay]:[]),
+      query(`SELECT COUNT(*) as total, 
+                    COUNT(CASE WHEN date_of_vaccination>=$1 THEN 1 END) as this_period,
+                    COUNT(CASE WHEN DATE_TRUNC('month',date_of_vaccination)=DATE_TRUNC('month',NOW()) THEN 1 END) as this_month
+             FROM vaccination_history WHERE date_of_vaccination BETWEEN $1 AND $2`, [fromDate, toDate]),
+      query(`SELECT COUNT(*) as total, 
+                    SUM(CASE WHEN confirmed_rabies THEN 1 ELSE 0 END) as confirmed_rabies,
+                    SUM(CASE WHEN status='Closed' THEN 1 ELSE 0 END) as resolved
+             FROM biting_incidents WHERE incident_date BETWEEN $1 AND $2`, [fromDate, toDate]),
+      query(`SELECT COUNT(*) as total,
+                    SUM(CASE WHEN category='feedback' THEN 1 ELSE 0 END) as feedbacks,
+                    SUM(CASE WHEN category='complaint' THEN 1 ELSE 0 END) as complaints,
+                    SUM(CASE WHEN status='Resolved' THEN 1 ELSE 0 END) as resolved
+             FROM feedback WHERE created_at::date BETWEEN $1 AND $2`, [fromDate, toDate]),
+      query(`SELECT COUNT(*) as total,
+                    SUM(CASE WHEN type='Lost' THEN 1 ELSE 0 END) as lost,
+                    SUM(CASE WHEN type='Found' THEN 1 ELSE 0 END) as found,
+                    SUM(CASE WHEN status='Resolved' THEN 1 ELSE 0 END) as resolved
+             FROM lost_found_reports WHERE date_reported BETWEEN $1 AND $2`, [fromDate, toDate]),
+      query(`SELECT name, quantity, reorder_level, unit, category,
+                    CASE WHEN quantity<=reorder_level THEN 'Low' WHEN quantity<=reorder_level*2 THEN 'Warning' ELSE 'OK' END as stock_status
+             FROM medicine_inventory ORDER BY quantity ASC`),
+      query(`SELECT animal_type, SUM(quantity) as total, COUNT(*) as incidents,
+                    STRING_AGG(DISTINCT cause, '; ') as causes
+             FROM livestock_mortality WHERE date_reported BETWEEN $1 AND $2 GROUP BY animal_type`, [fromDate, toDate]),
+    ]);
+
+    const petByBarangay = await query(`SELECT barangay, COUNT(*) as pets,
+        SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated
+        FROM pets GROUP BY barangay ORDER BY barangay`);
+    const lsByBarangay = await query(`SELECT barangay, SUM(quantity) as livestock FROM livestock GROUP BY barangay ORDER BY barangay`);
+    const vaxByMonth = await query(`SELECT TO_CHAR(date_of_vaccination,'YYYY-MM') as month, COUNT(*) as count
+        FROM vaccination_history WHERE date_of_vaccination >= NOW() - INTERVAL '12 months'
+        GROUP BY month ORDER BY month`);
+    const diseaseEvents = await query(`SELECT * FROM livestock_disease_events ORDER BY date_reported DESC LIMIT 10`);
+    const activeAlerts = await query(`SELECT * FROM disease_alerts WHERE status='Active' ORDER BY reported_date DESC`);
+
+    return res.json({
+      success: true,
+      period: { from: fromDate, to: toDate },
+      pets: { bySpecies: pets.rows, byBarangay: petByBarangay.rows },
+      livestock: { byType: livestock.rows, byBarangay: lsByBarangay.rows },
+      vaccinations: { ...vaccinations.rows[0], byMonth: vaxByMonth.rows },
+      bitingIncidents: biting.rows[0],
+      feedback: feedback.rows[0],
+      lostFound: lostFound.rows[0],
+      inventory: { medicines: inventory.rows, lowStock: inventory.rows.filter((r:any)=>r.stock_status==='Low') },
+      mortality: mortality.rows,
+      diseaseEvents: diseaseEvents.rows,
+      activeAlerts: activeAlerts.rows,
+    });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.get('/reports/vaccination-coverage', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT p.barangay,
+        COUNT(*) as total_pets,
+        SUM(CASE WHEN p.vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated,
+        SUM(CASE WHEN p.vaccination_status='Due Soon' THEN 1 ELSE 0 END) as due_soon,
+        SUM(CASE WHEN p.vaccination_status='Not Vaccinated' THEN 1 ELSE 0 END) as not_vaccinated,
+        ROUND(SUM(CASE WHEN p.vaccination_status='Vaccinated' THEN 1 ELSE 0 END)*100.0/COUNT(*),1) as coverage_rate
+      FROM pets p GROUP BY p.barangay ORDER BY coverage_rate DESC`);
+    const history = await query(`SELECT TO_CHAR(date_of_vaccination,'Mon YYYY') as period, 
+        COUNT(*) as count, vaccine_name
+        FROM vaccination_history GROUP BY period, vaccine_name ORDER BY MIN(date_of_vaccination) DESC LIMIT 24`);
+    return res.json({ success: true, byBarangay: result.rows, history: history.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.get('/reports/medicine-movement', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const medicines = await query(`SELECT * FROM medicine_inventory ORDER BY category, name`);
+    const transactions = await query(`SELECT it.*, mi.name as medicine_name, mi.category 
+        FROM inventory_transactions it 
+        LEFT JOIN medicine_inventory mi ON it.item_id=mi.id AND it.item_type='medicine'
+        ORDER BY it.created_at DESC LIMIT 100`);
+    const vaccineUsage = await query(`
+      SELECT vh.medicine_id, mi.name, mi.category, COUNT(*) as times_used,
+        MIN(vh.date_of_vaccination) as first_used, MAX(vh.date_of_vaccination) as last_used
+      FROM vaccination_history vh
+      LEFT JOIN medicine_inventory mi ON vh.medicine_id=mi.id
+      WHERE vh.medicine_id IS NOT NULL
+      GROUP BY vh.medicine_id, mi.name, mi.category ORDER BY times_used DESC`);
+    return res.json({ success: true, medicines: medicines.rows, transactions: transactions.rows, vaccineUsage: vaccineUsage.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Enhanced Audit Logs with stats ─────────────────────────────────────────
+router.get('/audit-logs/stats', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const [total, failed, mods, alerts] = await Promise.all([
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE created_at::date=$1`, [today]),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action='Login Failed' AND created_at::date=$1`, [today]),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action IN ('Create','Update','Delete') AND created_at::date=$1`, [today]),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action='Login Failed' AND created_at > NOW()-INTERVAL '1 hour'`),
+    ]);
+    return res.json({
+      success: true,
+      todayTotal: parseInt(total.rows[0]?.count||'0'),
+      failedLogins: parseInt(failed.rows[0]?.count||'0'),
+      modifications: parseInt(mods.rows[0]?.count||'0'),
+      recentAlerts: parseInt(alerts.rows[0]?.count||'0'),
+    });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.get('/audit-logs', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { action, search, limit } = req.query as any;
+    let q = `SELECT al.*, u.role as user_role FROM audit_logs al LEFT JOIN users u ON al.user_id=u.id`;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (action && action!=='all') { params.push(action); conds.push(`al.action=$${params.length}`); }
+    if (search) { params.push(`%${search}%`); conds.push(`(al.username ILIKE $${params.length} OR al.action ILIKE $${params.length} OR al.resource ILIKE $${params.length} OR al.details::text ILIKE $${params.length})`); }
+    if (conds.length) q += ` WHERE ${conds.join(' AND ')}`;
+    q += ` ORDER BY al.created_at DESC LIMIT ${parseInt(limit)||300}`;
+    const result = await query(q, params);
+    return res.json({ success: true, logs: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Dashboard - real medicine intelligence ──────────────────────────────────
+router.get('/dashboard/medicine-intel', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const [stock, usage, expiring, transactions] = await Promise.all([
+      query(`SELECT id, name, category, quantity, reorder_level, unit, expiry_date, unit_cost,
+               CASE WHEN quantity=0 THEN 'Out of Stock'
+                    WHEN quantity<=reorder_level THEN 'Critical'
+                    WHEN quantity<=reorder_level*2 THEN 'Low'
+                    ELSE 'Adequate' END as stock_status
+             FROM medicine_inventory ORDER BY quantity ASC`),
+      query(`SELECT vh.medicine_id, mi.name, mi.category, COUNT(*) as administrations,
+               COUNT(DISTINCT vh.pet_id) as unique_pets
+             FROM vaccination_history vh
+             LEFT JOIN medicine_inventory mi ON vh.medicine_id=mi.id
+             WHERE vh.date_of_vaccination >= NOW()-INTERVAL '3 months'
+             GROUP BY vh.medicine_id, mi.name, mi.category ORDER BY administrations DESC`),
+      query(`SELECT * FROM medicine_inventory WHERE expiry_date IS NOT NULL AND expiry_date<=NOW()+INTERVAL '90 days' ORDER BY expiry_date`),
+      query(`SELECT it.*, mi.name as item_name FROM inventory_transactions it
+             LEFT JOIN medicine_inventory mi ON it.item_id=mi.id
+             WHERE it.item_type='medicine' ORDER BY it.created_at DESC LIMIT 20`),
+    ]);
+    const totalValue = stock.rows.reduce((sum:number,r:any)=>sum+parseFloat(r.unit_cost||0)*parseInt(r.quantity||0),0);
+    return res.json({ success: true, stock: stock.rows, usage: usage.rows, expiring: expiring.rows, transactions: transactions.rows, totalValue });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Dashboard - real animal population data ────────────────────────────────
+router.get('/dashboard/animal-population', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const [petsByBarangay, livestockByBarangay, petsBySpecies, livestockByType, vaccinationRates] = await Promise.all([
+      query(`SELECT barangay, COUNT(*) as pets,
+               SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated,
+               SUM(CASE WHEN status='Active' THEN 1 ELSE 0 END) as active
+             FROM pets GROUP BY barangay ORDER BY pets DESC`),
+      query(`SELECT barangay, SUM(quantity) as total,
+               SUM(CASE WHEN animal_type='Cattle' THEN quantity ELSE 0 END) as cattle,
+               SUM(CASE WHEN animal_type='Swine' THEN quantity ELSE 0 END) as swine,
+               SUM(CASE WHEN animal_type='Poultry' THEN quantity ELSE 0 END) as poultry,
+               SUM(CASE WHEN animal_type='Goats' THEN quantity ELSE 0 END) as goats,
+               SUM(CASE WHEN animal_type='Carabao' THEN quantity ELSE 0 END) as carabao
+             FROM livestock GROUP BY barangay ORDER BY total DESC`),
+      query(`SELECT species, COUNT(*) as count FROM pets GROUP BY species`),
+      query(`SELECT animal_type, SUM(quantity) as count,
+               SUM(CASE WHEN health_status='Healthy' THEN quantity ELSE 0 END) as healthy,
+               SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick
+             FROM livestock GROUP BY animal_type`),
+      query(`SELECT barangay,
+               COUNT(*) as total,
+               SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated,
+               ROUND(SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END)*100.0/NULLIF(COUNT(*),0),1) as rate
+             FROM pets GROUP BY barangay ORDER BY rate ASC`),
+    ]);
+    return res.json({ success: true, petsByBarangay: petsByBarangay.rows, livestockByBarangay: livestockByBarangay.rows, petsBySpecies: petsBySpecies.rows, livestockByType: livestockByType.rows, vaccinationRates: vaccinationRates.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Dashboard - real disease/outbreak intelligence ─────────────────────────
+router.get('/dashboard/disease-intel', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const [activeEvents, recentMortality, alerts, bitingTrend] = await Promise.all([
+      query(`SELECT * FROM livestock_disease_events WHERE status='Active' ORDER BY date_reported DESC`),
+      query(`SELECT * FROM livestock_mortality ORDER BY date_reported DESC LIMIT 10`),
+      query(`SELECT * FROM disease_alerts WHERE status='Active' ORDER BY reported_date DESC LIMIT 5`),
+      query(`SELECT TO_CHAR(incident_date,'YYYY-MM') as month, COUNT(*) as incidents,
+               SUM(CASE WHEN confirmed_rabies THEN 1 ELSE 0 END) as rabies
+             FROM biting_incidents WHERE incident_date>=NOW()-INTERVAL '6 months'
+             GROUP BY month ORDER BY month`),
+    ]);
+    return res.json({ success: true, activeEvents: activeEvents.rows, recentMortality: recentMortality.rows, alerts: alerts.rows, bitingTrend: bitingTrend.rows });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 

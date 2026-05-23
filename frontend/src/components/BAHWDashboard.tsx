@@ -10,6 +10,7 @@ import { OutbreakMonitoring } from './OutbreakMonitoring';
 import { VeterinaryServices } from './VeterinaryServices';
 import { ReportsCertificates } from './ReportsCertificates';
 import { FeedbackComplaints } from './FeedbackComplaints';
+import { CVOServicesShared } from './CVOServicesShared';
 import { Footer } from './Footer';
 import type { User } from '../App';
 import type { ActiveView } from './AdminDashboard';
@@ -38,7 +39,7 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'outbreak':
         return <OutbreakMonitoring />;
       case 'services':
-        return <VeterinaryServices userRole={user.role} />;
+        return <CVOServicesShared userRole={user.role} />;
       case 'reports':
         return <ReportsCertificates />;
       case 'feedback':

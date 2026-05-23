@@ -7,6 +7,7 @@ import { PetRegistration } from './PetRegistration';
 import { PreRegisteredPets } from './PreRegisteredPets';
 import { OutbreakMonitoring } from './OutbreakMonitoring';
 import { VeterinaryServices } from './VeterinaryServices';
+import { CVOServicesShared } from './CVOServicesShared';
 import { ReportsCertificates } from './ReportsCertificates';
 import { UserManagement } from './UserManagement';
 import { AuditLogs } from './AuditLogs';
@@ -44,7 +45,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'vaccination':   return <VaccinationModule user={user} />;
       case 'preregistered': return <PreRegisteredPets />;
       case 'outbreak':     return <OutbreakMonitoring />;
-      case 'services':     return <VeterinaryServices userRole={user.role} />;
+      case 'services':     return <CVOServicesShared userRole={user.role} />;
       case 'reports':      return <ReportsCertificates />;
       case 'users':        return <UserManagement />;
       case 'audit':        return <AuditLogs />;

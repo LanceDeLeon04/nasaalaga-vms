@@ -1,325 +1,420 @@
-import { useState } from 'react';
-import { MessageSquare, Phone, Mail, Facebook, Send, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MessageSquare, Phone, Mail, Send, CheckCircle, RefreshCw, Reply, X, AlertCircle, ThumbsUp, Lightbulb, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { api } from '../lib/api';
 import type { UserRole } from '../App';
 
 interface FeedbackComplaintsProps {
   userRole: UserRole;
+  currentUser?: any;
 }
 
-export function FeedbackComplaints({ userRole }: FeedbackComplaintsProps) {
-  const [feedbackType, setFeedbackType] = useState<'feedback' | 'complaint'>('feedback');
+const BARANGAYS = [
+  'Baclas','Bagong Tubig','Balimbing','Bambang','Bisaya','Cahil','Calantas','Caluangan',
+  'Camastilisan','Coral Ni Bacal','Coral Ni Lopez','Dacanlao','Dila','Loma',
+  'Lumbang Calzada','Lumbang Na Bata','Lumbang Na Matanda','Madalunot','Makina','Matipok',
+  'Munting Coral','Niyugan','Pantay','Poblacion 1','Poblacion 2','Poblacion 3','Poblacion 4',
+  'Poblacion 5','Poblacion 6','Puting Bato East','Puting Bato West','Quisumbing','Salong',
+  'San Rafael','Sinisian','Taklang Anak','Talisay','Tamayo','Timbain',
+];
+
+export function FeedbackComplaints({ userRole, currentUser }: FeedbackComplaintsProps) {
+  const [feedbackList, setFeedbackList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [category, setCategory] = useState<'feedback' | 'complaint' | 'suggestion'>('feedback');
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
+  const [responseText, setResponseText] = useState('');
+  const [responseStatus, setResponseStatus] = useState('Resolved');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [trackingId, setTrackingId] = useState('');
+  const [trackedItem, setTrackedItem] = useState<any | null>(null);
+
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    barangay: '',
-    subject: '',
-    message: ''
+    subject: '', message: '', barangay: '', priority: 'Medium',
   });
 
-  const submissions = [
-    { id: 'FB-001', type: 'Feedback', name: 'Juan Dela Cruz', subject: 'Excellent service during vaccination campaign', date: 'Dec 14, 2024', status: 'Resolved', priority: 'Low' },
-    { id: 'CP-001', type: 'Complaint', name: 'Maria Santos', subject: 'Delayed processing of VHC certificate', date: 'Dec 13, 2024', status: 'Under Review', priority: 'High' },
-    { id: 'SG-001', type: 'Suggestion', name: 'Pedro Reyes', subject: 'Extend vaccination hours on weekends', date: 'Dec 12, 2024', status: 'Under Review', priority: 'Medium' },
-    { id: 'FB-002', type: 'Feedback', name: 'Ana Garcia', subject: 'Very helpful BAHW staff', date: 'Dec 11, 2024', status: 'Resolved', priority: 'Low' },
-  ];
+  const isAdmin = ['admin', 'superadmin'].includes(userRole);
+  const isViewer = ['bahw', 'cityHealth'].includes(userRole);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const loadFeedback = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getFeedback();
+      setFeedbackList(res.feedback || []);
+    } catch {
+      toast.error('Failed to load feedback');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (isAdmin || isViewer) loadFeedback(); else setLoading(false); }, [isAdmin, isViewer]);
+
+  const stats = {
+    total: feedbackList.length,
+    feedbacks: feedbackList.filter(f => f.category === 'feedback').length,
+    complaints: feedbackList.filter(f => f.category === 'complaint').length,
+    suggestions: feedbackList.filter(f => f.category === 'suggestion').length,
+    resolved: feedbackList.filter(f => f.status === 'Resolved').length,
+    open: feedbackList.filter(f => f.status === 'Open' || f.status === 'Under Review').length,
+  };
+
+  const filtered = feedbackList.filter(f => {
+    if (filterStatus !== 'all' && f.status !== filterStatus) return false;
+    if (filterCategory !== 'all' && f.category !== filterCategory) return false;
+    return true;
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    alert(`${feedbackType === 'feedback' ? 'Feedback' : 'Complaint'} submitted successfully!`);
-    setFormData({ name: '', email: '', phone: '', barangay: '', subject: '', message: '' });
+    if (!formData.subject || !formData.message) { toast.error('Subject and message are required'); return; }
+    setSubmitting(true);
+    try {
+      const res = await api.createFeedback({
+        category,
+        subject: formData.subject,
+        message: formData.message,
+        barangay: formData.barangay,
+        priority: formData.priority,
+      });
+      toast.success(`${category === 'feedback' ? 'Feedback' : category === 'complaint' ? 'Complaint' : 'Suggestion'} submitted successfully! Reference: #${res.feedback?.id}`);
+      setFormData({ subject: '', message: '', barangay: '', priority: 'Medium' });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to submit');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRespond = async () => {
+    if (!responseText.trim()) { toast.error('Response message is required'); return; }
+    try {
+      await (api as any).respondToFeedback(selectedItem.id, { response: responseText, status: responseStatus });
+      toast.success('Response sent successfully');
+      setSelectedItem(null);
+      setResponseText('');
+      loadFeedback();
+    } catch (err: any) { toast.error(err.message); }
+  };
+
+  const handleTrack = async () => {
+    const id = parseInt(trackingId);
+    if (!id) { toast.error('Enter a valid reference number'); return; }
+    const found = feedbackList.find(f => f.id === id);
+    if (found) { setTrackedItem(found); }
+    else {
+      try {
+        const res = await api.getFeedback();
+        const item = (res.feedback || []).find((f: any) => f.id === id);
+        if (item) setTrackedItem(item);
+        else toast.error('Reference number not found');
+      } catch { toast.error('Could not search at this time'); }
+    }
+  };
+
+  const categoryIcon = (cat: string) => {
+    if (cat === 'feedback') return <ThumbsUp className="w-4 h-4 text-green-500" />;
+    if (cat === 'complaint') return <AlertCircle className="w-4 h-4 text-red-500" />;
+    return <Lightbulb className="w-4 h-4 text-yellow-500" />;
+  };
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      'Open': 'bg-blue-100 text-blue-800',
+      'Under Review': 'bg-yellow-100 text-yellow-800',
+      'Resolved': 'bg-green-100 text-green-800',
+      'Closed': 'bg-gray-100 text-gray-800',
+    };
+    return `px-2 py-0.5 text-xs rounded-full ${map[status] || 'bg-gray-100 text-gray-700'}`;
+  };
+
+  const priorityBadge = (priority: string) => {
+    const map: Record<string, string> = { 'High': 'bg-red-100 text-red-800', 'Medium': 'bg-yellow-100 text-yellow-800', 'Low': 'bg-green-100 text-green-800' };
+    return `px-2 py-0.5 text-xs rounded-full ${map[priority] || 'bg-gray-100 text-gray-700'}`;
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-gray-800 mb-1">Feedback & Complaints Management</h2>
-        <p className="text-gray-600">ARTA-compliant citizen feedback mechanism</p>
+        <p className="text-gray-600">ARTA-compliant citizen feedback mechanism (RA 11032)</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600 mb-1">Total Submissions</p>
-          <p className="text-gray-900">87</p>
-          <p className="text-xs text-blue-600 mt-1">This month</p>
+      {/* Stats - admin/viewer only */}
+      {(isAdmin || isViewer) && (
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {[
+            { label: 'Total', value: stats.total, color: 'text-gray-900' },
+            { label: 'Feedback', value: stats.feedbacks, color: 'text-green-600' },
+            { label: 'Complaints', value: stats.complaints, color: 'text-red-600' },
+            { label: 'Suggestions', value: stats.suggestions, color: 'text-yellow-600' },
+            { label: 'Resolved', value: stats.resolved, color: 'text-green-700' },
+            { label: 'Pending', value: stats.open, color: 'text-orange-600' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-lg shadow p-3 text-center">
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600 mb-1">Feedback Received</p>
-          <p className="text-gray-900">52</p>
-          <p className="text-xs text-green-600 mt-1">All positive</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600 mb-1">Complaints</p>
-          <p className="text-gray-900">15</p>
-          <p className="text-xs text-yellow-600 mt-1">10 resolved</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600 mb-1">Suggestions</p>
-          <p className="text-gray-900">20</p>
-          <p className="text-xs text-purple-600 mt-1">Under review</p>
-        </div>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Submission Form */}
+        {/* Submit Form */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-gray-800 mb-4">Submit Feedback or Complaint</h3>
-          
-          {/* Type Selection */}
+          <h3 className="text-gray-800 font-medium mb-4">Submit Feedback, Complaint, or Suggestion</h3>
+
           <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setFeedbackType('feedback')}
-              className={`flex-1 px-4 py-2 rounded-md transition-colors ${
-                feedbackType === 'feedback'
-                  ? 'bg-[#60A85C] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Feedback / Suggestion
-            </button>
-            <button
-              onClick={() => setFeedbackType('complaint')}
-              className={`flex-1 px-4 py-2 rounded-md transition-colors ${
-                feedbackType === 'complaint'
-                  ? 'bg-[#E85D3B] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              Complaint
-            </button>
+            {(['feedback', 'complaint', 'suggestion'] as const).map(type => (
+              <button key={type} onClick={() => setCategory(type)}
+                className={`flex-1 px-3 py-2 rounded-md text-sm capitalize transition-colors ${category === type
+                  ? type === 'feedback' ? 'bg-green-500 text-white' : type === 'complaint' ? 'bg-red-500 text-white' : 'bg-yellow-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                {type}
+              </button>
+            ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                required
-              />
+              <label className="block text-sm text-gray-700 mb-1">Subject *</label>
+              <input type="text" value={formData.subject} onChange={e => setFormData(p => ({...p, subject: e.target.value}))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#2B5EA6] text-sm"
+                placeholder={category === 'feedback' ? 'What went well?' : category === 'complaint' ? 'What is your complaint about?' : 'Your suggestion'} required />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                  required
-                />
+                <label className="block text-sm text-gray-700 mb-1">Barangay</label>
+                <select value={formData.barangay} onChange={e => setFormData(p => ({...p, barangay: e.target.value}))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#2B5EA6] text-sm">
+                  <option value="">Select Barangay</option>
+                  {BARANGAYS.map(b => <option key={b}>{b}</option>)}
+                </select>
               </div>
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                  required
-                />
+                <label className="block text-sm text-gray-700 mb-1">Priority</label>
+                <select value={formData.priority} onChange={e => setFormData(p => ({...p, priority: e.target.value}))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#2B5EA6] text-sm">
+                  <option>Low</option><option>Medium</option><option>High</option>
+                </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Barangay</label>
-              <select
-                value={formData.barangay}
-                onChange={(e) => setFormData({ ...formData, barangay: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                required
-              >
-                <option value="">Select Barangay</option>
-                <option value="Barangay 1">Barangay 1</option>
-                <option value="Barangay 2">Barangay 2</option>
-                <option value="Barangay 3">Barangay 3</option>
-                <option value="Barangay 4">Barangay 4</option>
-                <option value="Barangay 5">Barangay 5</option>
-              </select>
+              <label className="block text-sm text-gray-700 mb-1">Message *</label>
+              <textarea value={formData.message} onChange={e => setFormData(p => ({...p, message: e.target.value}))}
+                rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#2B5EA6] text-sm"
+                placeholder="Describe your feedback, complaint, or suggestion in detail..." required />
             </div>
 
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Subject</label>
-              <input
-                type="text"
-                value={formData.subject}
-                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-700 mb-1">Message</label>
-              <textarea
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                rows={4}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                required
-              ></textarea>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-md hover:bg-[#234a85] transition-colors"
-            >
+            <button type="submit" disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-md hover:bg-[#234a85] disabled:opacity-50 transition-colors">
               <Send className="w-4 h-4" />
-              Submit {feedbackType === 'feedback' ? 'Feedback' : 'Complaint'}
+              {submitting ? 'Submitting...' : `Submit ${category}`}
             </button>
           </form>
         </div>
 
-        {/* Contact Information */}
+        {/* Contact + Track */}
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-800 mb-4">Contact the City Veterinary Office</h3>
-            <div className="space-y-4">
+            <h3 className="text-gray-800 font-medium mb-4">Contact the City Veterinary Office</h3>
+            <div className="space-y-3">
               <div className="flex items-start gap-3">
                 <Phone className="w-5 h-5 text-[#2B5EA6] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-gray-800">Phone</p>
-                  <p className="text-sm text-gray-600">(043) 123-4567</p>
-                  <p className="text-sm text-gray-600">Mobile: 0917-123-4567</p>
-                </div>
+                <div><p className="text-sm font-medium text-gray-700">Phone</p><p className="text-sm text-gray-600">(043) 123-4567 / 0917-123-4567</p></div>
               </div>
-
               <div className="flex items-start gap-3">
                 <Mail className="w-5 h-5 text-[#2B5EA6] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-gray-800">Email</p>
-                  <p className="text-sm text-gray-600">cvo@calaca.gov.ph</p>
-                  <p className="text-sm text-gray-600">veterinary.calaca@gmail.com</p>
-                </div>
+                <div><p className="text-sm font-medium text-gray-700">Email</p><p className="text-sm text-gray-600">cvo@calaca.gov.ph</p></div>
               </div>
-
               <div className="flex items-start gap-3">
                 <MessageSquare className="w-5 h-5 text-[#2B5EA6] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-gray-800">SMS</p>
-                  <p className="text-sm text-gray-600">Text: 0917-123-4567</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <Facebook className="w-5 h-5 text-[#2B5EA6] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-gray-800">Social Media</p>
-                  <p className="text-sm text-gray-600">Facebook: @CalacaCityVeterinaryOffice</p>
-                </div>
+                <div><p className="text-sm font-medium text-gray-700">Facebook</p><p className="text-sm text-gray-600">@CalacaCityVeterinaryOffice</p></div>
               </div>
             </div>
           </div>
 
-          {/* Tracking */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-800 mb-4">Track Your Submission</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Enter your tracking number to check the status of your feedback or complaint.
-            </p>
+            <h3 className="text-gray-800 font-medium mb-3">Track Your Submission</h3>
+            <p className="text-sm text-gray-600 mb-3">Enter your reference number (e.g. 101) to check the status.</p>
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="e.g., FB-001 or CP-001"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-              />
-              <button className="px-4 py-2 bg-[#60A85C] text-white rounded-md hover:bg-[#4a8a47] transition-colors">
-                Track
-              </button>
+              <input type="text" value={trackingId} onChange={e => setTrackingId(e.target.value)}
+                placeholder="Enter reference number" className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#2B5EA6]" />
+              <button onClick={handleTrack} className="px-4 py-2 bg-[#60A85C] text-white rounded-md hover:bg-[#4a8a47] text-sm">Track</button>
             </div>
+            {trackedItem && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-gray-700">Ref #: {trackedItem.id}</span>
+                  <span className={statusBadge(trackedItem.status)}>{trackedItem.status}</span>
+                </div>
+                <p className="text-gray-600">{trackedItem.subject}</p>
+                <p className="text-gray-500 text-xs mt-1">Category: {trackedItem.category} | Submitted: {new Date(trackedItem.created_at).toLocaleDateString('en-PH')}</p>
+                {trackedItem.admin_response && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-100">
+                    <p className="text-xs font-medium text-blue-700 mb-1">Response from CVO:</p>
+                    <p className="text-xs text-blue-800">{trackedItem.admin_response}</p>
+                    {trackedItem.responded_by && <p className="text-xs text-blue-500 mt-1">— {trackedItem.responded_by}</p>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Recent Submissions (Admin/BAHW View) */}
-      {userRole === 'admin' && (
+      {/* Admin/Viewer Table */}
+      {(isAdmin || isViewer) && (
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-4 border-b">
-            <h3 className="text-gray-800">Recent Submissions</h3>
+          <div className="p-4 border-b flex items-center justify-between">
+            <h3 className="text-gray-800 font-medium">All Submissions</h3>
+            <div className="flex gap-2">
+              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded text-sm">
+                <option value="all">All Types</option>
+                <option value="feedback">Feedback</option>
+                <option value="complaint">Complaint</option>
+                <option value="suggestion">Suggestion</option>
+              </select>
+              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded text-sm">
+                <option value="all">All Status</option>
+                <option value="Open">Open</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+              {isAdmin && (
+                <button onClick={loadFeedback} className="flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50">
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left py-3 px-4 text-gray-700">ID</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Type</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Name</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Subject</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Date</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Priority</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Status</th>
-                  <th className="text-left py-3 px-4 text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map((item) => (
-                  <tr key={item.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4 text-gray-800">{item.id}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 text-xs rounded ${
-                        item.type === 'Complaint'
-                          ? 'bg-red-100 text-red-800'
-                          : item.type === 'Suggestion'
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {item.type}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">{item.name}</td>
-                    <td className="py-3 px-4 text-gray-600">{item.subject}</td>
-                    <td className="py-3 px-4 text-gray-600">{item.date}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 text-xs rounded ${
-                        item.priority === 'High'
-                          ? 'bg-red-100 text-red-800'
-                          : item.priority === 'Medium'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {item.priority}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 text-xs rounded ${
-                        item.status === 'Resolved'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <button className="text-[#2B5EA6] hover:underline text-sm">
-                        {item.status === 'Resolved' ? 'View' : 'Resolve'}
-                      </button>
-                    </td>
+            {loading ? (
+              <div className="py-12 text-center text-gray-500">Loading submissions from database...</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-gray-600">#</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Type</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Subject</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Submitted By</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Barangay</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Priority</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Status</th>
+                    <th className="text-left py-3 px-4 text-gray-600">Date</th>
+                    {isAdmin && <th className="text-left py-3 px-4 text-gray-600">Actions</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr><td colSpan={isAdmin ? 9 : 8} className="py-8 text-center text-gray-500">No submissions found.</td></tr>
+                  ) : filtered.map(item => (
+                    <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4 text-gray-700 font-medium">{item.id}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5">
+                          {categoryIcon(item.category)}
+                          <span className="capitalize text-gray-600">{item.category}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-gray-700 max-w-xs truncate" title={item.subject}>{item.subject}</td>
+                      <td className="py-3 px-4 text-gray-600">{item.username || 'Anonymous'}</td>
+                      <td className="py-3 px-4 text-gray-600">{item.barangay || '-'}</td>
+                      <td className="py-3 px-4"><span className={priorityBadge(item.priority)}>{item.priority || 'Medium'}</span></td>
+                      <td className="py-3 px-4"><span className={statusBadge(item.status)}>{item.status}</span></td>
+                      <td className="py-3 px-4 text-gray-500 text-xs">{new Date(item.created_at).toLocaleDateString('en-PH')}</td>
+                      {isAdmin && (
+                        <td className="py-3 px-4">
+                          <div className="flex gap-1">
+                            <button onClick={() => { setSelectedItem(item); setResponseText(item.admin_response || ''); setResponseStatus(item.status === 'Resolved' ? 'Resolved' : 'Resolved'); }}
+                              className="flex items-center gap-1 px-2 py-1 text-xs bg-[#2B5EA6] text-white rounded hover:bg-[#234a85]">
+                              <Reply className="w-3 h-3" /> Respond
+                            </button>
+                            <button onClick={() => setSelectedItem(item)}
+                              className="p-1 hover:bg-gray-100 rounded" title="View details">
+                              <Eye className="w-3.5 h-3.5 text-gray-500" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* ARTA Commitment */}
+      {/* ARTA Notice */}
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
         <div className="flex items-start gap-3">
           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-green-900 mb-1">ARTA Commitment (RA 11032)</p>
-            <p className="text-sm text-green-700">
-              We are committed to responding to all feedback and complaints within 3 working days. 
-              All submissions are tracked and monitored for timely resolution. Your voice matters in improving our services.
-            </p>
+            <p className="text-green-900 font-medium">ARTA Commitment (RA 11032)</p>
+            <p className="text-sm text-green-700">We are committed to responding to all feedback and complaints within 3 working days. All submissions are tracked in our database. Your voice matters in improving our services.</p>
           </div>
         </div>
       </div>
+
+      {/* Respond Modal */}
+      {selectedItem && isAdmin && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b">
+              <h3 className="font-semibold text-gray-800">Respond to Submission #{selectedItem.id}</h3>
+              <button onClick={() => setSelectedItem(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  {categoryIcon(selectedItem.category)}
+                  <span className="font-medium text-gray-700 capitalize">{selectedItem.category}</span>
+                  <span className={priorityBadge(selectedItem.priority)}>{selectedItem.priority}</span>
+                </div>
+                <p className="text-sm font-medium text-gray-700 mb-1">{selectedItem.subject}</p>
+                <p className="text-sm text-gray-600">{selectedItem.message}</p>
+                <p className="text-xs text-gray-400 mt-2">By: {selectedItem.username} | {selectedItem.barangay} | {new Date(selectedItem.created_at).toLocaleDateString('en-PH')}</p>
+              </div>
+              {selectedItem.admin_response && (
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-blue-700 mb-1">Previous Response:</p>
+                  <p className="text-sm text-blue-800">{selectedItem.admin_response}</p>
+                  <p className="text-xs text-blue-500 mt-1">— {selectedItem.responded_by}</p>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Your Response *</label>
+                <textarea value={responseText} onChange={e => setResponseText(e.target.value)} rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#2B5EA6]"
+                  placeholder="Type your official response here..." />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Update Status</label>
+                <select value={responseStatus} onChange={e => setResponseStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                  <option value="Under Review">Under Review</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 p-5 border-t">
+              <button onClick={() => setSelectedItem(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+              <button onClick={handleRespond} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-md hover:bg-[#234a85]">
+                <Send className="w-4 h-4" /> Send Response
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

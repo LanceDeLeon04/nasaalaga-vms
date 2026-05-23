@@ -4,6 +4,7 @@ import { Footer } from './Footer';
 import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
+import { CVOServicesShared } from './CVOServicesShared';
 import { PetPreRegistration } from './PetPreRegistration';
 import { VaccinationCard } from './VaccinationCard';
 import { api } from '../lib/api';
@@ -803,7 +804,8 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
     </div>
   );
 
-  const renderCVOServices = () => (
+  const renderCVOServices = () => (<CVOServicesShared userRole={user.role as any} />);
+  const _oldRenderCVOServices = () => (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-800 mb-1">CVO Services</h2>

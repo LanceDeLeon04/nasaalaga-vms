@@ -22,7 +22,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'preregistered' as ActiveView, label: 'Pre-Registered Pets', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'services'  as ActiveView, label: 'CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'inventory' as ActiveView, label: 'Inventory',        icon: FlaskConical,    roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },

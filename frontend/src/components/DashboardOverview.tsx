@@ -110,13 +110,28 @@ export function DashboardOverview() {
       api.getDashboardSummary().catch(() => null),
       api.getDiseaseAlerts().catch(() => ({ data: [] })),
       api.getPreRegistrations('Pending').catch(() => ({ preRegistrations: [] })),
-    ]).then(([lsRes, tRes, bRes, psRes, sumRes, daRes, prRes]) => {
-      if (lsRes.data?.length) setLsData(lsRes.data.map((r: any) => ({ barangay: r.barangay, cattle: r.cattle, swine: r.swine, poultry: r.poultry, goats: r.goats })));
+      api.getDashboardAnimalPopulation().catch(() => null),
+      api.getDashboardDiseaseIntel().catch(() => null),
+    ]).then(([lsRes, tRes, bRes, psRes, sumRes, daRes, prRes, popRes, diseaseRes]) => {
+      // Livestock stats - prefer live aggregated data from new population endpoint
+      const liveLS = popRes?.livestockByBarangay?.length > 0 ? popRes.livestockByBarangay : lsRes.data;
+      if (liveLS?.length) setLsData(liveLS.map((r: any) => ({
+        barangay: (r.barangay || '').replace('Poblacion', 'Pob.').substring(0, 12),
+        cattle: parseInt(r.cattle) || 0,
+        swine: parseInt(r.swine) || 0,
+        poultry: parseInt(r.poultry) || 0,
+        goats: parseInt(r.goats) || 0,
+      })));
       if (tRes.data?.length) setTData(tRes.data.map((r: any) => ({ month: r.month, vaccination: r.vaccination_rate, diseases: r.diseases })));
       if (bRes.data?.length) setBData(bRes.data.map((r: any) => ({ name: r.category, value: parseFloat(r.amount), color: r.color })));
       if (psRes) setPetSurvey(psRes);
       if (sumRes) setDbSummary(sumRes);
-      if (daRes?.data) setDiseaseAlertsDb(daRes.data.filter((a: any) => a.status === 'Active').slice(0, 5));
+      // Active alerts - prefer disease intel endpoint for livestock events too
+      const activeAlerts = [
+        ...(diseaseRes?.activeEvents || []).map((e: any) => ({ ...e, disease: e.disease, location: e.barangay, severity: e.status === 'Active' ? 'Critical' : 'Low' })),
+        ...(daRes?.data || []).filter((a: any) => a.status === 'Active'),
+      ].slice(0, 5);
+      setDiseaseAlertsDb(activeAlerts);
       if (prRes?.preRegistrations) setPreRegsDb(prRes.preRegistrations.slice(0, 5));
       setDbReady(true);
     }).catch(e => { console.error(e); setDbReady(true); });

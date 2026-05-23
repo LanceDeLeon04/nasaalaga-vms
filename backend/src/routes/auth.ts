@@ -21,10 +21,18 @@ router.post('/login', async (req: Request, res: Response) => {
     const result = await query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
     const user = result.rows[0];
 
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user) {
+      query(`INSERT INTO audit_logs (username, action, resource, details, ip_address) VALUES ($1,'Login Failed','Authentication',$2,$3)`,
+        [email, JSON.stringify({ reason: 'User not found' }), req.ip]).catch(() => {});
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!valid) {
+      query(`INSERT INTO audit_logs (user_id, username, action, resource, details, ip_address) VALUES ($1,$2,'Login Failed','Authentication',$3,$4)`,
+        [user.id, user.username, JSON.stringify({ reason: 'Invalid password' }), req.ip]).catch(() => {});
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     // ── Maintenance Mode check: block non-superadmins ──────────────────────
     if (user.role !== 'superadmin') {
@@ -61,6 +69,12 @@ router.post('/login', async (req: Request, res: Response) => {
       ownerId: user.owner_id,
       email: user.email,
     };
+
+    // Log successful login
+    query(
+      `INSERT INTO audit_logs (user_id, username, action, resource, details, ip_address) VALUES ($1,$2,'Login','Authentication',$3,$4)`,
+      [user.id, user.username, JSON.stringify({ role: user.role, email: user.email }), req.ip]
+    ).catch(() => {});
 
     return res.json({ user: payload, token: signToken(payload) });
   } catch (err: any) {

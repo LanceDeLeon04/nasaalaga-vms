@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "../lib/api";
 import {
   Pill,
   TrendingUp,
@@ -366,71 +367,59 @@ function ResupplyModal({
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
+// Fallback when DB is empty
+const FALLBACK_MEDICINES: Medicine[] = [
+  { id: 'fb-1', name: 'Rabisin Anti-Rabies Vaccine', barangay: 'CVO Central', normalUsage: 50, currentUsage: 500, trend: 'stable', percentChange: 0, daysToStockout: 365, alert: false },
+  { id: 'fb-2', name: 'Nobivac Rabies', barangay: 'CVO Central', normalUsage: 50, currentUsage: 300, trend: 'stable', percentChange: 0, daysToStockout: 270, alert: false },
+  { id: 'fb-3', name: 'Canigen DHPPiL', barangay: 'CVO Central', normalUsage: 30, currentUsage: 150, trend: 'stable', percentChange: 0, daysToStockout: 180, alert: false },
+];
+
+
 export function MedicineIntelligence() {
   const [selectedView, setSelectedView] = useState<
     "alerts" | "trends"
   >("alerts");
-  const [medicines, setMedicines] = useState<Medicine[]>([
-    {
-      id: "med-001",
-      name: "ASF Vaccine",
-      barangay: "Bagong Tubig",
-      normalUsage: 15,
-      currentUsage: 51,
-      trend: "up",
-      percentChange: 340,
-      daysToStockout: 3,
-      linkedDisease: "Possible ASF outbreak",
-      alert: true,
-    },
-    {
-      id: "med-002",
-      name: "Antibiotics (Broad Spectrum)",
-      barangay: "Bambang",
-      normalUsage: 20,
-      currentUsage: 56,
-      trend: "up",
-      percentChange: 180,
-      daysToStockout: 5,
-      linkedDisease: "Potential bacterial infection",
-      alert: true,
-    },
-    {
-      id: "med-003",
-      name: "Rabies Vaccine",
-      barangay: "Cahil",
-      normalUsage: 30,
-      currentUsage: 82,
-      trend: "up",
-      percentChange: 173,
-      daysToStockout: 4,
-      linkedDisease: "Mass vaccination campaign",
-      alert: true,
-    },
-    {
-      id: "med-004",
-      name: "Avian Flu Vaccine",
-      barangay: "Balimbing",
-      normalUsage: 100,
-      currentUsage: 340,
-      trend: "up",
-      percentChange: 240,
-      daysToStockout: 2,
-      linkedDisease: "Emergency vaccination drive",
-      alert: true,
-    },
-    {
-      id: "med-005",
-      name: "Deworming Tablets",
-      barangay: "Poblacion 2",
-      normalUsage: 50,
-      currentUsage: 45,
-      trend: "stable",
-      percentChange: -10,
-      daysToStockout: 30,
-      alert: false,
-    },
-  ]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [dbMedicines, setDbMedicines] = useState<any[]>([]);
+  const [dbUsage, setDbUsage] = useState<any[]>([]);
+  const [dbExpiring, setDbExpiring] = useState<any[]>([]);
+  const [dbLoading, setDbLoading] = useState(true);
+
+  useEffect(() => {
+    api.getDashboardMedicineIntel().then((res: any) => {
+      setDbMedicines(res.stock || []);
+      setDbUsage(res.usage || []);
+      setDbExpiring(res.expiring || []);
+      // Map DB stock to Medicine interface for existing UI
+      const mapped: Medicine[] = (res.stock || []).map((m: any, i: number) => {
+        const usageEntry = (res.usage || []).find((u: any) => u.medicine_id === m.id);
+        const administrations = usageEntry ? parseInt(usageEntry.administrations) : 0;
+        const reorderLevel = parseInt(m.reorder_level) || 10;
+        const qty = parseInt(m.quantity) || 0;
+        const daysToStockout = administrations > 0 ? Math.round(qty / (administrations / 90)) : (qty > 0 ? 999 : 0);
+        const alert = qty <= reorderLevel;
+        const isExpiring = (res.expiring || []).some((e: any) => e.id === m.id);
+        const status = m.stock_status || (qty === 0 ? 'critical' : qty <= reorderLevel ? 'critical' : qty <= reorderLevel * 2 ? 'high' : 'normal');
+        return {
+          id: m.id,
+          name: m.name,
+          barangay: 'CVO Central',
+          normalUsage: reorderLevel,
+          currentUsage: administrations || qty,
+          trend: (qty <= reorderLevel ? 'down' : administrations > reorderLevel ? 'up' : 'stable') as 'up'|'down'|'stable',
+          percentChange: qty > 0 ? Math.round(((qty - reorderLevel) / reorderLevel) * 100) : -100,
+          daysToStockout: Math.min(daysToStockout, 999),
+          linkedDisease: isExpiring ? `Expires: ${new Date(m.expiry_date).toLocaleDateString('en-PH')}` : undefined,
+          alert,
+        };
+      });
+      setMedicines(mapped.length > 0 ? mapped : FALLBACK_MEDICINES);
+      setDbLoading(false);
+    }).catch(() => {
+      setMedicines(FALLBACK_MEDICINES);
+      setDbLoading(false);
+    });
+  }, []);
 
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const [investigateTarget, setInvestigateTarget] =

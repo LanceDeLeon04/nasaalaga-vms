@@ -1,4 +1,6 @@
-import { AlertTriangle, TrendingUp, Syringe, Skull, ArrowUpRight, Activity } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Syringe, Skull, ArrowUpRight, Activity, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 
 interface Alert {
   id: string;
@@ -11,8 +13,82 @@ interface Alert {
   riskLevel: 'Low' | 'Medium' | 'High';
 }
 
+const FALLBACK_ALERTS: Alert[] = [
+  { id: 'fb-1', type: 'outbreak', severity: 'high', barangay: 'Bisaya', message: 'ASF suspect case — LS-005 quarantined. RVL confirmation pending.', metric: '22 swine quarantined', trend: 'up', riskLevel: 'High' },
+  { id: 'fb-2', type: 'mortality', severity: 'medium', barangay: 'Loma', message: '2 swine mortality reported — suspected PED. Investigation ongoing.', metric: '2 animals', trend: 'up', riskLevel: 'Medium' },
+  { id: 'fb-3', type: 'medicine', severity: 'medium', barangay: 'CVO Central', message: 'Check medicine inventory for reorder levels', metric: 'Review needed', trend: 'stable', riskLevel: 'Low' },
+];
+
+
 export function SmartAlerts() {
-  const alerts: Alert[] = [
+  const [dbAlerts, setDbAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.getDashboardDiseaseIntel().catch(() => null),
+      api.getDashboardMedicineIntel().catch(() => null),
+    ]).then(([diseaseRes, medRes]) => {
+      const generated: Alert[] = [];
+      // Disease events -> alerts
+      (diseaseRes?.activeEvents || []).forEach((e: any, i: number) => {
+        generated.push({
+          id: `disease-${e.id||i}`,
+          type: 'outbreak',
+          severity: 'high',
+          barangay: e.barangay || 'Unknown',
+          message: `${e.disease} — ${e.cases} cases reported. Status: ${e.status}`,
+          metric: `${e.cases} cases, ${e.deaths||0} deaths`,
+          trend: 'up',
+          riskLevel: e.cases > 10 ? 'High' : e.cases > 3 ? 'Medium' : 'Low',
+        });
+      });
+      // Mortality alerts
+      (diseaseRes?.recentMortality || []).slice(0, 3).forEach((m: any, i: number) => {
+        generated.push({
+          id: `mort-${i}`,
+          type: 'mortality',
+          severity: m.quantity > 5 ? 'high' : 'medium',
+          barangay: m.barangay || 'Unknown',
+          message: `${m.quantity} ${m.animal_type} mortality — Cause: ${m.cause || 'Unknown'}`,
+          metric: `${m.quantity} animals`,
+          trend: 'up',
+          riskLevel: m.quantity > 5 ? 'High' : 'Medium',
+        });
+      });
+      // Low stock medicine alerts
+      (medRes?.stock || []).filter((m: any) => m.stock_status === 'Critical' || m.stock_status === 'Out of Stock').forEach((m: any, i: number) => {
+        generated.push({
+          id: `med-${i}`,
+          type: 'medicine',
+          severity: m.quantity === 0 ? 'high' : 'medium',
+          barangay: 'CVO Central',
+          message: `${m.name}: ${m.quantity === 0 ? 'OUT OF STOCK' : 'Low stock'} — ${m.quantity} ${m.unit} remaining (reorder: ${m.reorder_level})`,
+          metric: `${m.quantity} ${m.unit}`,
+          trend: 'down',
+          riskLevel: m.quantity === 0 ? 'High' : 'Medium',
+        });
+      });
+      // Expiring medicines
+      (medRes?.expiring || []).slice(0, 2).forEach((m: any, i: number) => {
+        generated.push({
+          id: `exp-${i}`,
+          type: 'medicine',
+          severity: 'medium',
+          barangay: 'CVO Central',
+          message: `${m.name} expires on ${new Date(m.expiry_date).toLocaleDateString('en-PH')} — ${m.quantity} ${m.unit} at risk`,
+          metric: `Expires ${new Date(m.expiry_date).toLocaleDateString('en-PH')}`,
+          trend: 'up',
+          riskLevel: 'Medium',
+        });
+      });
+      setDbAlerts(generated.length > 0 ? generated : FALLBACK_ALERTS);
+      setLoading(false);
+    }).catch(() => { setDbAlerts(FALLBACK_ALERTS); setLoading(false); });
+  }, []);
+
+  // legacy static for reference only
+  const staticAlerts: Alert[] = [
     {
       id: 'alert-1',
       type: 'medicine',
@@ -134,6 +210,8 @@ export function SmartAlerts() {
     }
   };
 
+  const alerts = dbAlerts;
+  
   return (
     <div className="bg-white rounded-2xl shadow-xl p-6">
       <div className="flex items-center justify-between mb-6">

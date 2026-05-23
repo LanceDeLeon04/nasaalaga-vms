@@ -659,6 +659,32 @@ const createTables = async () => {
     `);
     await client.query(`ALTER TABLE vaccination_history ADD COLUMN IF NOT EXISTS vaccine_barcode VARCHAR(100)`);
     await client.query(`ALTER TABLE vaccination_history ADD COLUMN IF NOT EXISTS medicine_id VARCHAR(50)`);
+    // ── CVO Forms table ────────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cvo_forms (
+        id VARCHAR(50) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        category VARCHAR(100) NOT NULL,
+        requirements JSONB DEFAULT '[]',
+        procedure_steps JSONB DEFAULT '[]',
+        processing_fee NUMERIC(10,2) DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        is_active BOOLEAN DEFAULT true,
+        uploaded_by VARCHAR(255),
+        file_name VARCHAR(255),
+        file_data TEXT,
+        file_type VARCHAR(100),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    // ── Add admin response columns to feedback ─────────────────────────────
+    await client.query(`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS admin_response TEXT`);
+    await client.query(`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS responded_by VARCHAR(255)`);
+    await client.query(`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'Medium'`);
+    await client.query(`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS barangay VARCHAR(255)`);
 
     // ── Seed demo medicine inventory (anti-rabies vaccine) ─────────────────
     await client.query(`

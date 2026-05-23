@@ -554,6 +554,173 @@ const seed = async () => {
     }
     console.log(`  ✓ Supplies inventory seeded (${supplies.length})`);
 
+
+    // ── Inventory Transactions (medicine movements) ──────────────────────────
+    const inventoryTxns = [
+      { item_id: 'MED-DEMO-001', item_type: 'medicine', transaction_type: 'Dispensed', quantity: 10, previous_qty: 510, new_qty: 500, reason: 'Rabies vaccination drive - Poblacion 1', performed_by: 'Dr. Amalia Vergara', barangay: 'Poblacion 1' },
+      { item_id: 'MED-DEMO-001', item_type: 'medicine', transaction_type: 'Dispensed', quantity: 8, previous_qty: 500, new_qty: 492, reason: 'Vaccination - Balimbing', performed_by: 'BAHW Miguel Sanchez', barangay: 'Balimbing' },
+      { item_id: 'MED-DEMO-002', item_type: 'medicine', transaction_type: 'Dispensed', quantity: 15, previous_qty: 315, new_qty: 300, reason: 'Mass vaccination Poblacion 3', performed_by: 'Dr. Amalia Vergara', barangay: 'Poblacion 3' },
+      { item_id: 'MED-DEMO-003', item_type: 'medicine', transaction_type: 'Dispensed', quantity: 5, previous_qty: 155, new_qty: 150, reason: 'Distemper/parvo vaccination', performed_by: 'Dr. Amalia Vergara', barangay: 'Poblacion 5' },
+      { item_id: 'MED-DEMO-001', item_type: 'medicine', transaction_type: 'Restocked', quantity: 100, previous_qty: 400, new_qty: 500, reason: 'Monthly restock from DA Region IV-A', performed_by: 'Dr. Amalia Vergara', barangay: null },
+    ];
+    for (const t of inventoryTxns) {
+      await client.query(
+        `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, barangay)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [t.item_id, t.item_type, t.transaction_type, t.quantity, t.previous_qty, t.new_qty, t.reason, t.performed_by, t.barangay]
+      );
+    }
+    console.log(`  ✓ Inventory transactions seeded (${inventoryTxns.length})`);
+
+    // ── Audit Logs (seed real initial entries) ─────────────────────────────
+    const auditEntries = [
+      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Login', resource: 'Authentication', details: JSON.stringify({ role: 'admin' }), ip_address: '192.168.1.100' },
+      { user_id: 'USER-002', username: 'BAHW Miguel Sanchez', action: 'Login', resource: 'Authentication', details: JSON.stringify({ role: 'bahw' }), ip_address: '192.168.1.105' },
+      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Create', resource: 'Livestock', resource_id: 'LS-001', details: JSON.stringify({ animal_type: 'Cattle', barangay: 'Poblacion 5' }), ip_address: '192.168.1.100' },
+      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Create', resource: 'Disease Event', resource_id: 'DE-001', details: JSON.stringify({ disease: 'ASF', barangay: 'Bisaya' }), ip_address: '192.168.1.100' },
+      { user_id: 'USER-002', username: 'BAHW Miguel Sanchez', action: 'Update', resource: 'Vaccination Schedule', resource_id: 'SCH-001', details: JSON.stringify({ action: 'Updated attendance' }), ip_address: '192.168.1.105' },
+      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Upload', resource: 'CVO Form', resource_id: 'FORM-001', details: JSON.stringify({ title: 'Pet Registration Form' }), ip_address: '192.168.1.100' },
+      { user_id: null, username: 'unknown@test.com', action: 'Login Failed', resource: 'Authentication', details: JSON.stringify({ reason: 'User not found' }), ip_address: '203.125.45.78' },
+    ];
+    for (const e of auditEntries) {
+      await client.query(
+        `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [e.user_id, e.username, e.action, e.resource, (e as any).resource_id || null, e.details, e.ip_address]
+      );
+    }
+    console.log(`  ✓ Audit logs seeded (${auditEntries.length})`);
+
+    // ── CVO Forms ──────────────────────────────────────────────────────────
+    const cvoForms = [
+      {
+        id: 'FORM-001', title: 'Pet Registration Form', category: 'Pet Services',
+        description: 'Official registration form for companion animals in compliance with RA 8485 (Animal Welfare Act). Required for all pet owners in Calaca City.',
+        requirements: ['Valid ID of owner','Recent photo of pet (3x3)','Proof of residence','Vaccination records (if available)'],
+        procedureSteps: [
+          'Download and print the Pet Registration Form',
+          'Fill out all required information completely',
+          'Attach a recent 3x3 photo of your pet',
+          'Bring the completed form with required documents to the CVO office',
+          'CVO staff will verify submitted documents',
+          'Pay the registration fee (if applicable)',
+          'Receive your Pet Registration Certificate and Tag'
+        ],
+        processingFee: 0, sortOrder: 1,
+        fileName: 'Pet_Registration_Form.pdf'
+      },
+      {
+        id: 'FORM-002', title: 'Anti-Rabies Vaccination Appointment Form', category: 'Vaccination Services',
+        description: 'Schedule your pet for free anti-rabies vaccination. Available for all dogs and cats in Calaca City as part of the Rabies Prevention Program.',
+        requirements: ['Pet registration number (if already registered)','Valid ID of owner','Pet vaccination booklet (if available)'],
+        procedureSteps: [
+          'Download and fill out the Vaccination Appointment Form',
+          'Choose your preferred vaccination schedule and venue',
+          'Bring the completed form to the designated vaccination site',
+          'Present the form and valid ID upon arrival',
+          'Wait for your pet to be assessed by the CVO staff',
+          'Anti-rabies vaccine will be administered',
+          'Receive vaccination certificate and next due date'
+        ],
+        processingFee: 0, sortOrder: 2,
+        fileName: 'Vaccination_Appointment_Form.pdf'
+      },
+      {
+        id: 'FORM-003', title: 'Veterinary Health Certificate Application', category: 'Certificate Services',
+        description: 'Official health certificate for travel, sale, or transport of animals. Required for inter-provincial or international transport. Valid for 30 days from issuance.',
+        requirements: ['Pet/livestock registration certificate','Updated vaccination records','Physical examination by city veterinarian','Processing fee: ₱200','Valid ID of owner'],
+        procedureSteps: [
+          'Download and complete the VHC Application Form',
+          'Gather all required supporting documents',
+          'Submit the application form and documents to CVO office',
+          'Schedule physical examination appointment',
+          'Bring animal to CVO for physical examination',
+          'Pay the processing fee of ₱200',
+          'Receive Veterinary Health Certificate within 1-3 working days'
+        ],
+        processingFee: 200, sortOrder: 3,
+        fileName: 'VHC_Application_Form.pdf'
+      },
+      {
+        id: 'FORM-004', title: 'Livestock Registration Form', category: 'Livestock Services',
+        description: 'Mandatory registration for all livestock owners in Calaca City. Enables disease monitoring, outbreak prevention, and facilitates animal insurance programs.',
+        requirements: ['Valid ID of farm owner','Proof of land ownership or lease','Recent photos of animals','Branding/marking documentation (if applicable)','Barangay clearance'],
+        procedureSteps: [
+          'Download the Livestock Registration Form',
+          'Fill out animal details (type, breed, quantity, age)',
+          'Attach required supporting documents',
+          'Submit to CVO office or your BAHW',
+          'CVO/BAHW will schedule farm visit for verification',
+          'Animals will be tagged/branded upon verification',
+          'Receive Livestock Registration Certificate'
+        ],
+        processingFee: 0, sortOrder: 4,
+        fileName: 'Livestock_Registration_Form.pdf'
+      },
+      {
+        id: 'FORM-005', title: 'Animal Health Certificate for Transport', category: 'Livestock Services',
+        description: 'Required for movement of livestock between municipalities or provinces. Must be secured 3 days before transport. Valid for 3 days from issuance.',
+        requirements: ['Livestock registration certificate','Updated vaccination records','Destination address and purpose of transport','Buyer/receiver information','Valid ID'],
+        procedureSteps: [
+          'Fill out the Transport Permit Application Form',
+          'Specify destination and purpose of animal movement',
+          'Submit application at least 3 days before transport date',
+          'CVO staff will inspect animals for health clearance',
+          'Pay applicable fees',
+          'Receive Animal Health Certificate valid for 3 days',
+          'Present certificate at all checkpoints during transport'
+        ],
+        processingFee: 150, sortOrder: 5,
+        fileName: 'Animal_Transport_Certificate_Form.pdf'
+      },
+      {
+        id: 'FORM-006', title: 'Hog Raiser Registration Form', category: 'Livestock Services',
+        description: 'Registration form for all hog raisers in Calaca City. Mandatory for ASF prevention and monitoring. Enables access to government support programs.',
+        requirements: ['Valid ID','Farm location details','Current hog inventory count','Proof of land ownership or lease','Biosecurity measures certification'],
+        procedureSteps: [
+          'Download and complete the Hog Raiser Registration Form',
+          'Attach inventory list of all hogs with age and breed',
+          'Include farm biosecurity plan',
+          'Submit to CVO office or BAHW',
+          'Farm inspection will be conducted within 5 working days',
+          'Complete ASF biosecurity training (if not yet completed)',
+          'Receive Hog Raiser Certificate'
+        ],
+        processingFee: 0, sortOrder: 6,
+        fileName: 'Hog_Raiser_Registration_Form.pdf'
+      },
+    ];
+
+    for (const f of cvoForms) {
+      await client.query(
+        `INSERT INTO cvo_forms (id, title, description, category, requirements, procedure_steps, processing_fee, sort_order, is_active, uploaded_by, file_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,'system',$9)
+         ON CONFLICT (id) DO UPDATE SET title=$2,description=$3,category=$4,requirements=$5,procedure_steps=$6,processing_fee=$7,sort_order=$8,file_name=$9`,
+        [f.id, f.title, f.description, f.category, JSON.stringify(f.requirements),
+         JSON.stringify(f.procedureSteps), f.processingFee, f.sortOrder, f.fileName]
+      );
+    }
+    console.log(`  ✓ CVO Forms seeded (${cvoForms.length})`);
+
+    // ── Seed feedback data ─────────────────────────────────────────────────
+    const feedbacks = [
+      { id: 101, user_id: 'USER-003', username: 'Cyrus Cruz', category: 'feedback', subject: 'Excellent vaccination drive in Poblacion 1', message: 'The BAHW staff was very professional and accommodating during the recent vaccination drive. My pets were well taken care of.', status: 'Resolved', priority: 'Low', barangay: 'Poblacion 1', admin_response: 'Thank you for your kind words! We will continue to improve our services.', responded_by: 'Dr. Amalia Vergara' },
+      { id: 102, user_id: 'USER-004', username: 'Aeden Aranez', category: 'complaint', subject: 'Delayed processing of livestock health certificate', message: 'I applied for a health certificate for my cattle 5 days ago but it has not been processed yet. I need it urgently for a sale transaction.', status: 'Under Review', priority: 'High', barangay: 'Poblacion 5', admin_response: null, responded_by: null },
+      { id: 103, user_id: null, username: 'Anonymous', category: 'suggestion', subject: 'Request for weekend vaccination schedule', message: 'Many working pet owners cannot come to CVO on weekdays. Please consider having vaccination schedules on Saturdays at least twice a month.', status: 'Under Review', priority: 'Medium', barangay: 'Poblacion 3', admin_response: null, responded_by: null },
+    ];
+
+    for (const fb of feedbacks) {
+      await client.query(
+        `INSERT INTO feedback (id, user_id, username, category, subject, message, status, priority, barangay, admin_response, responded_by, responded_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (id) DO NOTHING`,
+        [fb.id, fb.user_id, fb.username, fb.category, fb.subject, fb.message, fb.status,
+         fb.priority, fb.barangay, fb.admin_response, fb.responded_by,
+         fb.admin_response ? new Date() : null]
+      );
+    }
+    console.log(`  ✓ Feedback seeded (${feedbacks.length})`);
+
     await client.query('COMMIT');
     console.log('\n✅ Seed complete!');
   } catch (err) {
