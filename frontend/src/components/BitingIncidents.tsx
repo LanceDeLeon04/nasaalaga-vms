@@ -364,7 +364,7 @@ export function BitingIncidents({ userRole }: Props) {
                 </div>
                 <div className="bi-field">
                   <label className="bi-label">Pet ID (if registered)</label>
-                  <input className="bi-input" value={form.petId} onChange={e=>setForm(p=>({...p,petId:e.target.value}))} placeholder="PET-001" />
+                  <input className="bi-input" value={form.petId} onChange={e=>setForm(p=>({...p,petId:e.target.value}))} placeholder="BLU-000-00001" />
                 </div>
                 <div className="bi-field">
                   <label className="bi-label">Date of Incident *</label>

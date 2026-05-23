@@ -91,7 +91,7 @@ export function RabiesVaccination() {
 
   const [pets, setPets] = useState<Pet[]>([
     {
-      id: 'PET-001',
+      id: 'BLU-000-00001',
       petName: 'Brownie',
       species: 'Dog',
       breed: 'Aspin',
@@ -109,7 +109,7 @@ export function RabiesVaccination() {
       status: 'Active'
     },
     {
-      id: 'PET-002',
+      id: 'BLU-000-00002',
       petName: 'Whiskers',
       species: 'Cat',
       breed: 'Persian',
@@ -126,7 +126,7 @@ export function RabiesVaccination() {
       status: 'Active'
     },
     {
-      id: 'PET-003',
+      id: 'BLU-000-00003',
       petName: 'Rocky',
       species: 'Dog',
       breed: 'German Shepherd',
@@ -144,7 +144,7 @@ export function RabiesVaccination() {
       status: 'Active'
     },
     {
-      id: 'PET-004',
+      id: 'BLU-000-00004',
       petName: 'Max',
       species: 'Dog',
       breed: 'Labrador',
@@ -159,7 +159,7 @@ export function RabiesVaccination() {
       status: 'Active'
     },
     {
-      id: 'PET-005',
+      id: 'BLU-000-00005',
       petName: 'Lucky',
       species: 'Dog',
       breed: 'Shih Tzu',
@@ -178,7 +178,7 @@ export function RabiesVaccination() {
   const [lostFoundReports, setLostFoundReports] = useState<LostFoundReport[]>([
     {
       id: 'LF-001',
-      petId: 'PET-005',
+      petId: 'BLU-000-00005',
       petName: 'Lucky',
       species: 'Dog',
       breed: 'Shih Tzu',

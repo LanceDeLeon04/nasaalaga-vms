@@ -103,7 +103,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
   const [notifications] = useState<Notification[]>([
     {
       id: 'N-001',
-      petId: 'PET-001',
+      petId: 'BLU-000-00001',
       petName: 'Brownie',
       type: 'vaccination',
       message: 'Rabies vaccination due soon',
