@@ -1468,7 +1468,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     isSpayed:false,isNeutered:false,
     ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",
     microchipId:"",photoUrl:"",
-    impoundStatus:"None",impoundReason:""
+    impoundStatus:"None",impoundReason:"",tagNumber:""
   });
   const [ownerSuggestions, setOwnerSuggestions] = useState<{id:string;username:string;owner_id:string;email:string;barangay:string;address:string}[]>([]);
   const [ownerLookupTimer, setOwnerLookupTimer] = useState<any>(null);
@@ -1511,6 +1511,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         photoUrl: np.photoUrl || null, vaccinationStatus: "Not Vaccinated",
         impoundStatus: np.impoundStatus || "None",
         impoundReason: np.impoundReason || null,
+        tagNumber: np.tagNumber || undefined,
         ownerId: selectedOwnerId || undefined,
         isUnregistered: isUnregisteredOwner,
       });
@@ -1519,7 +1520,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         setGeneratedTempId(res.tempId);
       } else {
         setShowNewPet(false);
-        setNp({ petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:"" });
+        setNp({ petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:"",tagNumber:""});
         setSelectedOwnerId(null); setIsUnregisteredOwner(false); setGeneratedTempId(null);
       }
       await loadAll();
@@ -2080,6 +2081,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Color</label><input value={np.color} onChange={e=>setNp({...np,color:e.target.value})} className={INPUT} placeholder="e.g., Brown"/></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Gender</label><select value={np.gender} onChange={e=>setNp({...np,gender:e.target.value})} className={INPUT}><option value="">Select…</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Microchip ID</label><input value={np.microchipId} onChange={e=>setNp({...np,microchipId:e.target.value})} className={INPUT} placeholder="Optional"/></div>
+                  {(()=>{const BZONE:Record<string,string>={'Caluangan':'East','Coral Ni Bacal':'East','Dila':'East','Lumbang Na Bata':'East','Lumbang Na Matanda':'East','Poblacion 1':'East','Poblacion 2':'East','Poblacion 3':'East','Poblacion 4':'East','Poblacion 6':'East','Bagong Tubig':'West','Cahil':'West','Calantas':'West','Coral Ni Lopez':'West','Dacanlao':'West','Loma':'West','Makina':'West','Pantay':'West','Taklang Anak':'West','Timbain':'West','Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North','Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North','Camastilisan':'Red','Lumbang Calzada':'Red','Poblacion 5':'Red','Putting Bato East':'Red','Putting Bato West':'Red','Quisumbing':'Red','Salong':'Red','San Rafael':'Red','Sinisian':'Red','Talisay':'Red'};const ZPFX:Record<string,string>={East:'BLU',West:'PRP',North:'GRY',Red:'RED'};const ZCOL:Record<string,string>={BLU:'#2B5EA6',PRP:'#8B5CF6',GRY:'#6B7280',RED:'#E85D3B'};const zone=BZONE[np.barangay]||'East';const pfx=ZPFX[zone]||'BLU';const col=ZCOL[pfx]||'#2B5EA6';const numPad=(np.tagNumber||'').replace(/\D/g,'').padStart(4,'0');const preview=np.tagNumber?`${pfx}-${numPad}`:'';return(<div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Tag Number <span className="font-normal text-gray-400">(number only — prefix auto by zone)</span></label><div className="flex items-center gap-2"><span className="px-3 py-2.5 rounded-xl font-mono font-black text-white text-sm flex-shrink-0" style={{background:col}}>{pfx}-</span><input type="text" inputMode="numeric" value={np.tagNumber} onChange={e=>setNp({...np,tagNumber:e.target.value.replace(/\D/g,'').slice(0,6)})} className={INPUT} placeholder={np.barangay?`e.g. 0001`:'Select barangay first'} disabled={!np.barangay}/></div>{preview&&<div className="mt-2 flex items-center gap-2"><span className="text-xs text-gray-400">Full tag ID:</span><span className="font-mono font-black text-white text-xs px-2 py-0.5 rounded" style={{background:col}}>{preview}</span><span className="text-xs text-gray-400">({zone} Zone)</span></div>}{!np.barangay&&<p className="text-xs text-amber-600 mt-1">Select barangay first — prefix is auto by zone</p>}</div>);})()}
                   {/* Spay / Neuter */}
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-gray-600 mb-2">Reproductive Status</label>
@@ -2111,7 +2113,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                     <p style={{margin:'0 0 4px',fontWeight:800,color:'#92400e',fontSize:13,display:'flex',alignItems:'center',gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Unregistered Owner — Temporary ID Issued</p>
                     <p style={{margin:'0 0 6px',color:'#92400e',fontSize:13}}>This pet has been registered with a Temporary ID. Give this ID to the owner — they can enter it during account signup to auto-link this pet to their account.</p>
                     <div style={{background:'#fff',border:'2px solid #f59e0b',borderRadius:8,padding:'8px 14px',textAlign:'center',fontFamily:'monospace',fontSize:20,fontWeight:900,color:'#2B5EA6',letterSpacing:'.05em'}}>{generatedTempId}</div>
-                    <button onClick={()=>{setGeneratedTempId(null);setShowNewPet(false);setNp({petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:""});setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{marginTop:10,width:'100%',padding:'8px',background:'#2B5EA6',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>Done — Register Another Pet</button>
+                    <button onClick={()=>{setGeneratedTempId(null);setShowNewPet(false);setNp({petName:"",species:"",breed:"",age:"",color:"",gender:"",isSpayed:false,isNeutered:false,ownerName:"",ownerContact:"",ownerAddress:"",barangay:"",microchipId:"",photoUrl:"",impoundStatus:"None",impoundReason:"",tagNumber:""});setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{marginTop:10,width:'100%',padding:'8px',background:'#2B5EA6',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>Done — Register Another Pet</button>
                   </div>
                 )}
 

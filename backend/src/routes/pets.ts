@@ -6,37 +6,76 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
-// ── Barangay zone -> color prefix mapping ─────────────────────────────────
-async function getBarangayPrefix(barangayName: string): Promise<string> {
+// ── Zone → color prefix mapping (single source of truth) ─────────────────
+const ZONE_PREFIX: Record<string, string> = {
+  'East':  'BLU',
+  'West':  'PRP',
+  'North': 'GRY',
+  'Red':   'RED',
+};
+
+// Fetch zone for a barangay from DB
+async function getBarangayZone(barangayName: string): Promise<string> {
   try {
-    const result = await query('SELECT zone FROM barangays WHERE LOWER(name) = LOWER($1) LIMIT 1', [barangayName]);
-    if (result.rows.length > 0) {
-      const zone = result.rows[0].zone;
-      const prefixMap: Record<string, string> = {
-        'East':  'BLU',
-        'West':  'PRP',
-        'North': 'GRY',
-        'Red':   'RED',
-      };
-      return prefixMap[zone] || 'BLU';
-    }
-  } catch { /* fallback */ }
-  return 'BLU';
+    const result = await query(
+      'SELECT zone FROM barangays WHERE LOWER(name) = LOWER($1) LIMIT 1',
+      [barangayName]
+    );
+    return result.rows[0]?.zone || 'East';
+  } catch {
+    return 'East';
+  }
 }
 
-async function generatePetTagId(barangayName: string): Promise<string> {
+// Get color prefix for a barangay
+async function getBarangayPrefix(barangayName: string): Promise<string> {
+  const zone = await getBarangayZone(barangayName);
+  return ZONE_PREFIX[zone] || 'BLU';
+}
+
+/**
+ * Build the color-coded tag ID.
+ *
+ * If `manualNumber` is given (e.g. "0001"), use it directly.
+ * Otherwise auto-increment based on how many pets already have that prefix.
+ *
+ * Format: PREFIX-NNNN  (e.g. BLU-0001, PRP-0042, GRY-0003, RED-0010)
+ *
+ * Uniqueness is enforced by the UNIQUE constraint on `pet_tag_id`.
+ * If the caller-supplied number already exists this will throw a DB error,
+ * which the route catches and returns as a 409.
+ */
+async function buildTagId(barangayName: string, manualNumber?: string): Promise<string> {
   const prefix = await getBarangayPrefix(barangayName);
-  // Count existing pets with this prefix to get next sequence number
+
+  if (manualNumber) {
+    const num = manualNumber.replace(/\D/g, ''); // strip non-digits
+    if (!num) throw new Error('Invalid tag number');
+    const padded = num.padStart(4, '0');
+    return `${prefix}-${padded}`;
+  }
+
+  // Auto: count existing tags with this prefix and use next sequence
   const result = await query(
-    `SELECT COUNT(*) as count FROM pets WHERE pet_tag_id LIKE $1`,
+    `SELECT COUNT(*) AS count FROM pets WHERE pet_tag_id LIKE $1`,
     [`${prefix}-%`]
   );
   const next = parseInt(result.rows[0]?.count || '0') + 1;
-  // Format: PREFIX-NNN-NNNN  e.g. BLU-001-0001
-  return `${prefix}-${String(next).padStart(3, '0')}-${String(next).padStart(4, '0')}`;
+  return `${prefix}-${String(next).padStart(4, '0')}`;
 }
 
-
+// ── Helper: expose zone+prefix info for a barangay (used by frontend) ─────
+router.get('/barangay-prefix', async (req: AuthRequest, res: Response) => {
+  try {
+    const { barangay } = req.query;
+    if (!barangay) return res.status(400).json({ error: 'barangay required' });
+    const zone = await getBarangayZone(barangay as string);
+    const prefix = ZONE_PREFIX[zone] || 'BLU';
+    return res.json({ zone, prefix });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Survey data (real from DB) ─────────────────────────────────────────────
 router.get('/survey-data', async (req: AuthRequest, res: Response) => {
@@ -66,8 +105,7 @@ router.get('/survey-data', async (req: AuthRequest, res: Response) => {
     lostResult.rows.forEach((r: any) => { lostMap[r.type] = parseInt(r.count); });
 
     return res.json({
-      success: true,
-      total,
+      success: true, total,
       survey: { totalDogs: surveyedDogs, totalCats: surveyedCats, total: surveyedDogs + surveyedCats },
       registered: { dogs: regDogs, cats: regCats, total },
       registrationRate: {
@@ -86,10 +124,7 @@ router.get('/survey-data', async (req: AuthRequest, res: Response) => {
       },
       impounded: parseInt(impoundResult.rows[0]?.impounded || '0'),
       byBarangay: barangayResult.rows,
-      lostFound: {
-        lost: lostMap['Lost'] || 0,
-        found: lostMap['Found'] || 0,
-      },
+      lostFound: { lost: lostMap['Lost'] || 0, found: lostMap['Found'] || 0 },
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -101,7 +136,7 @@ router.post('/pre-register', async (req: AuthRequest, res: Response) => {
   try {
     const petData = req.body;
     const preRegNumber = `PRE-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
     await query(
       `INSERT INTO pet_pre_registrations
@@ -113,7 +148,6 @@ router.post('/pre-register', async (req: AuthRequest, res: Response) => {
        petData.ownerEmail || null, petData.barangay, petData.address, petData.photo || null, expiresAt]
     );
 
-    // Send confirmation email if owner email is provided
     let emailSent = false;
     if (petData.ownerEmail) {
       try {
@@ -125,12 +159,7 @@ router.post('/pre-register', async (req: AuthRequest, res: Response) => {
       } catch (emailErr) { console.error('[Pre-register] Email error:', emailErr); }
     }
 
-    return res.json({
-      success: true, preRegNumber,
-      expiresAt: expiresAt.toISOString(),
-      emailSent,
-      message: 'Pre-registration submitted successfully.'
-    });
+    return res.json({ success: true, preRegNumber, expiresAt: expiresAt.toISOString(), emailSent });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -166,7 +195,10 @@ router.put('/pre-registered/:preRegNumber', authenticate, async (req: AuthReques
     }
     if (setClauses.length === 0) return res.status(400).json({ error: 'No fields to update' });
     values.push(preRegNumber);
-    const result = await query(`UPDATE pet_pre_registrations SET ${setClauses.join(',')} WHERE pre_reg_number=$${idx} RETURNING *`, values);
+    const result = await query(
+      `UPDATE pet_pre_registrations SET ${setClauses.join(',')} WHERE pre_reg_number=$${idx} RETURNING *`,
+      values
+    );
     return res.json({ success: true, preRegistration: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -176,7 +208,8 @@ router.put('/pre-registered/:preRegNumber', authenticate, async (req: AuthReques
 router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { preRegNumber } = req.params;
-    const { action, petId, photo, petTagId, denialReason } = req.body;
+    // tagNumber: admin-supplied number portion (e.g. "0001"); tagId: full override
+    const { action, petId, photo, tagNumber, petTagId, denialReason } = req.body;
     const preRegResult = await query('SELECT * FROM pet_pre_registrations WHERE pre_reg_number=$1', [preRegNumber]);
     const preReg = preRegResult.rows[0];
     if (!preReg) return res.status(404).json({ error: 'Pre-registration not found' });
@@ -185,8 +218,29 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
       const countResult = await query('SELECT COUNT(*) FROM pets');
       const count = parseInt(countResult.rows[0].count);
       const newPetId = petId || `PET-${String(count + 1).padStart(3, '0')}`;
-      // Auto-generate tag ID from barangay if not provided
-      const tagId = petTagId || (preReg.barangay ? await generatePetTagId(preReg.barangay) : null);
+
+      // Build color-coded tag: explicit full id > admin-supplied number > auto
+      let tagId: string | null = null;
+      if (petTagId) {
+        tagId = petTagId; // full override (legacy / admin paste)
+      } else if (preReg.barangay) {
+        try {
+          tagId = await buildTagId(preReg.barangay, tagNumber || undefined);
+        } catch (e: any) {
+          return res.status(409).json({ error: e.message });
+        }
+      }
+
+      // Check uniqueness before insert
+      if (tagId) {
+        const dup = await query('SELECT id FROM pets WHERE pet_tag_id=$1', [tagId]);
+        if (dup.rows.length > 0) {
+          return res.status(409).json({
+            error: `Tag ID ${tagId} already exists. Please choose a different number.`,
+            tagConflict: true,
+          });
+        }
+      }
 
       await query(
         `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender,
@@ -203,7 +257,7 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
         [newPetId, tagId, preRegNumber]
       );
       const pet = (await query('SELECT * FROM pets WHERE id=$1', [newPetId])).rows[0];
-      return res.json({ success: true, pet });
+      return res.json({ success: true, pet, petTagId: tagId });
     } else if (action === 'deny') {
       await query(
         `UPDATE pet_pre_registrations SET status='Denied', denial_reason=$1, denied_date=NOW() WHERE pre_reg_number=$2`,
@@ -213,6 +267,9 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
     }
     return res.status(400).json({ error: 'Invalid action' });
   } catch (err: any) {
+    if (err.code === '23505') { // unique_violation
+      return res.status(409).json({ error: 'That tag ID already exists. Choose a different number.', tagConflict: true });
+    }
     return res.status(500).json({ error: err.message });
   }
 });
@@ -239,7 +296,6 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     const count = parseInt(countResult.rows[0].count);
     const newId = `PET-${String(count + 1).padStart(3, '0')}`;
 
-    // If ownerName provided and no ownerId, try to find a registered user by name
     let resolvedOwnerId = d.ownerId || null;
     let tempId = d.tempId || null;
 
@@ -251,33 +307,57 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       if (userMatch.rows[0]) {
         resolvedOwnerId = userMatch.rows[0].owner_id;
       } else if (d.tempId) {
-        // tempId was pre-supplied (unregistered owner flow)
         tempId = d.tempId;
       } else if (d.isUnregistered) {
-        // Generate a new temp_id for unregistered owner
-        tempId = `TEMP-${uuidv4().slice(0,8).toUpperCase()}`;
+        tempId = `TEMP-${uuidv4().slice(0, 8).toUpperCase()}`;
       }
     }
 
-    // Auto-generate pet tag ID from barangay color zone
-    const autoTagId = d.petTagId || (d.barangay ? await generatePetTagId(d.barangay) : null);
+    // Build color-coded tag from barangay + optional manual number
+    let autoTagId: string | null = null;
+    if (d.barangay) {
+      try {
+        autoTagId = await buildTagId(d.barangay, d.tagNumber || undefined);
+      } catch (e: any) {
+        return res.status(409).json({ error: e.message, tagConflict: true });
+      }
+    }
+
+    // Check uniqueness
+    if (autoTagId) {
+      const dup = await query('SELECT id FROM pets WHERE pet_tag_id=$1', [autoTagId]);
+      if (dup.rows.length > 0) {
+        return res.status(409).json({
+          error: `Tag ID ${autoTagId} already exists. Choose a different number.`,
+          tagConflict: true,
+        });
+      }
+    }
 
     const result = await query(
-      `INSERT INTO pets (id, owner_id, pet_name, species, breed, age, color, gender, owner_name, contact_number, barangay, address, photo, vaccination_status, is_spayed, is_neutered, impound_status, status, registration_date, pet_tag_id, temp_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Active',CURRENT_DATE,$18,$19) RETURNING *`,
-      [newId, resolvedOwnerId, d.petName, d.species, d.breed, d.age || null, d.color, d.gender || null,
-       d.ownerName, d.contactNumber || d.ownerContact || null, d.barangay, d.address || d.ownerAddress || null,
-       d.photoUrl || d.photo || null, d.vaccinationStatus || 'Not Vaccinated',
-       d.isSpayed || false, d.isNeutered || false, d.impoundStatus || 'None',
-       autoTagId, tempId]
+      `INSERT INTO pets
+         (id, owner_id, pet_name, species, breed, age, color, gender,
+          owner_name, contact_number, barangay, address, photo,
+          vaccination_status, is_spayed, is_neutered, impound_status,
+          status, registration_date, pet_tag_id, temp_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Active',CURRENT_DATE,$18,$19)
+       RETURNING *`,
+      [newId, resolvedOwnerId, d.petName, d.species, d.breed, d.age || null,
+       d.color, d.gender || null, d.ownerName, d.contactNumber || d.ownerContact || null,
+       d.barangay, d.address || d.ownerAddress || null, d.photoUrl || d.photo || null,
+       d.vaccinationStatus || 'Not Vaccinated', d.isSpayed || false, d.isNeutered || false,
+       d.impoundStatus || 'None', autoTagId, tempId]
     );
-    return res.json({ pet: result.rows[0], success: true, tempId });
+    return res.json({ pet: result.rows[0], success: true, tempId, petTagId: autoTagId });
   } catch (err: any) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That tag ID already exists. Choose a different number.', tagConflict: true });
+    }
     return res.status(500).json({ error: err.message });
   }
 });
 
-// ── Search registered users (for admin pet registration owner lookup) ──────
+// ── Owner search ───────────────────────────────────────────────────────────
 router.get('/owner-search', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { q } = req.query;
@@ -314,7 +394,10 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       if (key in updates) { setClauses.push(`${col}=$${idx++}`); values.push(updates[key]); }
     }
     values.push(id);
-    const result = await query(`UPDATE pets SET ${setClauses.join(',')} WHERE id=$${idx} RETURNING *`, values);
+    const result = await query(
+      `UPDATE pets SET ${setClauses.join(',')} WHERE id=$${idx} RETURNING *`,
+      values
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Pet not found' });
     return res.json({ pet: result.rows[0], success: true });
   } catch (err: any) {

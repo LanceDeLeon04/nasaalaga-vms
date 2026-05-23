@@ -1,10 +1,45 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, CheckCircle, XCircle, Clock, AlertTriangle,
   Camera, Tag, Eye, ChevronRight, User, PawPrint,
-  CalendarClock, BadgeCheck, ArrowRight
+  CalendarClock, BadgeCheck, ArrowRight, Shield
 } from 'lucide-react';
 import { MOCK_PETS, MOCK_USERS, type Pet } from '../types';
+
+// ── Zone → color prefix (mirrors backend ZONE_PREFIX) ──────────────────────
+const BARANGAY_ZONE: Record<string, string> = {
+  // East → BLU
+  'Caluangan':'East','Coral Ni Bacal':'East','Dila':'East','Lumbang Na Bata':'East',
+  'Lumbang Na Matanda':'East','Poblacion 1':'East','Poblacion 2':'East','Poblacion 3':'East',
+  'Poblacion 4':'East','Poblacion 6':'East',
+  // West → PRP
+  'Bagong Tubig':'West','Cahil':'West','Calantas':'West','Coral Ni Lopez':'West',
+  'Dacanlao':'West','Loma':'West','Makina':'West','Pantay':'West','Taklang Anak':'West','Timbain':'West',
+  // North → GRY
+  'Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North',
+  'Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North',
+  // Red → RED
+  'Camastilisan':'Red','Lumbang Calzada':'Red','Poblacion 5':'Red','Putting Bato East':'Red',
+  'Putting Bato West':'Red','Quisumbing':'Red','Salong':'Red','San Rafael':'Red',
+  'Sinisian':'Red','Talisay':'Red',
+};
+
+const ZONE_PREFIX: Record<string, string> = {
+  East: 'BLU', West: 'PRP', North: 'GRY', Red: 'RED',
+};
+
+const ZONE_COLOR: Record<string, string> = {
+  BLU: '#2B5EA6', PRP: '#8B5CF6', GRY: '#6B7280', RED: '#E85D3B',
+};
+
+const ZONE_LABEL: Record<string, string> = {
+  BLU: 'East Zone', PRP: 'West Zone', GRY: 'North Zone', RED: 'Red Zone',
+};
+
+function getPrefix(barangay: string): string {
+  const zone = BARANGAY_ZONE[barangay] || 'East';
+  return ZONE_PREFIX[zone] || 'BLU';
+}
 
 interface AdminValidationProps {
   adminUserId: string;
@@ -16,7 +51,8 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<Pet | null>(null);
   const [valStep, setValStep] = useState<ValidationStep>('list');
-  const [petTagInput, setPetTagInput] = useState('');
+  // tagNumber: only the numeric portion admin types (e.g. "0001")
+  const [tagNumber, setTagNumber] = useState('');
   const [tagError, setTagError] = useState('');
   const [photoCaptured, setPhotoCaptured] = useState(false);
   const [notes, setNotes] = useState('');
@@ -24,7 +60,11 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
 
   const admin = MOCK_USERS.find(u => u.id === adminUserId)!;
 
-  // Pre-registered pets pending validation
+  // Derived: full tag ID preview
+  const prefix = selected ? getPrefix(selected.barangay) : 'BLU';
+  const numPadded = tagNumber.replace(/\D/g, '').padStart(4, '0');
+  const previewTagId = tagNumber ? `${prefix}-${numPadded}` : '';
+
   const preRegistered = MOCK_PETS.filter(p =>
     p.status === 'pre-registered' &&
     !registeredPets.includes(p.id) &&
@@ -45,18 +85,19 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
     setSelected(pet);
     setValStep('review');
     setPhotoCaptured(false);
-    setPetTagInput('');
+    setTagNumber('');
     setTagError('');
     setNotes('');
   };
 
   const handleConfirmTag = () => {
-    if (!petTagInput.trim()) {
-      setTagError('Pet Tag ID is required');
+    const digits = tagNumber.replace(/\D/g, '');
+    if (!digits) {
+      setTagError('Tag number is required');
       return;
     }
-    if (!petTagInput.match(/^TAG-\d{4}-\d{4}$/)) {
-      setTagError('Format must be TAG-YYYY-XXXX (e.g. TAG-2025-0005)');
+    if (digits.length > 6) {
+      setTagError('Number too long (max 6 digits)');
       return;
     }
     setTagError('');
@@ -73,6 +114,9 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
   };
 
   if (valStep === 'done' && selected) {
+    const finalPrefix = getPrefix(selected.barangay);
+    const finalTagId = `${finalPrefix}-${tagNumber.replace(/\D/g,'').padStart(4,'0')}`;
+    const tagColor = ZONE_COLOR[finalPrefix] || '#2B5EA6';
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-xl shadow p-6 text-center">
@@ -85,9 +129,18 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
           </p>
 
           <div className="bg-gray-50 rounded-xl p-4 text-left mb-4 space-y-2">
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between items-center text-sm">
               <span className="text-gray-500">Pet Tag ID:</span>
-              <span className="font-mono font-bold text-[#2B5EA6]">{petTagInput}</span>
+              <span className="font-mono font-bold text-lg px-3 py-0.5 rounded-lg text-white"
+                style={{ background: tagColor }}>{finalTagId}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Zone:</span>
+              <span className="font-medium">{ZONE_LABEL[finalPrefix]}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Barangay:</span>
+              <span className="font-medium">{selected.barangay}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Owner:</span>
@@ -100,10 +153,6 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Date:</span>
               <span className="font-medium">{new Date().toLocaleDateString('en-PH')}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Status:</span>
-              <span className="text-green-700 font-semibold bg-green-100 px-2 py-0.5 rounded">Registered</span>
             </div>
           </div>
 
@@ -123,6 +172,9 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
   }
 
   if (valStep !== 'list' && selected) {
+    const pfx = getPrefix(selected.barangay);
+    const pfxColor = ZONE_COLOR[pfx] || '#2B5EA6';
+
     return (
       <div className="space-y-4">
         {/* Step Header */}
@@ -138,7 +190,6 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
             <span className="text-sm text-gray-600">Validating: <strong>{selected.name}</strong> ({selected.preRegId})</span>
           </div>
 
-          {/* Mini Steps */}
           <div className="flex items-center gap-1">
             {[
               { key: 'review', label: '1. Review' },
@@ -165,6 +216,15 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
               Verify Pre-Registration Details
             </h3>
 
+            {/* Zone badge */}
+            <div className="flex items-center gap-2 p-3 rounded-xl border"
+              style={{ borderColor: pfxColor, background: `${pfxColor}10` }}>
+              <Shield className="w-4 h-4" style={{ color: pfxColor }} />
+              <span className="text-sm font-semibold" style={{ color: pfxColor }}>
+                {ZONE_LABEL[pfx]} — tags will be prefixed <strong>{pfx}-</strong>
+              </span>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-blue-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Pet Details</p>
@@ -175,7 +235,6 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
                   <p><span className="text-gray-500">Color:</span> {selected.color}</p>
                   <p><span className="text-gray-500">Sex:</span> {selected.sex}</p>
                   <p><span className="text-gray-500">Age:</span> {selected.age}</p>
-                  {selected.weight && <p><span className="text-gray-500">Weight:</span> {selected.weight}</p>}
                 </div>
               </div>
               <div className="bg-gray-50 rounded-xl p-4">
@@ -269,28 +328,60 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
               Assign Pet Tag ID
             </h3>
 
-            <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
-              <p className="font-semibold mb-1">Physical tag should be attached to the pet before entering the ID.</p>
-              <p>Format: <code className="bg-blue-100 px-1 rounded">TAG-YYYY-XXXX</code> (e.g. TAG-2025-0005)</p>
+            {/* Zone info */}
+            <div className="flex items-center gap-3 p-4 rounded-xl border"
+              style={{ borderColor: pfxColor, background: `${pfxColor}10` }}>
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-black text-sm flex-shrink-0"
+                style={{ background: pfxColor }}>{pfx}</div>
+              <div>
+                <p className="font-bold text-sm" style={{ color: pfxColor }}>{ZONE_LABEL[pfx]}</p>
+                <p className="text-xs text-gray-500">
+                  All pets from <strong>{selected.barangay}</strong> are tagged with the <strong>{pfx}-</strong> prefix.
+                  The prefix is auto-assigned — just enter the number below.
+                </p>
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Pet Tag ID <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                value={petTagInput}
-                onChange={e => { setPetTagInput(e.target.value.toUpperCase()); setTagError(''); }}
-                placeholder="TAG-2025-0005"
-                className={`w-full px-4 py-3 border rounded-xl font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] ${tagError ? 'border-red-400' : 'border-gray-300'}`}
-              />
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Tag Number <span className="text-red-500">*</span>
+                <span className="text-xs font-normal text-gray-400 ml-2">(the numeric part only, e.g. 1, 42, 0001)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                {/* Prefix badge (read-only, auto) */}
+                <span className="px-3 py-3 rounded-xl font-mono font-black text-white text-lg flex-shrink-0"
+                  style={{ background: pfxColor }}>{pfx}-</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={tagNumber}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setTagNumber(val);
+                    setTagError('');
+                  }}
+                  placeholder="0001"
+                  className={`flex-1 px-4 py-3 border rounded-xl font-mono text-xl focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] ${tagError ? 'border-red-400' : 'border-gray-300'}`}
+                />
+              </div>
               {tagError && <p className="text-red-500 text-xs mt-1">{tagError}</p>}
+
+              {/* Live preview */}
+              {previewTagId && (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Preview:</span>
+                  <span className="font-mono font-black text-white px-3 py-1 rounded-lg text-sm"
+                    style={{ background: pfxColor }}>{previewTagId}</span>
+                </div>
+              )}
             </div>
 
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
               <p className="font-semibold mb-1">Upon saving:</p>
               <ul className="space-y-1">
-                <li>✓ Pet record will be moved from Pre-Registered to Registered database</li>
-                <li>✓ Pet will be automatically tagged to the owner's account</li>
+                <li>✓ Tag <strong>{previewTagId || `${pfx}-XXXX`}</strong> will be stored in the database</li>
+                <li>✓ Pet record will be moved from Pre-Registered to Registered</li>
+                <li>✓ Pet will be linked to owner's account automatically</li>
                 <li>✓ Owner will be notified via email</li>
               </ul>
             </div>
@@ -321,6 +412,21 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
         </div>
       </div>
 
+      {/* Zone legend */}
+      <div className="bg-white rounded-xl shadow p-4">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Zone Color Coding</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {Object.entries(ZONE_LABEL).map(([pfx, label]) => (
+            <div key={pfx} className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+              style={{ borderColor: ZONE_COLOR[pfx], background: `${ZONE_COLOR[pfx]}10` }}>
+              <span className="w-8 h-6 rounded text-white text-xs font-black flex items-center justify-center flex-shrink-0"
+                style={{ background: ZONE_COLOR[pfx] }}>{pfx}</span>
+              <span className="text-xs font-semibold text-gray-700">{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Search */}
       <div className="bg-white rounded-xl shadow p-4">
         <div className="relative">
@@ -347,6 +453,8 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
           preRegistered.map(pet => {
             const daysLeft = getDaysLeft(pet.preRegExpiry);
             const isUrgent = daysLeft <= 3;
+            const pfx = getPrefix(pet.barangay);
+            const pfxColor = ZONE_COLOR[pfx] || '#2B5EA6';
             return (
               <div key={pet.id} className={`bg-white rounded-xl shadow p-5 border-l-4 ${isUrgent ? 'border-red-400' : 'border-amber-400'}`}>
                 <div className="flex items-start justify-between">
@@ -359,8 +467,11 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
                       <p className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
                         <User className="w-3.5 h-3.5" /> {getOwnerName(pet)} • {pet.barangay}
                       </p>
-                      <div className="flex items-center gap-3 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{pet.preRegId}</span>
+                        {/* Zone prefix preview */}
+                        <span className="text-xs font-mono font-bold text-white px-2 py-0.5 rounded"
+                          style={{ background: pfxColor }}>{pfx}-????</span>
                         <span className={`text-xs flex items-center gap-1 ${isUrgent ? 'text-red-600' : 'text-amber-600'}`}>
                           <CalendarClock className="w-3.5 h-3.5" />
                           {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
