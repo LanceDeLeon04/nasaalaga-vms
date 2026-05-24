@@ -73,10 +73,44 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
   const circlesRef = useRef<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    if (!mapRef.current || leafletMap.current) return;
+  // ── init map exactly once ──────────────────────────────────────────────
+  const initMap = () => {
+    const el = mapRef.current;
+    if (!el) return;
 
-    // Inject Leaflet CSS
+    // Leaflet stamps the DOM node — if already initialized, just signal ready
+    if ((el as any)._leaflet_id) {
+      setLoaded(true);
+      return;
+    }
+
+    const L = (window as any).L;
+    if (!L) return;
+
+    let map: any;
+    try {
+      map = L.map(el, {
+        center: [CALACA_CENTER.lat, CALACA_CENTER.lng],
+        zoom: CALACA_ZOOM,
+        zoomControl: true,
+      });
+    } catch {
+      // Already initialized race — grab the existing instance
+      setLoaded(true);
+      return;
+    }
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 18,
+    }).addTo(map);
+
+    leafletMap.current = map;
+    setLoaded(true);
+  };
+
+  useEffect(() => {
+    // Leaflet CSS
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
       link.id = 'leaflet-css';
@@ -85,113 +119,107 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
       document.head.appendChild(link);
     }
 
-    // Load Leaflet JS
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload = () => {
-      const L = (window as any).L;
-      const map = L.map(mapRef.current!, {
-        center: [CALACA_CENTER.lat, CALACA_CENTER.lng],
-        zoom: CALACA_ZOOM,
-        zoomControl: true,
-      });
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 18,
-      }).addTo(map);
-
-      leafletMap.current = map;
-      setLoaded(true);
-    };
-    document.head.appendChild(script);
+    // If Leaflet already loaded (another map instance loaded it), init immediately
+    if ((window as any).L) {
+      initMap();
+    } else if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = initMap;
+      document.head.appendChild(script);
+    } else {
+      // Script tag exists but hasn't fired onload yet — poll
+      const poll = setInterval(() => {
+        if ((window as any).L) { clearInterval(poll); initMap(); }
+      }, 50);
+    }
 
     return () => {
       if (leafletMap.current) {
-        leafletMap.current.remove();
+        try { leafletMap.current.remove(); } catch { /* ignore */ }
         leafletMap.current = null;
+        setLoaded(false);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── draw/update markers whenever data or selection changes ─────────────
   useEffect(() => {
     if (!loaded || !leafletMap.current) return;
     const L = (window as any).L;
+    if (!L) return;
     const map = leafletMap.current;
 
-    // Clear old markers/circles
-    markersRef.current.forEach(m => map.removeLayer(m));
-    circlesRef.current.forEach(c => map.removeLayer(c));
+    // Clear previous layers
+    markersRef.current.forEach(m => { try { map.removeLayer(m); } catch { /* ignore */ } });
+    circlesRef.current.forEach(c => { try { map.removeLayer(c); } catch { /* ignore */ } });
     markersRef.current = [];
     circlesRef.current = [];
 
+    // Wait until the map's panes exist (prevents the 'x' bounds crash)
+    if (!map.getPanes().overlayPane) return;
+
     outbreaks.forEach(ob => {
-      if (!ob.lat || !ob.lng) return;
+      if (ob.lat == null || ob.lng == null || isNaN(ob.lat) || isNaN(ob.lng)) return;
       const color = CIRCLE_COLOR[ob.status] || '#ef4444';
       const isSelected = ob.id === selectedId;
 
-      // Containment circle
-      const circle = L.circle([ob.lat, ob.lng], {
-        radius: ob.radius_km * 1000,
-        color,
-        fillColor: color,
-        fillOpacity: isSelected ? 0.25 : 0.12,
-        weight: isSelected ? 3 : 1.5,
-        dashArray: ob.status === 'Resolved' ? '6,4' : undefined,
-      }).addTo(map);
-      circle.bindTooltip(`
-        <strong>${ob.disease}</strong><br/>
-        ${ob.barangay} · ${ob.cases} case${ob.cases !== 1 ? 's' : ''}<br/>
-        Containment: ${ob.radius_km} km radius
-      `, { sticky: true });
-      circlesRef.current.push(circle);
+      try {
+        // Containment circle
+        const circle = L.circle([ob.lat, ob.lng], {
+          radius: (ob.radius_km || 10) * 1000,
+          color,
+          fillColor: color,
+          fillOpacity: isSelected ? 0.25 : 0.12,
+          weight: isSelected ? 3 : 1.5,
+          dashArray: ob.status === 'Resolved' ? '6,4' : undefined,
+        }).addTo(map);
+        circle.bindTooltip(
+          `<strong>${ob.disease}</strong><br/>${ob.barangay} · ${ob.cases} case${ob.cases !== 1 ? 's' : ''}<br/>Containment: ${ob.radius_km}km`,
+          { sticky: true }
+        );
+        circlesRef.current.push(circle);
+      } catch { /* skip malformed circle */ }
 
-      // Pin marker
-      const icon = L.divIcon({
-        html: `
-          <div style="
-            background:${color};
-            width:${isSelected ? 36 : 28}px;
-            height:${isSelected ? 36 : 28}px;
-            border-radius:50% 50% 50% 0;
-            transform:rotate(-45deg);
-            border:3px solid white;
-            box-shadow:0 2px 8px rgba(0,0,0,.4);
-            display:flex;align-items:center;justify-content:center;
-          ">
-            <div style="transform:rotate(45deg);font-size:${isSelected ? 14 : 11}px;color:white;font-weight:900;">${ob.cases}</div>
-          </div>`,
-        className: '',
-        iconSize: [isSelected ? 36 : 28, isSelected ? 36 : 28],
-        iconAnchor: [isSelected ? 18 : 14, isSelected ? 36 : 28],
-      });
-      const marker = L.marker([ob.lat, ob.lng], { icon }).addTo(map);
-      marker.on('click', () => onSelect(ob.id));
-      marker.bindPopup(`
-        <div style="min-width:200px;font-family:sans-serif;">
-          <p style="font-weight:800;font-size:14px;margin:0 0 4px;">${ob.disease}</p>
-          <p style="font-size:12px;color:#6b7280;margin:0 0 6px;">${ob.barangay}</p>
-          <span style="background:${color};color:white;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;">${ob.status}</span>
-          <p style="font-size:12px;margin:6px 0 0;">Cases: <strong>${ob.cases}</strong> · ${ob.type === 'rabies' ? '🐕 Rabies' : '🐄 Livestock'}</p>
-        </div>
-      `);
-      markersRef.current.push(marker);
+      try {
+        // Pin marker
+        const sz = isSelected ? 36 : 28;
+        const icon = L.divIcon({
+          html: `<div style="background:${color};width:${sz}px;height:${sz}px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;"><div style="transform:rotate(45deg);font-size:${isSelected ? 14 : 11}px;color:white;font-weight:900;">${ob.cases}</div></div>`,
+          className: '',
+          iconSize: [sz, sz],
+          iconAnchor: [sz / 2, sz],
+        });
+        const marker = L.marker([ob.lat, ob.lng], { icon }).addTo(map);
+        marker.on('click', () => onSelect(ob.id));
+        marker.bindPopup(
+          `<div style="min-width:180px;font-family:sans-serif;">
+            <p style="font-weight:800;font-size:14px;margin:0 0 4px;">${ob.disease}</p>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 6px;">${ob.barangay}</p>
+            <span style="background:${color};color:white;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;">${ob.status}</span>
+            <p style="font-size:12px;margin:6px 0 0;">Cases: <strong>${ob.cases}</strong> · ${ob.type === 'rabies' ? '🐕 Rabies' : '🐄 Livestock'}</p>
+          </div>`
+        );
+        markersRef.current.push(marker);
+      } catch { /* skip malformed marker */ }
     });
 
-    // Fit bounds if we have points
-    const active = outbreaks.filter(o => o.lat && o.lng);
-    if (active.length > 0 && !selectedId) {
-      const group = L.featureGroup(circlesRef.current);
-      if (group.getBounds().isValid()) {
-        map.fitBounds(group.getBounds().pad(0.2));
+    // Fit bounds
+    try {
+      if (!selectedId && circlesRef.current.length > 0) {
+        const group = L.featureGroup(circlesRef.current);
+        const bounds = group.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
       }
-    }
-    if (selectedId) {
-      const sel = outbreaks.find(o => o.id === selectedId);
-      if (sel?.lat && sel?.lng) {
-        map.flyTo([sel.lat, sel.lng], 14, { duration: 1 });
+      if (selectedId) {
+        const sel = outbreaks.find(o => o.id === selectedId);
+        if (sel?.lat != null && sel?.lng != null) {
+          map.flyTo([sel.lat, sel.lng], 14, { duration: 1 });
+        }
       }
-    }
+    } catch { /* ignore bounds errors */ }
   }, [loaded, outbreaks, selectedId]);
 
   return (

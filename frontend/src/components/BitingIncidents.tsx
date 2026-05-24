@@ -142,10 +142,19 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
       link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
       document.head.appendChild(link);
     }
-    const loadMap = () => {
-      if (!mapRef.current || leafletMap.current) return;
+
+    const doInit = () => {
+      const el = mapRef.current;
+      if (!el || leafletMap.current) return;
+      if ((el as any)._leaflet_id) { setMapLoaded(true); return; }
       const L = (window as any).L;
-      const map = L.map(mapRef.current, { center: [13.9345, 120.8135], zoom: 13 });
+      if (!L) return;
+
+      let map: any;
+      try {
+        map = L.map(el, { center: [13.9345, 120.8135], zoom: 13 });
+      } catch { setMapLoaded(true); return; }
+
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(map);
 
       const circle = L.circle([13.9345, 120.8135], {
@@ -178,14 +187,24 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
       setMapLoaded(true);
     };
 
-    if ((window as any).L) { loadMap(); }
-    else {
+    if ((window as any).L) {
+      doInit();
+    } else if (!document.getElementById('leaflet-js')) {
       const s = document.createElement('script');
+      s.id = 'leaflet-js';
       s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      s.onload = loadMap;
+      s.onload = doInit;
       document.head.appendChild(s);
+    } else {
+      const poll = setInterval(() => { if ((window as any).L) { clearInterval(poll); doInit(); } }, 50);
     }
-    return () => { if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; } };
+
+    return () => {
+      if (leafletMap.current) {
+        try { leafletMap.current.remove(); } catch { /* ignore */ }
+        leafletMap.current = null;
+      }
+    };
   }, []);
 
   const handleManualUpdate = () => {
