@@ -639,7 +639,35 @@ const createTables = async () => {
     // ── Veterinarian license number on users ────────────────────────────────
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS vet_license VARCHAR(100)`);
 
-    // ── Vaccination History table ───────────────────────────────────────────
+    // ── Outbreak Records table ────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS outbreak_records (
+        id VARCHAR(100) PRIMARY KEY,
+        type VARCHAR(50) NOT NULL DEFAULT 'livestock',
+        disease VARCHAR(255) NOT NULL,
+        barangay VARCHAR(255),
+        source_id VARCHAR(100),
+        cases INTEGER DEFAULT 1,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        radius_km NUMERIC DEFAULT 10,
+        status VARCHAR(50) DEFAULT 'Active',
+        severity VARCHAR(50) DEFAULT 'High',
+        assigned_to VARCHAR(255),
+        resolve_date DATE,
+        timetable TEXT,
+        updates JSONB DEFAULT '[]',
+        pet_name VARCHAR(255),
+        owner_name VARCHAR(255),
+        date_created TIMESTAMPTZ DEFAULT NOW(),
+        date_updated TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // ── Add lat/lng/source_id to biting_incidents if not exists ──────────────
+    await client.query(`ALTER TABLE biting_incidents ADD COLUMN IF NOT EXISTS outbreak_id VARCHAR(100)`);
+
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS vaccination_history (
         id VARCHAR(50) PRIMARY KEY,

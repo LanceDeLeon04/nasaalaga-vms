@@ -37,7 +37,7 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'preregistered':
         return <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email} />;
       case 'outbreak':
-        return <OutbreakMonitoring />;
+        return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':
         return <CVOServicesShared userRole={user.role} />;
       case 'reports':

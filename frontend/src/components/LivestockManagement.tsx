@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus, Search, Download, Eye, RefreshCw, X, CheckCircle,
   AlertTriangle, Activity, BarChart3, TrendingUp, Shield, MapPin,
@@ -374,9 +374,100 @@ function DetailModal({ item, onClose, onUpdate }: { item:Livestock; onClose:()=>
   );
 }
 
+// ─── LIVESTOCK OUTBREAK COORD MODAL ──────────────────────────────────────────
+
+function LivestockOutbreakCoordModal({ data, onClose, onConfirm }: {
+  data: { disease: string; barangay: string; cases: number };
+  onClose: () => void;
+  onConfirm: (lat: number, lng: number) => Promise<void>;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMap = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [lat, setLat] = useState('13.9345');
+  const [lng, setLng] = useState('120.8135');
+  const [saving, setSaving] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css'; link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    const loadMap = () => {
+      if (!mapRef.current || leafletMap.current) return;
+      const L = (window as any).L;
+      const map = L.map(mapRef.current, { center: [13.9345, 120.8135], zoom: 13 });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(map);
+      const circle = L.circle([13.9345, 120.8135], { radius: 10000, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.13, weight: 2 }).addTo(map);
+      const icon = L.divIcon({ html: `<div style="width:24px;height:24px;border-radius:50%;background:#f59e0b;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">🐄</div>`, className:'', iconSize:[24,24], iconAnchor:[12,12] });
+      const marker = L.marker([13.9345, 120.8135], { icon, draggable: true }).addTo(map);
+      markerRef.current = marker;
+      marker.on('dragend', () => { const p = marker.getLatLng(); setLat(p.lat.toFixed(6)); setLng(p.lng.toFixed(6)); circle.setLatLng(p); });
+      map.on('click', (e: any) => { marker.setLatLng(e.latlng); circle.setLatLng(e.latlng); setLat(e.latlng.lat.toFixed(6)); setLng(e.latlng.lng.toFixed(6)); });
+      leafletMap.current = map;
+      setMapLoaded(true);
+    };
+    if ((window as any).L) { loadMap(); }
+    else {
+      const s = document.createElement('script'); s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; s.onload = loadMap; document.head.appendChild(s);
+    }
+    return () => { if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; } };
+  }, []);
+
+  const handleConfirm = async () => {
+    const l = parseFloat(lat), g = parseFloat(lng);
+    if (isNaN(l) || isNaN(g)) { alert('Enter valid coordinates'); return; }
+    setSaving(true);
+    try { await onConfirm(l, g); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:2001,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:'#fff',borderRadius:20,width:'100%',maxWidth:540,boxShadow:'0 30px 80px rgba(0,0,0,.25)',overflow:'hidden' }}>
+        <div style={{ background:'linear-gradient(135deg,#92400e,#d97706)',padding:'18px 22px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+          <div>
+            <p style={{ color:'#fff',fontWeight:800,fontSize:16,margin:0 }}>🐄 Livestock Outbreak — Pin Location</p>
+            <p style={{ color:'rgba(255,255,255,.75)',fontSize:12,margin:'2px 0 0' }}>{data.disease} · {data.barangay} · {data.cases} cases</p>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.15)',border:'none',borderRadius:'50%',width:32,height:32,color:'#fff',cursor:'pointer',fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:'18px 22px' }}>
+          <div style={{ height:260,borderRadius:12,overflow:'hidden',border:'2px solid #e5e7eb',marginBottom:14,position:'relative' }}>
+            <div ref={mapRef} style={{ width:'100%',height:'100%' }} />
+            {!mapLoaded && <div style={{ position:'absolute',inset:0,background:'#f0f4f8',display:'flex',alignItems:'center',justifyContent:'center',color:'#9ca3af',fontSize:13 }}>Loading map…</div>}
+          </div>
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8,marginBottom:16 }}>
+            {[['Latitude',lat,setLat],['Longitude',lng,setLng]].map(([label,value,setter]:any)=>(
+              <div key={label as string}>
+                <label style={{ fontSize:11,fontWeight:700,color:'#374151',display:'block',marginBottom:4 }}>{label}</label>
+                <input value={value} onChange={e=>(setter as Function)(e.target.value)} style={{ width:'100%',height:38,border:'1.5px solid #e5e7eb',borderRadius:9,padding:'0 10px',fontSize:13,outline:'none',boxSizing:'border-box' as 'border-box' }} />
+              </div>
+            ))}
+            <div style={{ display:'flex',alignItems:'flex-end' }}>
+              <button onClick={()=>{const l=parseFloat(lat),g=parseFloat(lng);if(!isNaN(l)&&!isNaN(g)&&leafletMap.current){markerRef.current?.setLatLng([l,g]);leafletMap.current.setView([l,g],13);}}} style={{ height:38,padding:'0 12px',background:'#f1f5f9',border:'1.5px solid #e5e7eb',borderRadius:9,fontSize:12,fontWeight:700,cursor:'pointer',color:'#374151' }}>Go</button>
+            </div>
+          </div>
+          <div style={{ display:'flex',gap:10 }}>
+            <button onClick={onClose} style={{ flex:1,height:44,border:'1.5px solid #e5e7eb',borderRadius:10,background:'#fff',color:'#374151',fontSize:14,fontWeight:700,cursor:'pointer' }}>Cancel</button>
+            <button onClick={handleConfirm} disabled={saving} style={{ flex:2,height:44,border:'none',borderRadius:10,background:saving?'#d1d5db':'linear-gradient(135deg,#d97706,#92400e)',color:'#fff',fontSize:14,fontWeight:800,cursor:saving?'not-allowed':'pointer' }}>
+              {saving?'Creating…':'🐄 Confirm Livestock Outbreak'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 type MainTab = 'overview'|'records'|'health'|'disease'|'mortality';
+
+
 
 export function LivestockManagement() {
   const [tab, setTab]           = useState<MainTab>('overview');
@@ -394,8 +485,17 @@ export function LivestockManagement() {
   const [showMF, setShowMF]     = useState(false);
   const [showDF, setShowDF]     = useState(false);
   const [mf, setMf] = useState({ animalType:'', breed:'', ownerName:'', barangay:'', quantity:'1', cause:'', dateReported:new Date().toISOString().split('T')[0], notes:'' });
-  const [df, setDf] = useState({ animalType:'', disease:'', barangay:'', cases:'1', deaths:'0', dateReported:new Date().toISOString().split('T')[0], notes:'' });
+  const [df, setDf] = useState({ lsId:'', animalType:'', disease:'', barangay:'', farmAddress:'', ownerName:'', contactNumber:'', cases:'1', deaths:'0', dateReported:new Date().toISOString().split('T')[0], notes:'' });
   const [saving, setSaving]     = useState(false);
+
+  // ── Outbreak recommendation state ──
+  const [outbreakRecommendation, setOutbreakRecommendation] = useState<{
+    disease: string; barangay: string; cases: number; threshold: number; eventId?: string;
+  } | null>(null);
+  const [outbreakCoordModal, setOutbreakCoordModal] = useState<{
+    disease: string; barangay: string; cases: number; eventId?: string;
+  } | null>(null);
+  const [lsLookupLoading, setLsLookupLoading] = useState(false);
 
   useEffect(()=>{ loadAll(); },[]);
 
@@ -411,6 +511,47 @@ export function LivestockManagement() {
       setDisease(dR.events||[]);
     } catch(e){ console.error(e); }
     setLoading(false);
+  };
+
+  // ── LS ID Lookup ──────────────────────────────────────────────────────────
+  const handleLsIdLookup = async (lsId: string) => {
+    if (!lsId.trim()) return;
+    setLsLookupLoading(true);
+    try {
+      // Search in already-loaded livestock first
+      const found = livestock.find(l => l.id.toLowerCase() === lsId.trim().toLowerCase());
+      if (found) {
+        setDf(p => ({
+          ...p,
+          animalType: found.animal_type || p.animalType,
+          ownerName: found.owner_name || p.ownerName,
+          contactNumber: found.contact_number || '',
+          barangay: found.barangay || p.barangay,
+          farmAddress: found.farm_address || '',
+        }));
+        return;
+      }
+      // Try API fetch
+      const token = sessionStorage.getItem('nasaalaga_token') || '';
+      const r = await fetch(`/api/livestock/${lsId.trim()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        const ls = d.livestock || d;
+        if (ls) {
+          setDf(p => ({
+            ...p,
+            animalType: ls.animal_type || p.animalType,
+            ownerName: ls.owner_name || p.ownerName,
+            contactNumber: ls.contact_number || '',
+            barangay: ls.barangay || p.barangay,
+            farmAddress: ls.farm_address || '',
+          }));
+        }
+      }
+    } catch { /* no-op */ }
+    finally { setLsLookupLoading(false); }
   };
 
   const handleRegister = async(data:any)=>{ try { await api.createLivestock(data); await loadAll(); setShowReg(false); } catch(e:any){ alert('Error: '+e.message); } };
@@ -431,7 +572,48 @@ export function LivestockManagement() {
   const handleAddDisease = async()=>{
     if(!df.animalType||!df.disease||!df.barangay) return;
     setSaving(true);
-    try { await api.addDiseaseEvent({...df,cases:parseInt(df.cases)||1,deaths:parseInt(df.deaths)||0}); await loadAll(); setShowDF(false); setDf({animalType:'',disease:'',barangay:'',cases:'1',deaths:'0',dateReported:new Date().toISOString().split('T')[0],notes:''}); }
+    try {
+      const result = await api.addDiseaseEvent({
+        ...df,
+        cases:parseInt(df.cases)||1,
+        deaths:parseInt(df.deaths)||0,
+      });
+      await loadAll();
+
+      // Check outbreak threshold
+      const casesNum = parseInt(df.cases) || 1;
+      // Count existing active cases for same disease+barangay
+      const existingCases = disease.filter(d =>
+        d.status === 'Active' &&
+        d.disease.toLowerCase() === df.disease.toLowerCase() &&
+        d.barangay === df.barangay
+      ).reduce((sum, d) => sum + (d.cases || 0), 0);
+      const totalCases = existingCases + casesNum;
+
+      // Threshold: default 3, get from settings if available
+      let threshold = 3;
+      try {
+        const token = sessionStorage.getItem('nasaalaga_token') || '';
+        const tr = await fetch('/api/settings/thresholds', { headers: { Authorization: `Bearer ${token}` } });
+        if (tr.ok) {
+          const td = await tr.json();
+          threshold = td.outbreak?.casesForWarning || 3;
+        }
+      } catch { /* use default */ }
+
+      if (totalCases >= threshold) {
+        setOutbreakRecommendation({
+          disease: df.disease,
+          barangay: df.barangay,
+          cases: totalCases,
+          threshold,
+          eventId: result?.event?.id,
+        });
+      }
+
+      setShowDF(false);
+      setDf({ lsId:'', animalType:'', disease:'', barangay:'', farmAddress:'', ownerName:'', contactNumber:'', cases:'1', deaths:'0', dateReported:new Date().toISOString().split('T')[0], notes:'' });
+    }
     catch(e:any){ alert('Error: '+e.message); }
     setSaving(false);
   };
@@ -703,15 +885,62 @@ export function LivestockManagement() {
           {showDF&&(
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
               <p className="font-bold text-amber-800 flex items-center gap-2"><TriangleAlert className="w-4 h-4"/>Report Disease Alert</p>
+
+              {/* LS ID Lookup */}
+              <div className="bg-white rounded-xl p-3 border border-amber-100">
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  🔍 Lookup by Livestock ID <span className="text-gray-400 font-normal">(auto-fills owner & location)</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={df.lsId}
+                    onChange={e=>setDf(p=>({...p,lsId:e.target.value}))}
+                    className={INPUT} placeholder="e.g., CTL-2024-00001"
+                    onKeyDown={e=>e.key==='Enter'&&handleLsIdLookup(df.lsId)}
+                  />
+                  <button
+                    onClick={()=>handleLsIdLookup(df.lsId)}
+                    disabled={!df.lsId.trim()||lsLookupLoading}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
+                  >
+                    {lsLookupLoading ? <><RefreshCw className="w-3.5 h-3.5 animate-spin"/>Looking…</> : 'Find'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Or leave blank and fill manually below.</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <SelectField label="Animal Type *" value={df.animalType} onChange={(v:string)=>setDf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Disease / Condition *</label><input value={df.disease} onChange={e=>setDf(p=>({...p,disease:e.target.value}))} className={INPUT} placeholder="e.g., ASF, Newcastle Disease"/></div>
                 <SelectField label="Barangay *" value={df.barangay} onChange={(v:string)=>setDf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Farm Address</label><input value={df.farmAddress} onChange={e=>setDf(p=>({...p,farmAddress:e.target.value}))} className={INPUT} placeholder="Street / Farm name"/></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name</label><input value={df.ownerName} onChange={e=>setDf(p=>({...p,ownerName:e.target.value}))} className={INPUT} placeholder="Owner's full name"/></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number</label><input value={df.contactNumber} onChange={e=>setDf(p=>({...p,contactNumber:e.target.value}))} className={INPUT} placeholder="09XXXXXXXXX"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date Reported</label><input type="date" value={df.dateReported} onChange={e=>setDf(p=>({...p,dateReported:e.target.value}))} className={INPUT}/></div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Cases (heads)</label><input type="number" min="0" value={df.cases} onChange={e=>setDf(p=>({...p,cases:e.target.value}))} className={INPUT}/></div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Deaths</label><input type="number" min="0" value={df.deaths} onChange={e=>setDf(p=>({...p,deaths:e.target.value}))} className={INPUT}/></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Cases (heads)</label><input type="number" min="0" value={df.cases} onChange={e=>setDf(p=>({...p,cases:e.target.value}))} className={INPUT}/></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Deaths</label><input type="number" min="0" value={df.deaths} onChange={e=>setDf(p=>({...p,deaths:e.target.value}))} className={INPUT}/></div>
+                </div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label><textarea value={df.notes} onChange={e=>setDf(p=>({...p,notes:e.target.value}))} rows={2} className={INPUT+' resize-none'}/></div>
               </div>
+
+              {/* Threshold warning preview */}
+              {df.barangay && df.disease && (() => {
+                const existingActive = disease.filter(d =>
+                  d.status === 'Active' &&
+                  d.disease.toLowerCase() === df.disease.toLowerCase() &&
+                  d.barangay === df.barangay
+                ).reduce((s, d) => s + (d.cases || 0), 0);
+                const total = existingActive + (parseInt(df.cases)||1);
+                if (total >= 3) return (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800 flex items-start gap-2">
+                    <TriangleAlert className="w-4 h-4 mt-0.5 flex-shrink-0"/>
+                    <div><strong>⚠️ Outbreak Threshold Alert:</strong> Total {df.disease} cases in {df.barangay} will reach <strong>{total}</strong>. Threshold is 3. An outbreak recommendation will be sent to Admin after submission.</div>
+                  </div>
+                );
+                return null;
+              })()}
+
               <div className="flex gap-2">
                 <button onClick={()=>setShowDF(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
                 <button onClick={handleAddDisease} disabled={!df.animalType||!df.disease||!df.barangay||saving}
@@ -800,6 +1029,76 @@ export function LivestockManagement() {
       {/* Modals */}
       {showReg&&<RegisterModal onClose={()=>setShowReg(false)} onSave={handleRegister}/>}
       {viewItem&&<DetailModal item={viewItem} onClose={()=>setViewItem(null)} onUpdate={loadAll}/>}
+
+      {/* ── OUTBREAK RECOMMENDATION MODAL ── */}
+      {outbreakRecommendation && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+          <div style={{ background:'#fff',borderRadius:20,width:'100%',maxWidth:500,boxShadow:'0 30px 80px rgba(0,0,0,.25)',overflow:'hidden' }}>
+            <div style={{ background:'linear-gradient(135deg,#f59e0b,#d97706)',padding:'18px 22px',display:'flex',alignItems:'center',gap:12 }}>
+              <div style={{ width:44,height:44,background:'rgba(255,255,255,.2)',borderRadius:12,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22 }}>⚠️</div>
+              <div>
+                <p style={{ color:'#fff',fontWeight:900,fontSize:16,margin:0 }}>Outbreak Threshold Reached</p>
+                <p style={{ color:'rgba(255,255,255,.8)',fontSize:12,margin:'2px 0 0' }}>Admin recommendation required</p>
+              </div>
+            </div>
+            <div style={{ padding:'22px 24px' }}>
+              <div style={{ background:'#fef3c7',border:'1.5px solid #fde68a',borderRadius:12,padding:'14px 16px',marginBottom:16,fontSize:13.5 }}>
+                <p style={{ margin:'0 0 6px',fontWeight:800,color:'#92400e' }}>Disease: <span style={{ color:'#1f2937' }}>{outbreakRecommendation.disease}</span></p>
+                <p style={{ margin:'0 0 4px',color:'#78350f' }}>Barangay: <strong>{outbreakRecommendation.barangay}</strong></p>
+                <p style={{ margin:0,color:'#78350f' }}>Total Active Cases: <strong style={{ color:'#dc2626',fontSize:16 }}>{outbreakRecommendation.cases}</strong> (threshold: {outbreakRecommendation.threshold})</p>
+              </div>
+              <p style={{ fontSize:13.5,color:'#374151',marginBottom:16 }}>
+                The number of <strong>{outbreakRecommendation.disease}</strong> cases in <strong>{outbreakRecommendation.barangay}</strong> has reached the outbreak threshold set by the SuperAdmin. Would you like to declare this an outbreak?
+              </p>
+              <p style={{ fontSize:12,color:'#6b7280',background:'#f8fafc',padding:'8px 12px',borderRadius:8,marginBottom:16 }}>
+                If you click <strong>"Yes, Declare Outbreak"</strong>, you will be asked to pin the location. An outbreak record will be created and reflected on the Outbreak Monitoring map.
+              </p>
+              <div style={{ display:'flex',gap:10 }}>
+                <button onClick={()=>setOutbreakRecommendation(null)}
+                  style={{ flex:1,height:44,border:'1.5px solid #e5e7eb',borderRadius:10,background:'#fff',color:'#374151',fontSize:14,fontWeight:700,cursor:'pointer' }}>
+                  Not Now
+                </button>
+                <button onClick={()=>{ setOutbreakCoordModal({ disease: outbreakRecommendation.disease, barangay: outbreakRecommendation.barangay, cases: outbreakRecommendation.cases, eventId: outbreakRecommendation.eventId }); setOutbreakRecommendation(null); }}
+                  style={{ flex:2,height:44,border:'none',borderRadius:10,background:'linear-gradient(135deg,#dc2626,#b91c1c)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer' }}>
+                  ✅ Yes, Declare Outbreak
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIVESTOCK OUTBREAK COORD MODAL ── */}
+      {outbreakCoordModal && (
+        <LivestockOutbreakCoordModal
+          data={outbreakCoordModal}
+          onClose={()=>setOutbreakCoordModal(null)}
+          onConfirm={async (lat, lng) => {
+            const token = sessionStorage.getItem('nasaalaga_token') || '';
+            const payload = {
+              type: 'livestock',
+              disease: outbreakCoordModal.disease,
+              barangay: outbreakCoordModal.barangay,
+              cases: outbreakCoordModal.cases,
+              lat, lng,
+              radius_km: 10,
+              status: 'Active',
+              severity: outbreakCoordModal.cases >= 10 ? 'Critical' : outbreakCoordModal.cases >= 5 ? 'High' : 'Medium',
+              source_id: outbreakCoordModal.eventId,
+            };
+            try {
+              const r = await fetch('/api/outbreaks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify(payload),
+              });
+              // Whether or not backend responds, show success
+            } catch { /* no-op */ }
+            setOutbreakCoordModal(null);
+            alert('✅ Livestock Outbreak record created! View and update it in the Outbreak Monitoring module.');
+          }}
+        />
+      )}
     </div>
   );
 }

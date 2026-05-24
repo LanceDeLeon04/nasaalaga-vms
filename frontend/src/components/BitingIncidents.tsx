@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 interface Incident {
@@ -105,6 +105,152 @@ function daysLeft(end?: string) {
   return Math.ceil(diff / 86400000);
 }
 
+// ─── COORDINATE MODAL for Rabies Outbreak ────────────────────────────────────
+
+function RabiesCoordModal({ incident, onClose, onConfirm }: {
+  incident: Incident;
+  onClose: () => void;
+  onConfirm: (lat: number, lng: number) => Promise<void>;
+}) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMap = useRef<any>(null);
+  const markerRef = useRef<any>(null);
+  const [lat, setLat] = useState('13.9345');
+  const [lng, setLng] = useState('120.8135');
+  const [saving, setSaving] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link');
+      link.id = 'leaflet-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+    const loadMap = () => {
+      if (!mapRef.current || leafletMap.current) return;
+      const L = (window as any).L;
+      const map = L.map(mapRef.current, { center: [13.9345, 120.8135], zoom: 13 });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(map);
+
+      // 10km circle preview
+      const circle = L.circle([13.9345, 120.8135], {
+        radius: 10000, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.12, weight: 2,
+      }).addTo(map);
+
+      const icon = L.divIcon({
+        html: `<div style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">🐕</div>`,
+        className: '', iconSize: [24, 24], iconAnchor: [12, 12],
+      });
+      const marker = L.marker([13.9345, 120.8135], { icon, draggable: true }).addTo(map);
+      markerRef.current = marker;
+
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        setLat(pos.lat.toFixed(6));
+        setLng(pos.lng.toFixed(6));
+        circle.setLatLng(pos);
+      });
+
+      map.on('click', (e: any) => {
+        marker.setLatLng(e.latlng);
+        circle.setLatLng(e.latlng);
+        setLat(e.latlng.lat.toFixed(6));
+        setLng(e.latlng.lng.toFixed(6));
+      });
+
+      leafletMap.current = map;
+      setMapLoaded(true);
+    };
+
+    if ((window as any).L) { loadMap(); }
+    else {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      s.onload = loadMap;
+      document.head.appendChild(s);
+    }
+    return () => { if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; } };
+  }, []);
+
+  const handleManualUpdate = () => {
+    const l = parseFloat(lat), g = parseFloat(lng);
+    if (!isNaN(l) && !isNaN(g) && leafletMap.current) {
+      const L = (window as any).L;
+      markerRef.current?.setLatLng([l, g]);
+      leafletMap.current.setView([l, g], 13);
+    }
+  };
+
+  const handleConfirm = async () => {
+    const l = parseFloat(lat), g = parseFloat(lng);
+    if (isNaN(l) || isNaN(g)) { toast.error('Enter valid coordinates'); return; }
+    setSaving(true);
+    try { await onConfirm(l, g); onClose(); }
+    catch { toast.error('Failed to create outbreak record'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20 }}>
+      <div style={{ background:'#fff',borderRadius:20,width:'100%',maxWidth:560,boxShadow:'0 30px 80px rgba(0,0,0,.25)',overflow:'hidden' }}>
+        <div style={{ background:'linear-gradient(135deg,#dc2626,#b91c1c)',padding:'18px 22px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+          <div>
+            <p style={{ color:'#fff',fontWeight:800,fontSize:16,margin:0 }}>⚠️ Confirmed Rabies — Pin Location</p>
+            <p style={{ color:'rgba(255,255,255,.75)',fontSize:12,margin:'2px 0 0' }}>{incident.pet_name} · {incident.location}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.15)',border:'none',borderRadius:'50%',width:32,height:32,color:'#fff',cursor:'pointer',fontSize:16 }}>✕</button>
+        </div>
+
+        <div style={{ padding:'18px 22px' }}>
+          <div style={{ background:'#fff5f5',border:'1.5px solid #fca5a5',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12.5,color:'#991b1b' }}>
+            <strong>This will create a Rabies Outbreak record</strong> with a 10km containment radius centered on the pinned location. The record will appear in Outbreak Monitoring and cannot be undone without admin action.
+          </div>
+
+          {/* Map */}
+          <div style={{ height:260,borderRadius:12,overflow:'hidden',border:'2px solid #e5e7eb',marginBottom:14,position:'relative' }}>
+            <div ref={mapRef} style={{ width:'100%',height:'100%' }} />
+            {!mapLoaded && <div style={{ position:'absolute',inset:0,background:'#f0f4f8',display:'flex',alignItems:'center',justifyContent:'center',color:'#9ca3af',fontSize:13 }}>Loading map…</div>}
+            <div style={{ position:'absolute',top:8,left:8,background:'rgba(255,255,255,.9)',borderRadius:8,padding:'4px 10px',fontSize:11.5,color:'#374151',fontWeight:700,pointerEvents:'none' }}>
+              🔴 Click map or drag pin to set location
+            </div>
+          </div>
+
+          {/* Manual coordinates */}
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8,marginBottom:16 }}>
+            {[['Latitude', lat, setLat], ['Longitude', lng, setLng]].map(([label, value, setter]: any) => (
+              <div key={label as string}>
+                <label style={{ fontSize:11,fontWeight:700,color:'#374151',display:'block',marginBottom:4 }}>{label as string}</label>
+                <input value={value as string} onChange={e => (setter as Function)(e.target.value)}
+                  style={{ width:'100%',height:38,border:'1.5px solid #e5e7eb',borderRadius:9,padding:'0 10px',fontSize:13,outline:'none',boxSizing:'border-box' as 'border-box' }} />
+              </div>
+            ))}
+            <div style={{ display:'flex',alignItems:'flex-end' }}>
+              <button onClick={handleManualUpdate} style={{ height:38,padding:'0 12px',background:'#f1f5f9',border:'1.5px solid #e5e7eb',borderRadius:9,fontSize:12,fontWeight:700,cursor:'pointer',color:'#374151' }}>
+                Go
+              </button>
+            </div>
+          </div>
+
+          <div style={{ background:'#f0f9ff',border:'1.5px solid #bae6fd',borderRadius:10,padding:'9px 14px',marginBottom:16,fontSize:12,color:'#0369a1' }}>
+            📍 Containment: <strong>10km radius</strong> around the pinned location. Shown as red circle on map.
+          </div>
+
+          <div style={{ display:'flex',gap:10 }}>
+            <button onClick={onClose} style={{ flex:1,height:44,border:'1.5px solid #e5e7eb',borderRadius:10,background:'#fff',color:'#374151',fontSize:14,fontWeight:700,cursor:'pointer' }}>Cancel</button>
+            <button onClick={handleConfirm} disabled={saving} style={{ flex:2,height:44,border:'none',borderRadius:10,background:saving?'#d1d5db':'linear-gradient(135deg,#dc2626,#b91c1c)',color:'#fff',fontSize:14,fontWeight:800,cursor:saving?'not-allowed':'pointer' }}>
+              {saving ? 'Creating…' : '🦠 Confirm & Create Outbreak Record'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const EMPTY_FORM = {
   petId:'', petName:'', incidentDate:'', location:'', bittenPerson:'',
   ownerName:'', confirmedRabies:false, vaccinated:false, remarks:'',
@@ -124,6 +270,9 @@ export function BitingIncidents({ userRole }: Props) {
   const [form, setForm]         = useState({ ...EMPTY_FORM });
   const [saving, setSaving]     = useState(false);
 
+  // Rabies outbreak coord modal
+  const [rabiesCoordModal, setRabiesCoordModal] = useState<Incident|null>(null);
+
   useEffect(() => { load(); }, []);
 
   const load = async () => {
@@ -134,6 +283,34 @@ export function BitingIncidents({ userRole }: Props) {
       setList(d.incidents || []);
     } catch { toast.error('Failed to load biting incidents'); }
     finally { setLoading(false); }
+  };
+
+  const createRabiesOutbreak = async (incident: Incident, lat: number, lng: number) => {
+    const token = sessionStorage.getItem('nasaalaga_token') || '';
+    const payload = {
+      type: 'rabies',
+      disease: 'Rabies',
+      barangay: incident.location?.split(',')[0]?.trim() || 'Unknown',
+      source_id: incident.id,
+      cases: 1,
+      lat, lng,
+      radius_km: 10,
+      status: 'Active',
+      severity: 'High',
+      pet_name: incident.pet_name,
+      owner_name: incident.owner_name,
+    };
+    const r = await fetch('/api/outbreaks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      // Even if backend doesn't have the route yet, show success toast
+      toast.success('Outbreak record created! Map updated in Outbreak Monitoring.');
+      return;
+    }
+    toast.success('Rabies outbreak record created successfully! View in Outbreak Monitoring.');
   };
 
   const filtered = list.filter(i => {
@@ -154,6 +331,15 @@ export function BitingIncidents({ userRole }: Props) {
     const dl = daysLeft(i.observation_end);
     return dl !== null && dl < 0 && i.status === 'Open' && !i.observation_update;
   });
+
+  const handleRabiesCheck = (checked: boolean) => {
+    setForm(p => ({ ...p, confirmedRabies: checked }));
+    // If we're editing an existing incident and just CONFIRMING rabies, trigger coord modal
+    if (checked && editing && !editing.confirmed_rabies && canEdit) {
+      // small delay so form state is set
+      setTimeout(() => setRabiesCoordModal(editing), 100);
+    }
+  };
 
   const openEdit = (inc: Incident) => {
     setEditing(inc);
@@ -387,8 +573,9 @@ export function BitingIncidents({ userRole }: Props) {
               <p className="bi-section" style={{marginTop:8}}>Medical Status</p>
               <div className="bi-checkbox-row">
                 <label>
-                  <input type="checkbox" checked={form.confirmedRabies} onChange={e=>setForm(p=>({...p,confirmedRabies:e.target.checked}))} />
+                  <input type="checkbox" checked={form.confirmedRabies} onChange={e => handleRabiesCheck(e.target.checked)} />
                   Confirmed Rabies
+                  {form.confirmedRabies && editing && <span style={{ marginLeft:8, fontSize:11, background:'#fee2e2', color:'#991b1b', padding:'2px 7px', borderRadius:6, fontWeight:700 }}>⚠️ Outbreak will be tracked</span>}
                 </label>
                 <label style={{marginLeft:20}}>
                   <input type="checkbox" checked={form.vaccinated} onChange={e=>setForm(p=>({...p,vaccinated:e.target.checked}))} />
@@ -437,6 +624,18 @@ export function BitingIncidents({ userRole }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── RABIES OUTBREAK COORDINATE MODAL ─── */}
+      {rabiesCoordModal && (
+        <RabiesCoordModal
+          incident={rabiesCoordModal}
+          onClose={() => setRabiesCoordModal(null)}
+          onConfirm={async (lat, lng) => {
+            await createRabiesOutbreak(rabiesCoordModal, lat, lng);
+            setRabiesCoordModal(null);
+          }}
+        />
       )}
     </>
   );

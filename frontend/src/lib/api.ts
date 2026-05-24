@@ -83,6 +83,11 @@ export const api = {
     request('/livestock/disease-events', { method: 'POST', body: JSON.stringify(data) }),
   updateDiseaseEvent: (id: string, data: any) =>
     request('/livestock/disease-events/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  getOutbreaks: () => request('/outbreaks'),
+  createOutbreak: (data: any) =>
+    request('/outbreaks', { method: 'POST', body: JSON.stringify(data) }),
+  updateOutbreak: (id: string, data: any) =>
+    request('/outbreaks/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   getLostFound: (type?: string, ownerId?: string) => {
     const params = new URLSearchParams();
     if (type) params.set('type', type);

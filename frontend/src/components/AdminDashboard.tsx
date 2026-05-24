@@ -44,7 +44,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'rabies':        return <PetRegistration userRole={user.role} />;
       case 'vaccination':   return <VaccinationModule user={user} />;
       case 'preregistered': return <PreRegisteredPets />;
-      case 'outbreak':     return <OutbreakMonitoring />;
+      case 'outbreak':     return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':     return <CVOServicesShared userRole={user.role} />;
       case 'reports':      return <ReportsCertificates />;
       case 'users':        return <UserManagement />;

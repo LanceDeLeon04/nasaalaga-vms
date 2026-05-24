@@ -901,6 +901,120 @@ router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, re
   }
 });
 
+router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Outbreak Records ─────────────────────────────────────────────────────────
+
+router.get('/outbreaks', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT o.*, 
+        COALESCE(
+          (SELECT json_agg(u ORDER BY u->>'timestamp') FROM jsonb_array_elements(o.updates) AS u),
+          '[]'::json
+        ) as updates_parsed
+      FROM outbreak_records o 
+      ORDER BY o.date_created DESC
+    `);
+    const outbreaks = result.rows.map((r: any) => ({
+      ...r,
+      updates: r.updates_parsed || [],
+    }));
+    return res.json({ outbreaks });
+  } catch (err: any) {
+    // Table may not exist yet — return empty
+    return res.json({ outbreaks: [] });
+  }
+});
+
+router.post('/outbreaks', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','cityHealth'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `OB-${d.type?.toUpperCase().slice(0,3) || 'GEN'}-${Date.now()}`;
+    const now = new Date().toISOString();
+    const initUpdate = JSON.stringify([{
+      id: `UPD-${Date.now()}`,
+      text: `Outbreak record created. Source: ${d.source_id || 'Manual'}. Location pinned at (${d.lat}, ${d.lng}). 10km containment zone established.`,
+      author: req.user?.username || 'System',
+      timestamp: now,
+    }]);
+    await query(`
+      CREATE TABLE IF NOT EXISTS outbreak_records (
+        id VARCHAR(100) PRIMARY KEY,
+        type VARCHAR(50) NOT NULL,
+        disease VARCHAR(255) NOT NULL,
+        barangay VARCHAR(255),
+        source_id VARCHAR(100),
+        cases INTEGER DEFAULT 1,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        radius_km NUMERIC DEFAULT 10,
+        status VARCHAR(50) DEFAULT 'Active',
+        severity VARCHAR(50) DEFAULT 'High',
+        assigned_to VARCHAR(255),
+        resolve_date DATE,
+        timetable TEXT,
+        updates JSONB DEFAULT '[]',
+        pet_name VARCHAR(255),
+        owner_name VARCHAR(255),
+        date_created TIMESTAMPTZ DEFAULT NOW(),
+        date_updated TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    const result = await query(
+      `INSERT INTO outbreak_records
+         (id, type, disease, barangay, source_id, cases, lat, lng, radius_km, status, severity, pet_name, owner_name, updates, date_created, date_updated)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,NOW(),NOW()) RETURNING *`,
+      [id, d.type, d.disease, d.barangay, d.source_id||null, d.cases||1, d.lat, d.lng, d.radius_km||10,
+       d.status||'Active', d.severity||'High', d.pet_name||null, d.owner_name||null, initUpdate]
+    );
+    return res.json({ success: true, outbreak: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/outbreaks/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','cityHealth'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    // Build updates array
+    let updatesQuery = `updates`;
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (d.new_update) {
+      updatesQuery = `updates || $${paramIdx}::jsonb`;
+      params.push(JSON.stringify([d.new_update]));
+      paramIdx++;
+    }
+
+    const result = await query(
+      `UPDATE outbreak_records SET
+         status=$${paramIdx}, severity=$${paramIdx+1}, assigned_to=$${paramIdx+2},
+         resolve_date=$${paramIdx+3}, timetable=$${paramIdx+4},
+         updates=${updatesQuery}, date_updated=NOW()
+       WHERE id=$${paramIdx+5} RETURNING *`,
+      [...params, d.status, d.severity, d.assigned_to||null, d.resolve_date||null, d.timetable||null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    return res.json({ success: true, outbreak: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Vaccination History ─────────────────────────────────────────────────────
 router.get('/vaccination-history/:petId', authenticate, async (req: AuthRequest, res: Response) => {
   try {
