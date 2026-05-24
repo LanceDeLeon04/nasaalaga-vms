@@ -1377,3 +1377,208 @@ router.get('/dashboard/disease-intel', authenticate, async (req: AuthRequest, re
 });
 
 export default router;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUDGET UTILIZATION MODULE ROUTES
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /budget/context  — returns all data Claude needs for AI analysis
+router.get('/budget/context', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const fy = req.query.fiscal_year || 2025;
+    const [programs, lineItems, expenditures, medicines, pets, livestock, bitingInc, impounds, spayNeuter] = await Promise.all([
+      query(`SELECT * FROM budget_programs WHERE fiscal_year=$1 AND is_active=true ORDER BY name`, [fy]),
+      query(`SELECT * FROM budget_line_items WHERE fiscal_year=$1 ORDER BY program_id, name`, [fy]),
+      query(`SELECT be.*, bli.name as line_item_name, bli.program_id FROM budget_expenditures be LEFT JOIN budget_line_items bli ON be.line_item_id=bli.id ORDER BY be.expenditure_date DESC LIMIT 100`),
+      query(`SELECT id,name,category,type,quantity,reorder_level,unit,expiry_date,unit_cost,
+               CASE WHEN quantity=0 THEN 'Out of Stock' WHEN quantity<=reorder_level THEN 'Critical' WHEN quantity<=reorder_level*2 THEN 'Low' ELSE 'Adequate' END as stock_status
+             FROM medicine_inventory ORDER BY quantity ASC`),
+      query(`SELECT COUNT(*) as total, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated, COUNT(CASE WHEN status='Active' THEN 1 END) as active FROM pets`),
+      query(`SELECT COUNT(*) as total_records, SUM(quantity) as total_animals, SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick FROM livestock`),
+      query(`SELECT COUNT(*) as total, SUM(CASE WHEN confirmed_rabies THEN 1 ELSE 0 END) as rabies_confirmed FROM biting_incidents WHERE incident_date >= NOW()-INTERVAL '6 months'`),
+      query(`SELECT COUNT(*) as total FROM cvo_forms WHERE service_type ILIKE '%impound%' AND created_at >= NOW()-INTERVAL '6 months'`).catch(()=>({rows:[{total:0}]})),
+      query(`SELECT COUNT(*) as total FROM cvo_forms WHERE service_type ILIKE '%spay%' OR service_type ILIKE '%neuter%' AND created_at >= NOW()-INTERVAL '6 months'`).catch(()=>({rows:[{total:0}]})),
+    ]);
+
+    const programsWithItems = programs.rows.map((p: any) => ({
+      ...p,
+      line_items: lineItems.rows.filter((li: any) => li.program_id === p.id),
+    }));
+
+    return res.json({
+      success: true,
+      fiscal_year: Number(fy),
+      programs: programsWithItems,
+      recent_expenditures: expenditures.rows,
+      inventory: medicines.rows,
+      pet_stats: pets.rows[0],
+      livestock_stats: livestock.rows[0],
+      biting_incidents_6mo: bitingInc.rows[0],
+      impounding_6mo: parseInt(impounds.rows[0]?.total||'0'),
+      spay_neuter_6mo: parseInt(spayNeuter.rows[0]?.total||'0'),
+    });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// GET /budget/programs
+router.get('/budget/programs', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const fy = req.query.fiscal_year || 2025;
+    const programs = await query(`SELECT * FROM budget_programs WHERE fiscal_year=$1 AND is_active=true ORDER BY name`, [fy]);
+    const lineItems = await query(`SELECT * FROM budget_line_items WHERE fiscal_year=$1 ORDER BY program_id, name`, [fy]);
+    const result = programs.rows.map((p: any) => ({
+      ...p,
+      line_items: lineItems.rows.filter((li: any) => li.program_id === p.id),
+    }));
+    return res.json({ programs: result, fiscal_year: Number(fy) });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /budget/programs
+router.post('/budget/programs', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, description, total_allotment, fiscal_year, color } = req.body;
+    const id = `PROG-${fiscal_year||2025}-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO budget_programs(id,name,description,total_allotment,fiscal_year,color,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [id, name, description, total_allotment||0, fiscal_year||2025, color||'#2B5EA6', req.user?.username||'admin']
+    );
+    return res.json({ success: true, program: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /budget/programs/:id
+router.put('/budget/programs/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, description, total_allotment, color } = req.body;
+    const result = await query(
+      `UPDATE budget_programs SET name=$1,description=$2,total_allotment=$3,color=$4,updated_at=NOW() WHERE id=$5 RETURNING *`,
+      [name, description, total_allotment, color, req.params.id]
+    );
+    return res.json({ success: true, program: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /budget/programs/:id
+router.delete('/budget/programs/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`UPDATE budget_programs SET is_active=false WHERE id=$1`, [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /budget/line-items
+router.post('/budget/line-items', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { program_id, name, category, expenditure_type, allotment, fiscal_year, notes } = req.body;
+    const id = `LI-${fiscal_year||2025}-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO budget_line_items(id,program_id,name,category,expenditure_type,allotment,fiscal_year,notes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [id, program_id, name, category, expenditure_type||'opex', allotment||0, fiscal_year||2025, notes||'', req.user?.username||'admin']
+    );
+    return res.json({ success: true, line_item: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /budget/line-items/:id
+router.put('/budget/line-items/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, category, expenditure_type, allotment, notes } = req.body;
+    const result = await query(
+      `UPDATE budget_line_items SET name=$1,category=$2,expenditure_type=$3,allotment=$4,notes=$5,updated_at=NOW() WHERE id=$6 RETURNING *`,
+      [name, category, expenditure_type, allotment, notes, req.params.id]
+    );
+    return res.json({ success: true, line_item: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /budget/line-items/:id
+router.delete('/budget/line-items/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`DELETE FROM budget_expenditures WHERE line_item_id=$1`, [req.params.id]);
+    await query(`DELETE FROM budget_line_items WHERE id=$1`, [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// GET /budget/expenditures/:lineItemId
+router.get('/budget/expenditures/:lineItemId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM budget_expenditures WHERE line_item_id=$1 ORDER BY expenditure_date DESC`, [req.params.lineItemId]);
+    return res.json({ expenditures: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /budget/expenditures  — add expenditure and auto-recompute utilized/obligated
+router.post('/budget/expenditures', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { line_item_id, amount, expenditure_type, description, reference_no, vendor, expenditure_date } = req.body;
+    await query(
+      `INSERT INTO budget_expenditures(line_item_id,amount,expenditure_type,description,reference_no,vendor,expenditure_date,recorded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [line_item_id, amount, expenditure_type||'utilized', description||'', reference_no||'', vendor||'', expenditure_date||new Date().toISOString().split('T')[0], req.user?.username||'admin']
+    );
+    // Recompute utilized and obligated from actual expenditure records
+    await query(`
+      UPDATE budget_line_items SET
+        utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+        obligated = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='obligated'),0),
+        updated_at = NOW()
+      WHERE id=$1
+    `, [line_item_id]);
+    const li = await query(`SELECT * FROM budget_line_items WHERE id=$1`, [line_item_id]);
+    return res.json({ success: true, line_item: li.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /budget/expenditures/:id  — remove and recompute
+router.delete('/budget/expenditures/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const exp = await query(`SELECT line_item_id FROM budget_expenditures WHERE id=$1`, [req.params.id]);
+    if (!exp.rows.length) return res.status(404).json({ error: 'Not found' });
+    const lineItemId = exp.rows[0].line_item_id;
+    await query(`DELETE FROM budget_expenditures WHERE id=$1`, [req.params.id]);
+    await query(`
+      UPDATE budget_line_items SET
+        utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+        obligated = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='obligated'),0),
+        updated_at = NOW()
+      WHERE id=$1
+    `, [lineItemId]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /budget/ai-recommendations — save AI recs
+router.post('/budget/ai-recommendations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const recs = req.body.recommendations;
+    if (!Array.isArray(recs)) return res.status(400).json({ error: 'recommendations must be array' });
+    await query(`DELETE FROM budget_ai_recommendations WHERE fiscal_year=$1`, [req.body.fiscal_year||2025]);
+    for (const r of recs) {
+      await query(
+        `INSERT INTO budget_ai_recommendations(id,type,priority,title,narrative,from_program,to_program,suggested_pct,suggested_amount,justification,data_points,confidence,fiscal_year,generated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+         ON CONFLICT(id) DO UPDATE SET status='pending',generated_at=NOW()`,
+        [r.id,r.type,r.priority,r.title,r.narrative,r.from_program||null,r.to_program||null,r.suggested_pct||0,r.suggested_amount||0,r.justification,JSON.stringify(r.data_points||[]),r.confidence||0,req.body.fiscal_year||2025]
+      );
+    }
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// GET /budget/ai-recommendations
+router.get('/budget/ai-recommendations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const fy = req.query.fiscal_year || 2025;
+    const result = await query(`SELECT * FROM budget_ai_recommendations WHERE fiscal_year=$1 ORDER BY generated_at DESC`, [fy]);
+    return res.json({ recommendations: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /budget/ai-recommendations/:id/status
+router.put('/budget/ai-recommendations/:id/status', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query(`UPDATE budget_ai_recommendations SET status=$1 WHERE id=$2`, [req.body.status, req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
-  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint
+  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign
 } from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 
@@ -24,6 +24,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'inventory' as ActiveView, label: 'Inventory',        icon: FlaskConical,    roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'budget'    as ActiveView, label: 'Budget',            icon: DollarSign,      roles: ['admin', 'superadmin'] },
     { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },

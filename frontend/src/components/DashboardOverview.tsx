@@ -95,6 +95,7 @@ export function DashboardOverview() {
   const [lsData, setLsData] = useState<any[]>([]);
   const [tData, setTData] = useState<any[]>([]);
   const [bData, setBData] = useState<any[]>([]);
+  const [budgetPrograms, setBudgetPrograms] = useState<any[]>([]);
   const [petSurvey, setPetSurvey] = useState<any>(null);
   const [dbSummary, setDbSummary] = useState<any>(null);
   const [diseaseAlertsDb, setDiseaseAlertsDb] = useState<any[]>([]);
@@ -133,6 +134,18 @@ export function DashboardOverview() {
       ].slice(0, 5);
       setDiseaseAlertsDb(activeAlerts);
       if (prRes?.preRegistrations) setPreRegsDb(prRes.preRegistrations.slice(0, 5));
+      // Fetch real budget programs
+      api.getBudgetPrograms(2025).then((bp: any) => {
+        if (bp?.programs?.length) {
+          setBudgetPrograms(bp.programs);
+          const progData = bp.programs.map((p: any) => ({
+            name: p.name.split(' ').slice(0, 2).join(' '),
+            value: parseFloat(p.total_allotment) || 0,
+            color: p.color || '#2B5EA6',
+          }));
+          setBData(progData);
+        }
+      }).catch(() => {});
       setDbReady(true);
     }).catch(e => { console.error(e); setDbReady(true); });
   }, []);
@@ -202,7 +215,9 @@ export function DashboardOverview() {
   const vaxRate       = dbSummary?.vaccinationRate ?? 0;
   const alertCount    = dbSummary?.activeAlerts ?? 0;
   const pendingApps   = dbSummary?.pendingApplications ?? 0;
-  const budgetAmt     = dbSummary?.budgetTotal ?? 0;
+  const budgetAmt     = budgetPrograms.length > 0
+    ? budgetPrograms.reduce((s: number, p: any) => s + parseFloat(p.total_allotment || 0), 0)
+    : (dbSummary?.budgetTotal ?? 0);
   const lowStock      = dbSummary?.lowStock ?? 0;
   const lostFoundOpen = dbSummary?.lostFoundOpen ?? 0;
 

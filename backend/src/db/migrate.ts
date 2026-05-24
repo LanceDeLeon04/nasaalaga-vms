@@ -783,7 +783,135 @@ const createTables = async () => {
   }
 };
 
+// ── Budget Utilization Module ─────────────────────────────────────────────
+export async function migrateBudget() {
+  const { pool } = await import('./index');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS budget_programs (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        total_allotment NUMERIC(15,2) DEFAULT 0,
+        fiscal_year INTEGER DEFAULT 2025,
+        color VARCHAR(20) DEFAULT '#2B5EA6',
+        is_active BOOLEAN DEFAULT true,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS budget_line_items (
+        id VARCHAR(50) PRIMARY KEY,
+        program_id VARCHAR(50) REFERENCES budget_programs(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100),
+        expenditure_type VARCHAR(10) CHECK(expenditure_type IN ('capex','opex')) DEFAULT 'opex',
+        allotment NUMERIC(15,2) DEFAULT 0,
+        utilized NUMERIC(15,2) DEFAULT 0,
+        obligated NUMERIC(15,2) DEFAULT 0,
+        fiscal_year INTEGER DEFAULT 2025,
+        notes TEXT,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS budget_expenditures (
+        id SERIAL PRIMARY KEY,
+        line_item_id VARCHAR(50) REFERENCES budget_line_items(id) ON DELETE CASCADE,
+        amount NUMERIC(15,2) NOT NULL,
+        expenditure_type VARCHAR(20) DEFAULT 'utilized',
+        description TEXT,
+        reference_no VARCHAR(100),
+        vendor VARCHAR(255),
+        expenditure_date DATE DEFAULT CURRENT_DATE,
+        recorded_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS budget_ai_recommendations (
+        id VARCHAR(50) PRIMARY KEY,
+        type VARCHAR(50) NOT NULL,
+        priority VARCHAR(20) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        narrative TEXT,
+        from_program VARCHAR(255),
+        to_program VARCHAR(255),
+        suggested_pct NUMERIC(5,2),
+        suggested_amount NUMERIC(15,2),
+        justification TEXT,
+        data_points JSONB DEFAULT '[]',
+        confidence INTEGER DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'pending',
+        fiscal_year INTEGER DEFAULT 2025,
+        generated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Seed default budget programs for FY2025 if not exists
+    const existing = await client.query(`SELECT COUNT(*) FROM budget_programs WHERE fiscal_year=2025`);
+    if (parseInt(existing.rows[0].count) === 0) {
+      await client.query(`
+        INSERT INTO budget_programs (id,name,description,total_allotment,fiscal_year,color,created_by) VALUES
+          ('PROG-2025-001','Rabies Control Program','Anti-rabies vaccination, PEP biologics, and community awareness campaigns.',1200000,2025,'#2B5EA6','system'),
+          ('PROG-2025-002','Avian Influenza Preparedness','Bird flu surveillance, rapid response kits, containment, and response teams.',800000,2025,'#e8a838','system'),
+          ('PROG-2025-003','Livestock Health Program','Vaccines, treatments, and health monitoring for all livestock species.',950000,2025,'#60A85C','system'),
+          ('PROG-2025-004','Animal Welfare & Impounding','Impounding operations, spaying/neutering, and animal shelter maintenance.',600000,2025,'#7c3aed','system'),
+          ('PROG-2025-005','Administrative & Operations','Office supplies, fuel, IT infrastructure, personnel training, and communications.',500000,2025,'#0891b2','system')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+
+      await client.query(`
+        INSERT INTO budget_line_items (id,program_id,name,category,expenditure_type,allotment,fiscal_year,created_by) VALUES
+          ('LI-2025-001','PROG-2025-001','Anti-Rabies Vaccines (Dogs & Cats)','Vaccines','opex',600000,2025,'system'),
+          ('LI-2025-002','PROG-2025-001','Human PEP Biologics (Verorab/Rabipur)','Vaccines','opex',300000,2025,'system'),
+          ('LI-2025-003','PROG-2025-001','Syringes & Injection Supplies','Supplies','opex',150000,2025,'system'),
+          ('LI-2025-004','PROG-2025-001','IEC Materials & Advocacy','Communication','opex',100000,2025,'system'),
+          ('LI-2025-005','PROG-2025-001','Cold Chain Equipment & Maintenance','Equipment','capex',50000,2025,'system'),
+          ('LI-2025-006','PROG-2025-002','AI Surveillance & Diagnostic Kits','Diagnostics','opex',250000,2025,'system'),
+          ('LI-2025-007','PROG-2025-002','Avian Flu Antiviral Medications','Medicines','opex',300000,2025,'system'),
+          ('LI-2025-008','PROG-2025-002','PPE & Protective Equipment','Supplies','opex',150000,2025,'system'),
+          ('LI-2025-009','PROG-2025-002','Response Vehicle Operations','Operations','opex',100000,2025,'system'),
+          ('LI-2025-010','PROG-2025-003','FMD Vaccines (Cattle/Carabao)','Vaccines','opex',300000,2025,'system'),
+          ('LI-2025-011','PROG-2025-003','Hog Cholera & ASF Vaccines','Vaccines','opex',250000,2025,'system'),
+          ('LI-2025-012','PROG-2025-003','Newcastle Disease & Poultry Vaccines','Vaccines','opex',200000,2025,'system'),
+          ('LI-2025-013','PROG-2025-003','Antiparasitics & Dewormers','Medicines','opex',150000,2025,'system'),
+          ('LI-2025-014','PROG-2025-003','Veterinary Instruments & Equipment','Equipment','capex',50000,2025,'system'),
+          ('LI-2025-015','PROG-2025-004','Impounding Operations & Transport','Operations','opex',200000,2025,'system'),
+          ('LI-2025-016','PROG-2025-004','Spaying & Neutering Procedures','Medical Procedures','opex',250000,2025,'system'),
+          ('LI-2025-017','PROG-2025-004','Animal Shelter Maintenance & Feed','Facilities','opex',100000,2025,'system'),
+          ('LI-2025-018','PROG-2025-004','Shelter Construction/Expansion','Facilities','capex',50000,2025,'system'),
+          ('LI-2025-019','PROG-2025-005','Office Supplies & Materials','Supplies','opex',100000,2025,'system'),
+          ('LI-2025-020','PROG-2025-005','Fuel & Transportation','Operations','opex',200000,2025,'system'),
+          ('LI-2025-021','PROG-2025-005','IT Equipment & System Maintenance','Equipment','capex',150000,2025,'system'),
+          ('LI-2025-022','PROG-2025-005','Staff Training & Capacity Building','Training','opex',50000,2025,'system')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+    }
+
+    await client.query('COMMIT');
+    console.log('✅ Budget module tables created');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Budget migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 createTables()
+  .then(() => migrateBudget())
   .then(() => {
     console.log('Migration complete');
     process.exit(0);

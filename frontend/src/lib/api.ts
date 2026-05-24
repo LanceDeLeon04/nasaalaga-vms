@@ -195,6 +195,21 @@ export const api = {
   getDashboardMedicineIntel: () => request('/dashboard/medicine-intel'),
   getDashboardAnimalPopulation: () => request('/dashboard/animal-population'),
   getDashboardDiseaseIntel: () => request('/dashboard/disease-intel'),
+  // ── Budget Utilization Module ──────────────────────────────────────────
+  getBudgetPrograms: (fy = 2025) => request(`/budget/programs?fiscal_year=${fy}`),
+  getBudgetContext: (fy = 2025) => request(`/budget/context?fiscal_year=${fy}`),
+  createBudgetProgram: (data: any) => request('/budget/programs', { method: 'POST', body: JSON.stringify(data) }),
+  updateBudgetProgram: (id: string, data: any) => request(`/budget/programs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteBudgetProgram: (id: string) => request(`/budget/programs/${id}`, { method: 'DELETE' }),
+  createBudgetLineItem: (data: any) => request('/budget/line-items', { method: 'POST', body: JSON.stringify(data) }),
+  updateBudgetLineItem: (id: string, data: any) => request(`/budget/line-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteBudgetLineItem: (id: string) => request(`/budget/line-items/${id}`, { method: 'DELETE' }),
+  getBudgetExpenditures: (lineItemId: string) => request(`/budget/expenditures/${lineItemId}`),
+  addBudgetExpenditure: (data: any) => request('/budget/expenditures', { method: 'POST', body: JSON.stringify(data) }),
+  deleteBudgetExpenditure: (id: number) => request(`/budget/expenditures/${id}`, { method: 'DELETE' }),
+  saveBudgetAIRecs: (data: any) => request('/budget/ai-recommendations', { method: 'POST', body: JSON.stringify(data) }),
+  getBudgetAIRecs: (fy = 2025) => request(`/budget/ai-recommendations?fiscal_year=${fy}`),
+  updateBudgetRecStatus: (id: string, status: string) => request(`/budget/ai-recommendations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 };
 
 export default api;
