@@ -846,6 +846,8 @@ router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Res
   const allowed = ['admin','superadmin','cityHealth'];
   if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
+    // Ensure human_status column exists
+    await query(`ALTER TABLE biting_incidents ADD COLUMN IF NOT EXISTS human_status VARCHAR(50)`).catch(() => {});
     const d = req.body;
     const id = `BITE-${Date.now()}`;
     const obsStart = d.incidentDate || null;
@@ -860,7 +862,7 @@ router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Res
        d.ownerName||null, d.confirmedRabies||false, d.vaccinated||false,
        d.remarks||null, obsStart, obsEnd, d.reportedBy||req.user?.username||'System']
     );
-    // If this year, set pet vaccination status to suspended
+    // If registered pet, update vaccination status
     if (d.petId) {
       await query(`UPDATE pets SET vaccination_status='Observation - Biting Incident' WHERE id=$1`, [d.petId]);
     }
@@ -874,28 +876,20 @@ router.put('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: 
   const allowed = ['admin','superadmin','cityHealth'];
   if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
+    // Ensure human_status column exists
+    await query(`ALTER TABLE biting_incidents ADD COLUMN IF NOT EXISTS human_status VARCHAR(50)`).catch(() => {});
     const d = req.body;
     const result = await query(
       `UPDATE biting_incidents SET
          pet_name=$1, incident_date=$2, location=$3, bitten_person=$4, owner_name=$5,
          confirmed_rabies=$6, vaccinated=$7, remarks=$8, observation_update=$9,
-         status=$10, updated_at=NOW()
-       WHERE id=$11 RETURNING *`,
+         status=$10, human_status=$11, updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
       [d.petName, d.incidentDate, d.location, d.bittenPerson, d.ownerName||null,
        d.confirmedRabies||false, d.vaccinated||false, d.remarks||null,
-       d.observationUpdate||null, d.status||'Open', req.params.id]
+       d.observationUpdate||null, d.status||'Open', d.humanStatus||null, req.params.id]
     );
     return res.json({ success: true, incident: result.rows[0] });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
-  try {
-    await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
-    return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

@@ -1808,11 +1808,10 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     const petBarangay = brgy(pet);
     const zone = BARANGAY_ZONES[petBarangay] || "East";
     const zoneBg = ZONE_BG[zone] || "#6B7280";
-    const tag = pet.pet_tag_id || pet.petTagId || "";
+    const tag = pet.pet_tag_id || pet.petTagId || pet.id || "";
     return (<>
-      <p className="text-xs font-bold text-gray-600">{pet.id}</p>
+      <p className="text-xs font-bold text-gray-600 font-mono">{tag}</p>
       <span style={{display:'inline-block',marginTop:2,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:zoneBg,letterSpacing:'0.04em'}}>{ZONE_LABEL[zone]} Zone</span>
-      {tag && <span style={{display:'inline-block',marginLeft:3,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:zoneBg,background:`${zoneBg}22`,border:`1px solid ${zoneBg}55`,letterSpacing:'0.04em'}}>{tag}</span>}
       {pet.status!=="Active"&&<span className={`inline-block px-1.5 py-0.5 text-[10px] font-bold rounded ${pet.status==="Lost"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{pet.status}</span>}
     </>);
   })()}

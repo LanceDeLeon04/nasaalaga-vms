@@ -215,14 +215,10 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
     if (!preReg) return res.status(404).json({ error: 'Pre-registration not found' });
 
     if (action === 'approve') {
-      const countResult = await query('SELECT COUNT(*) FROM pets');
-      const count = parseInt(countResult.rows[0].count);
-      const newPetId = petId || `PET-${String(count + 1).padStart(3, '0')}`;
-
-      // Build color-coded tag: explicit full id > admin-supplied number > auto
+      // Build color-coded tag: explicit override > auto from barangay
       let tagId: string | null = null;
       if (petTagId) {
-        tagId = petTagId; // full override (legacy / admin paste)
+        tagId = petTagId; // admin supplied full tag
       } else if (preReg.barangay) {
         try {
           tagId = await buildTagId(preReg.barangay, tagNumber || undefined);
@@ -230,6 +226,8 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
           return res.status(409).json({ error: e.message });
         }
       }
+      // Use color-zoning ID as primary ID (no PET-### fallback)
+      const newPetId = petId || tagId || `GEN-000-${String(Date.now()).slice(-5)}`;
 
       // Check uniqueness before insert
       if (tagId) {
@@ -292,10 +290,6 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
-    const countResult = await query('SELECT COUNT(*) FROM pets');
-    const count = parseInt(countResult.rows[0].count);
-    const newId = `PET-${String(count + 1).padStart(3, '0')}`;
-
     let resolvedOwnerId = d.ownerId || null;
     let tempId = d.tempId || null;
 
@@ -322,6 +316,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
         return res.status(409).json({ error: e.message, tagConflict: true });
       }
     }
+
+    // Use color-zoning ID as primary pet ID (no PET-### fallback)
+    const newId = autoTagId || `GEN-000-${String(Date.now()).slice(-5)}`;
 
     // Check uniqueness
     if (autoTagId) {

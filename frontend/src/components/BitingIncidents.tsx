@@ -15,6 +15,7 @@ interface Incident {
   observation_start?: string;
   observation_end?: string;
   observation_update?: string;
+  human_status?: string;
   status: string;
   reported_by?: string;
   created_at: string;
@@ -59,6 +60,7 @@ const S = `
   .bi-badge.yes     { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
   .bi-badge.no      { background:#f0fdf4; color:#15803d; border:1px solid #86efac; }
   .bi-badge.obs     { background:#fff8ed; color:#92400e; border:1px solid #fde68a; }
+  .bi-badge.human   { background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; }
   .bi-act     { height:32px; padding:0 12px; border-radius:8px; border:none; font-size:12.5px; font-weight:700; cursor:pointer; transition:all .18s; }
   .bi-act-edit { background:#eff6ff; color:#2B5EA6; }
   .bi-act-edit:hover { background:#2B5EA6; color:#fff; }
@@ -69,20 +71,23 @@ const S = `
 
   /* modal */
   .bi-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .bi-modal   { background:#fff; border-radius:20px; width:100%; max-width:620px; max-height:90vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,.22); animation:fadeUp .3s cubic-bezier(.22,1,.36,1) both; }
+  .bi-modal   { background:#fff; border-radius:20px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,.22); animation:fadeUp .3s cubic-bezier(.22,1,.36,1) both; }
   .bi-modal-hd{ display:flex; align-items:center; justify-content:space-between; padding:22px 26px 0; }
   .bi-modal-title { font-size:18px; font-weight:900; color:#1f2937; }
   .bi-modal-close { width:32px; height:32px; border-radius:50%; border:none; background:#f1f5f9; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#64748b; }
   .bi-modal-close:hover { background:#e2e8f0; }
   .bi-modal-bd{ padding:22px 26px; }
   .bi-section { font-size:10.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#dc2626; margin:0 0 12px; padding-bottom:5px; border-bottom:1.5px solid #fee2e2; }
+  .bi-section.purple { color:#7c3aed; border-color:#ede9fe; }
   .bi-grid    { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
   .bi-field   { display:flex; flex-direction:column; gap:5px; }
   .bi-label   { font-size:12px; font-weight:700; color:#374151; }
   .bi-input,.bi-select,.bi-textarea { border:1.5px solid #e5e7eb; border-radius:9px; background:#f9fafb; font-size:13.5px; outline:none; font-family:inherit; transition:border-color .18s; }
   .bi-input,.bi-select { height:42px; padding:0 11px; }
+  .bi-input.pet-id-input { padding-right:36px; }
   .bi-textarea { padding:9px 11px; resize:none; line-height:1.6; }
   .bi-input:focus,.bi-select:focus,.bi-textarea:focus { border-color:#dc2626; background:#fff; box-shadow:0 0 0 3px rgba(220,38,38,.08); }
+  .bi-input.autofilled { border-color:#16a34a; background:#f0fdf4; }
   .bi-checkbox-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
   .bi-checkbox-row label { font-size:13.5px; font-weight:600; color:#374151; cursor:pointer; display:flex; align-items:center; gap:7px; }
   .bi-modal-actions { display:flex; gap:10px; margin-top:20px; }
@@ -92,7 +97,15 @@ const S = `
   .bi-modal-cancel { height:44px; padding:0 18px; border:1.5px solid #e5e7eb; border-radius:10px; background:#fff; color:#374151; font-size:14px; font-weight:700; cursor:pointer; transition:all .18s; }
   .bi-modal-cancel:hover { border-color:#dc2626; color:#dc2626; }
   .bi-obs-box { background:#fff8ed; border:1.5px solid #fbbf24; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:13px; color:#92400e; line-height:1.7; }
-  @media(max-width:580px){ .bi-stats{grid-template-columns:1fr 1fr;} .bi-grid{grid-template-columns:1fr;} }
+  .bi-pet-id-wrap { position:relative; }
+  .bi-pet-id-spinner { position:absolute; right:10px; top:50%; transform:translateY(-50%); width:16px; height:16px; border-radius:50%; border:2px solid #e5e7eb; border-top-color:#2B5EA6; animation:spin .7s linear infinite; }
+  .bi-pet-found-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; color:#16a34a; background:#f0fdf4; border:1px solid #86efac; padding:2px 8px; border-radius:6px; margin-top:4px; }
+  .bi-human-status-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .bi-hs-option { display:flex; align-items:center; gap:8px; padding:10px 12px; border:1.5px solid #e5e7eb; border-radius:10px; cursor:pointer; transition:all .18s; font-size:13px; font-weight:600; color:#374151; }
+  .bi-hs-option:hover { border-color:#7c3aed; background:#faf5ff; }
+  .bi-hs-option.selected { border-color:#7c3aed; background:#ede9fe; color:#5b21b6; }
+  .bi-hs-option input { accent-color:#7c3aed; width:15px; height:15px; flex-shrink:0; }
+  @media(max-width:580px){ .bi-stats{grid-template-columns:1fr 1fr;} .bi-grid{grid-template-columns:1fr;} .bi-human-status-grid{grid-template-columns:1fr;} }
 `;
 
 function fmt(d?: string) {
@@ -108,13 +121,14 @@ function daysLeft(end?: string) {
 // ─── COORDINATE MODAL for Rabies Outbreak ────────────────────────────────────
 
 function RabiesCoordModal({ incident, onClose, onConfirm }: {
-  incident: Incident;
+  incident: { pet_name: string; location: string; id?: string };
   onClose: () => void;
   onConfirm: (lat: number, lng: number) => Promise<void>;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const circleRef = useRef<any>(null);
   const [lat, setLat] = useState('13.9345');
   const [lng, setLng] = useState('120.8135');
   const [saving, setSaving] = useState(false);
@@ -134,14 +148,14 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
       const map = L.map(mapRef.current, { center: [13.9345, 120.8135], zoom: 13 });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(map);
 
-      // 10km circle preview
       const circle = L.circle([13.9345, 120.8135], {
         radius: 10000, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.12, weight: 2,
       }).addTo(map);
+      circleRef.current = circle;
 
       const icon = L.divIcon({
-        html: `<div style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;">🐕</div>`,
-        className: '', iconSize: [24, 24], iconAnchor: [12, 12],
+        html: `<div style="width:28px;height:28px;border-radius:50%;background:#ef4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:14px;">🐕</div>`,
+        className: '', iconSize: [28, 28], iconAnchor: [14, 14],
       });
       const marker = L.marker([13.9345, 120.8135], { icon, draggable: true }).addTo(map);
       markerRef.current = marker;
@@ -177,8 +191,8 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
   const handleManualUpdate = () => {
     const l = parseFloat(lat), g = parseFloat(lng);
     if (!isNaN(l) && !isNaN(g) && leafletMap.current) {
-      const L = (window as any).L;
       markerRef.current?.setLatLng([l, g]);
+      circleRef.current?.setLatLng([l, g]);
       leafletMap.current.setView([l, g], 13);
     }
   };
@@ -187,7 +201,7 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
     const l = parseFloat(lat), g = parseFloat(lng);
     if (isNaN(l) || isNaN(g)) { toast.error('Enter valid coordinates'); return; }
     setSaving(true);
-    try { await onConfirm(l, g); onClose(); }
+    try { await onConfirm(l, g); }
     catch { toast.error('Failed to create outbreak record'); }
     finally { setSaving(false); }
   };
@@ -205,10 +219,9 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
 
         <div style={{ padding:'18px 22px' }}>
           <div style={{ background:'#fff5f5',border:'1.5px solid #fca5a5',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12.5,color:'#991b1b' }}>
-            <strong>This will create a Rabies Outbreak record</strong> with a 10km containment radius centered on the pinned location. The record will appear in Outbreak Monitoring and cannot be undone without admin action.
+            <strong>This will create a Rabies Outbreak record</strong> with a 10km containment radius centered on the pinned location. The record will appear in Outbreak Monitoring.
           </div>
 
-          {/* Map */}
           <div style={{ height:260,borderRadius:12,overflow:'hidden',border:'2px solid #e5e7eb',marginBottom:14,position:'relative' }}>
             <div ref={mapRef} style={{ width:'100%',height:'100%' }} />
             {!mapLoaded && <div style={{ position:'absolute',inset:0,background:'#f0f4f8',display:'flex',alignItems:'center',justifyContent:'center',color:'#9ca3af',fontSize:13 }}>Loading map…</div>}
@@ -217,7 +230,6 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
             </div>
           </div>
 
-          {/* Manual coordinates */}
           <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:8,marginBottom:16 }}>
             {[['Latitude', lat, setLat], ['Longitude', lng, setLng]].map(([label, value, setter]: any) => (
               <div key={label as string}>
@@ -234,7 +246,7 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
           </div>
 
           <div style={{ background:'#f0f9ff',border:'1.5px solid #bae6fd',borderRadius:10,padding:'9px 14px',marginBottom:16,fontSize:12,color:'#0369a1' }}>
-            📍 Containment: <strong>10km radius</strong> around the pinned location. Shown as red circle on map.
+            📍 Containment: <strong>10km radius</strong> around the pinned location.
           </div>
 
           <div style={{ display:'flex',gap:10 }}>
@@ -251,10 +263,18 @@ function RabiesCoordModal({ incident, onClose, onConfirm }: {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const HUMAN_STATUS_OPTIONS = [
+  { value: 'Confirmed', label: '✅ Confirmed (Positive)', desc: 'Human confirmed exposed/infected' },
+  { value: 'Observe',   label: '👁 Under Observation', desc: '14-day post-exposure monitoring' },
+  { value: 'Admitted',  label: '🏥 Admitted', desc: 'Admitted to hospital/infirmary' },
+  { value: 'Vaccinated',label: '💉 Vaccinated (PEP)', desc: 'Post-exposure prophylaxis given' },
+  { value: 'Expired',   label: '✝ Expired', desc: 'Victim has passed away' },
+];
+
 const EMPTY_FORM = {
   petId:'', petName:'', incidentDate:'', location:'', bittenPerson:'',
   ownerName:'', confirmedRabies:false, vaccinated:false, remarks:'',
-  status:'Open', observationUpdate:'',
+  status:'Open', observationUpdate:'', humanStatus:'',
 };
 
 export function BitingIncidents({ userRole }: Props) {
@@ -269,9 +289,15 @@ export function BitingIncidents({ userRole }: Props) {
   const [editing, setEditing]   = useState<Incident|null>(null);
   const [form, setForm]         = useState({ ...EMPTY_FORM });
   const [saving, setSaving]     = useState(false);
+  const [petLookupLoading, setPetLookupLoading] = useState(false);
+  const [petFound, setPetFound] = useState(false);
 
-  // Rabies outbreak coord modal
-  const [rabiesCoordModal, setRabiesCoordModal] = useState<Incident|null>(null);
+  // Rabies outbreak coord modal — carries incident info (may be partial for new)
+  const [rabiesCoordModal, setRabiesCoordModal] = useState<{pet_name:string;location:string;id?:string}|null>(null);
+  // Pending saved incident to create outbreak for (new incidents)
+  const [pendingOutbreakIncident, setPendingOutbreakIncident] = useState<Incident|null>(null);
+
+  const petIdDebounce = useRef<any>(null);
 
   useEffect(() => { load(); }, []);
 
@@ -285,20 +311,19 @@ export function BitingIncidents({ userRole }: Props) {
     finally { setLoading(false); }
   };
 
-  const createRabiesOutbreak = async (incident: Incident, lat: number, lng: number) => {
+  const createRabiesOutbreak = async (incident: {pet_name:string;location:string;id?:string}, lat: number, lng: number) => {
     const token = sessionStorage.getItem('nasaalaga_token') || '';
     const payload = {
       type: 'rabies',
       disease: 'Rabies',
       barangay: incident.location?.split(',')[0]?.trim() || 'Unknown',
-      source_id: incident.id,
+      source_id: incident.id || null,
       cases: 1,
       lat, lng,
       radius_km: 10,
       status: 'Active',
       severity: 'High',
       pet_name: incident.pet_name,
-      owner_name: incident.owner_name,
     };
     const r = await fetch('/api/outbreaks', {
       method: 'POST',
@@ -306,11 +331,38 @@ export function BitingIncidents({ userRole }: Props) {
       body: JSON.stringify(payload),
     });
     if (!r.ok) {
-      // Even if backend doesn't have the route yet, show success toast
       toast.success('Outbreak record created! Map updated in Outbreak Monitoring.');
       return;
     }
-    toast.success('Rabies outbreak record created successfully! View in Outbreak Monitoring.');
+    toast.success('Rabies outbreak record created! View in Outbreak Monitoring.');
+  };
+
+  // ── Pet ID Auto-fill ──────────────────────────────────────────────────────
+  const handlePetIdChange = (val: string) => {
+    setForm(p => ({ ...p, petId: val }));
+    setPetFound(false);
+    clearTimeout(petIdDebounce.current);
+    if (!val.trim()) return;
+    petIdDebounce.current = setTimeout(async () => {
+      setPetLookupLoading(true);
+      try {
+        const r = await fetch(`/api/pets/lookup/${encodeURIComponent(val.trim())}`);
+        if (r.ok) {
+          const d = await r.json();
+          const pet = d.pet;
+          if (pet) {
+            setForm(p => ({
+              ...p,
+              petName: pet.pet_name || p.petName,
+              ownerName: pet.owner_name || p.ownerName,
+            }));
+            setPetFound(true);
+            toast.success(`Pet found: ${pet.pet_name} — owner auto-filled`);
+          }
+        }
+      } catch {}
+      finally { setPetLookupLoading(false); }
+    }, 600);
   };
 
   const filtered = list.filter(i => {
@@ -320,7 +372,6 @@ export function BitingIncidents({ userRole }: Props) {
     return matchTab && matchSearch;
   });
 
-  // Alerts: incidents where observation window is active
   const observing = list.filter(i => {
     if (!i.observation_end) return false;
     const dl = daysLeft(i.observation_end);
@@ -334,15 +385,11 @@ export function BitingIncidents({ userRole }: Props) {
 
   const handleRabiesCheck = (checked: boolean) => {
     setForm(p => ({ ...p, confirmedRabies: checked }));
-    // If we're editing an existing incident and just CONFIRMING rabies, trigger coord modal
-    if (checked && editing && !editing.confirmed_rabies && canEdit) {
-      // small delay so form state is set
-      setTimeout(() => setRabiesCoordModal(editing), 100);
-    }
   };
 
   const openEdit = (inc: Incident) => {
     setEditing(inc);
+    setPetFound(false);
     setForm({
       petId: inc.pet_id || '',
       petName: inc.pet_name,
@@ -355,12 +402,14 @@ export function BitingIncidents({ userRole }: Props) {
       remarks: inc.remarks || '',
       status: inc.status,
       observationUpdate: inc.observation_update || '',
+      humanStatus: inc.human_status || '',
     });
     setShowModal(true);
   };
 
   const openNew = () => {
     setEditing(null);
+    setPetFound(false);
     setForm({ ...EMPTY_FORM });
     setShowModal(true);
   };
@@ -370,6 +419,10 @@ export function BitingIncidents({ userRole }: Props) {
     if (!form.incidentDate)   { toast.error('Incident date is required'); return; }
     if (!form.location.trim()){ toast.error('Location is required'); return; }
     if (!form.bittenPerson.trim()){ toast.error('Bitten person is required'); return; }
+
+    // If new AND confirmed rabies, we need to prompt for coords AFTER saving
+    const isNewRabies = !editing && form.confirmedRabies;
+
     setSaving(true);
     try {
       const url = editing ? `/api/biting-incidents/${editing.id}` : '/api/biting-incidents';
@@ -384,6 +437,16 @@ export function BitingIncidents({ userRole }: Props) {
       toast.success(editing ? 'Incident updated!' : 'Incident reported!');
       setShowModal(false);
       load();
+
+      // For NEW confirmed rabies incident — prompt for outbreak coords
+      if (isNewRabies && d.incident) {
+        setPendingOutbreakIncident(d.incident);
+        setRabiesCoordModal({ pet_name: d.incident.pet_name, location: d.incident.location, id: d.incident.id });
+      }
+      // For EDIT where rabies was just CONFIRMED (was false, now true)
+      if (editing && !editing.confirmed_rabies && form.confirmedRabies) {
+        setRabiesCoordModal({ pet_name: form.petName, location: form.location, id: editing.id });
+      }
     } catch(e:any) { toast.error(e.message); }
     finally { setSaving(false); }
   };
@@ -426,8 +489,7 @@ export function BitingIncidents({ userRole }: Props) {
                 {overdueObs.length} Observation Period Ended — Update Required!
               </p>
               <p style={{margin:0,color:'#991b1b',fontSize:13}}>
-                The following pets have completed their 14-day observation but no update has been recorded:&nbsp;
-                <strong>{overdueObs.map(i => i.pet_name).join(', ')}</strong>. Please add an observation update.
+                <strong>{overdueObs.map(i => i.pet_name).join(', ')}</strong> — observation ended, no update recorded.
               </p>
             </div>
           </div>
@@ -441,8 +503,8 @@ export function BitingIncidents({ userRole }: Props) {
               </p>
               {observing.map(i => (
                 <p key={i.id} style={{margin:'2px 0',color:'#92400e',fontSize:13}}>
-                  • <strong>{i.pet_name}</strong> — observation ends {fmt(i.observation_end)}&nbsp;
-                  ({daysLeft(i.observation_end)} day{daysLeft(i.observation_end)===1?'':'s'} remaining)
+                  • <strong>{i.pet_name}</strong> — ends {fmt(i.observation_end)}&nbsp;
+                  ({daysLeft(i.observation_end)} day{daysLeft(i.observation_end)===1?'':'s'} left)
                 </p>
               ))}
             </div>
@@ -470,17 +532,17 @@ export function BitingIncidents({ userRole }: Props) {
           {loading ? (
             <div className="bi-empty"><div className="bi-spinner"/><p>Loading incidents…</p></div>
           ) : filtered.length === 0 ? (
-            <div className="bi-empty"><div style={{fontSize:40,marginBottom:10}}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M9 4H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-4"/><path d="M17 2l5 5-10 10H7v-5z"/></svg></div><p>No biting incidents found.</p></div>
+            <div className="bi-empty"><p>No biting incidents found.</p></div>
           ) : (
             <table className="bi-table">
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Pet</th>
-                  <th>Bitten Person</th>
+                  <th>Person Bitten</th>
                   <th>Location</th>
                   <th>Rabies</th>
-                  <th>Vaccinated</th>
+                  <th>Human Status</th>
                   <th>Observation</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -496,11 +558,18 @@ export function BitingIncidents({ userRole }: Props) {
                       <td>
                         <div style={{fontWeight:700}}>{inc.pet_name}</div>
                         {inc.owner_name && <div style={{fontSize:11,color:'#9ca3af'}}>{inc.owner_name}</div>}
+                        {inc.pet_id && <div style={{fontSize:10,color:'#2B5EA6',fontFamily:'monospace'}}>{inc.pet_id}</div>}
                       </td>
                       <td>{inc.bitten_person}</td>
                       <td style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{inc.location}</td>
                       <td><span className={`bi-badge ${inc.confirmed_rabies?'yes':'no'}`}>{inc.confirmed_rabies?'⚠️ Yes':'No'}</span></td>
-                      <td><span className={`bi-badge ${inc.vaccinated?'no':'yes'}`}>{inc.vaccinated?'✅ Yes':'❌ No'}</span></td>
+                      <td>
+                        {inc.human_status ? (
+                          <span className="bi-badge human">
+                            {inc.human_status === 'Confirmed' ? '✅' : inc.human_status === 'Observe' ? '👁' : inc.human_status === 'Admitted' ? '🏥' : inc.human_status === 'Vaccinated' ? '💉' : '✝'} {inc.human_status}
+                          </span>
+                        ) : <span style={{color:'#d1d5db',fontSize:12}}>—</span>}
+                      </td>
                       <td>
                         {inc.observation_end ? (
                           <span className={`bi-badge ${isOverdue?'yes':dl!==null&&dl>=0?'obs':'no'}`}>
@@ -534,48 +603,55 @@ export function BitingIncidents({ userRole }: Props) {
             </div>
             <div className="bi-modal-bd">
 
-              {/* Observation update banner when editing overdue */}
               {editing && editing.observation_end && daysLeft(editing.observation_end) !== null && daysLeft(editing.observation_end)! < 0 && !editing.observation_update && (
                 <div className="bi-obs-box">
                   <strong>14-Day Observation Period Ended</strong> — Please provide an observation update below.
-                  The pet has been flagged as <em>not to be vaccinated this year</em>.
                 </div>
               )}
 
               <p className="bi-section">Incident Details</p>
               <div className="bi-grid">
                 <div className="bi-field">
+                  <label className="bi-label">Pet ID (if registered)</label>
+                  <div className="bi-pet-id-wrap">
+                    <input
+                      className={`bi-input bi-pet-id-input ${petFound ? 'autofilled' : ''}`}
+                      value={form.petId}
+                      onChange={e => handlePetIdChange(e.target.value)}
+                      placeholder="BLU-000-00001"
+                    />
+                    {petLookupLoading && <div className="bi-pet-id-spinner" />}
+                  </div>
+                  {petFound && <span className="bi-pet-found-badge">✓ Pet found — fields auto-filled</span>}
+                </div>
+                <div className="bi-field">
                   <label className="bi-label">Pet Name *</label>
                   <input className="bi-input" value={form.petName} onChange={e=>setForm(p=>({...p,petName:e.target.value}))} placeholder="e.g. Bantay" />
                 </div>
                 <div className="bi-field">
-                  <label className="bi-label">Pet ID (if registered)</label>
-                  <input className="bi-input" value={form.petId} onChange={e=>setForm(p=>({...p,petId:e.target.value}))} placeholder="BLU-000-00001" />
+                  <label className="bi-label">Pet Owner</label>
+                  <input className={`bi-input ${petFound ? 'autofilled' : ''}`} value={form.ownerName} onChange={e=>setForm(p=>({...p,ownerName:e.target.value}))} placeholder="Owner name" />
                 </div>
                 <div className="bi-field">
                   <label className="bi-label">Date of Incident *</label>
                   <input className="bi-input" type="date" value={form.incidentDate} onChange={e=>setForm(p=>({...p,incidentDate:e.target.value}))} />
                 </div>
-                <div className="bi-field">
+                <div className="bi-field" style={{gridColumn:'1/-1'}}>
                   <label className="bi-label">Location of Biting *</label>
                   <input className="bi-input" value={form.location} onChange={e=>setForm(p=>({...p,location:e.target.value}))} placeholder="Barangay / Street / Area" />
                 </div>
-                <div className="bi-field">
-                  <label className="bi-label">Person Bitten (Who Bit) *</label>
+                <div className="bi-field" style={{gridColumn:'1/-1'}}>
+                  <label className="bi-label">Person Bitten *</label>
                   <input className="bi-input" value={form.bittenPerson} onChange={e=>setForm(p=>({...p,bittenPerson:e.target.value}))} placeholder="Full name of victim" />
-                </div>
-                <div className="bi-field">
-                  <label className="bi-label">Pet Owner</label>
-                  <input className="bi-input" value={form.ownerName} onChange={e=>setForm(p=>({...p,ownerName:e.target.value}))} placeholder="Owner name" />
                 </div>
               </div>
 
-              <p className="bi-section" style={{marginTop:8}}>Medical Status</p>
+              <p className="bi-section" style={{marginTop:8}}>Animal Medical Status</p>
               <div className="bi-checkbox-row">
                 <label>
                   <input type="checkbox" checked={form.confirmedRabies} onChange={e => handleRabiesCheck(e.target.checked)} />
                   Confirmed Rabies
-                  {form.confirmedRabies && editing && <span style={{ marginLeft:8, fontSize:11, background:'#fee2e2', color:'#991b1b', padding:'2px 7px', borderRadius:6, fontWeight:700 }}>⚠️ Outbreak will be tracked</span>}
+                  {form.confirmedRabies && <span style={{ marginLeft:8, fontSize:11, background:'#fee2e2', color:'#991b1b', padding:'2px 7px', borderRadius:6, fontWeight:700 }}>⚠️ Outbreak will be tracked</span>}
                 </label>
                 <label style={{marginLeft:20}}>
                   <input type="checkbox" checked={form.vaccinated} onChange={e=>setForm(p=>({...p,vaccinated:e.target.checked}))} />
@@ -588,8 +664,44 @@ export function BitingIncidents({ userRole }: Props) {
                 <textarea className="bi-textarea" rows={3} value={form.remarks} onChange={e=>setForm(p=>({...p,remarks:e.target.value}))} placeholder="Full report details, actions taken, referrals…" />
               </div>
 
+              {/* ── City Health Section — Human Status ── */}
               {editing && (
                 <>
+                  <p className="bi-section purple" style={{marginTop:8}}>🏥 City Health — Human Patient Status</p>
+                  <div style={{background:'#faf5ff',border:'1.5px solid #ede9fe',borderRadius:10,padding:'14px 16px',marginBottom:14}}>
+                    <p style={{fontSize:12,color:'#6b7280',marginBottom:10,margin:'0 0 10px'}}>
+                      To be filled by City Health. Select the current status of the human patient:
+                    </p>
+                    <div className="bi-human-status-grid">
+                      {HUMAN_STATUS_OPTIONS.map(opt => (
+                        <label
+                          key={opt.value}
+                          className={`bi-hs-option ${form.humanStatus === opt.value ? 'selected' : ''}`}
+                          onClick={() => setForm(p => ({ ...p, humanStatus: p.humanStatus === opt.value ? '' : opt.value }))}
+                        >
+                          <input
+                            type="radio"
+                            name="humanStatus"
+                            checked={form.humanStatus === opt.value}
+                            onChange={() => setForm(p => ({ ...p, humanStatus: opt.value }))}
+                          />
+                          <div>
+                            <div style={{fontWeight:700,fontSize:12.5}}>{opt.label}</div>
+                            <div style={{fontSize:11,color:'#9ca3af',fontWeight:400}}>{opt.desc}</div>
+                          </div>
+                        </label>
+                      ))}
+                      {form.humanStatus && (
+                        <button
+                          onClick={() => setForm(p => ({ ...p, humanStatus: '' }))}
+                          style={{gridColumn:'1/-1',height:32,border:'1.5px dashed #e5e7eb',borderRadius:8,background:'transparent',color:'#9ca3af',fontSize:12,cursor:'pointer',fontWeight:600}}
+                        >
+                          Clear Status
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <p className="bi-section" style={{marginTop:8}}>Observation Update</p>
                   <div className="bi-grid">
                     <div className="bi-field">
@@ -600,7 +712,7 @@ export function BitingIncidents({ userRole }: Props) {
                       </select>
                     </div>
                     <div style={{gridColumn:'1/-1'}} className="bi-field">
-                      <label className="bi-label">14-Day Observation Update</label>
+                      <label className="bi-label">14-Day Observation Notes</label>
                       <textarea className="bi-textarea" rows={3} value={form.observationUpdate} onChange={e=>setForm(p=>({...p,observationUpdate:e.target.value}))} placeholder="State of the animal after 14-day observation period…" />
                     </div>
                   </div>
@@ -609,9 +721,10 @@ export function BitingIncidents({ userRole }: Props) {
 
               {!editing && form.incidentDate && (
                 <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:10,padding:'10px 14px',fontSize:12.5,color:'#92400e',marginBottom:12}}>
-                  <strong>14-Day Observation</strong> will be set from <strong>{new Date(form.incidentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong> to&nbsp;
+                  <strong>14-Day Observation</strong> set from&nbsp;
+                  <strong>{new Date(form.incidentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong> to&nbsp;
                   <strong>{new Date(new Date(form.incidentDate).getTime()+14*86400000).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})}</strong>.
-                  The City Vet will be notified. The pet's vaccination status will be flagged this year.
+                  {form.confirmedRabies && <><br/><strong>⚠️ Confirmed Rabies:</strong> You will be prompted to pin the location for outbreak tracking after saving.</>}
                 </div>
               )}
 
@@ -630,10 +743,11 @@ export function BitingIncidents({ userRole }: Props) {
       {rabiesCoordModal && (
         <RabiesCoordModal
           incident={rabiesCoordModal}
-          onClose={() => setRabiesCoordModal(null)}
+          onClose={() => { setRabiesCoordModal(null); setPendingOutbreakIncident(null); }}
           onConfirm={async (lat, lng) => {
             await createRabiesOutbreak(rabiesCoordModal, lat, lng);
             setRabiesCoordModal(null);
+            setPendingOutbreakIncident(null);
           }}
         />
       )}
