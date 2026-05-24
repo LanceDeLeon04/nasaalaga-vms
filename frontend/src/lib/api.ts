@@ -217,6 +217,7 @@ export const api = {
   saveBudgetAIRecs: (data: any) => request('/budget/ai-recommendations', { method: 'POST', body: JSON.stringify(data) }),
   getBudgetAIRecs: (fy = 2025) => request(`/budget/ai-recommendations?fiscal_year=${fy}`),
   updateBudgetRecStatus: (id: string, status: string) => request(`/budget/ai-recommendations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  budgetAIAnalyze: (data: any) => request('/budget/ai-analyze', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export default api;

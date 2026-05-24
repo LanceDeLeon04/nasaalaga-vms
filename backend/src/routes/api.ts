@@ -1700,3 +1700,93 @@ router.put('/budget/ai-recommendations/:id/status', authenticate, async (req: Au
     return res.json({ success: true });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
+
+// POST /budget/ai-analyze — server-side Anthropic proxy (no API key needed in browser)
+router.post('/budget/ai-analyze', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { prompt, fiscal_year } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      // Fallback: generate rule-based recommendations from budget context
+      const fy = fiscal_year || 2025;
+      const [programs, lineItems, expenditures] = await Promise.all([
+        query(`SELECT * FROM budget_programs WHERE fiscal_year=$1 AND is_active=true ORDER BY name`, [fy]),
+        query(`SELECT * FROM budget_line_items WHERE fiscal_year=$1 ORDER BY program_id, name`, [fy]),
+        query(`SELECT be.*, bli.program_id FROM budget_expenditures be LEFT JOIN budget_line_items bli ON be.line_item_id=bli.id`),
+      ]);
+      const recs: any[] = [];
+      const progs = programs.rows;
+      const items = lineItems.rows;
+      for (const prog of progs) {
+        const progItems = items.filter((li: any) => li.program_id === prog.id);
+        const totalAllot = progItems.reduce((s: number, li: any) => s + Number(li.allotment), 0);
+        const totalUsed = progItems.reduce((s: number, li: any) => s + Number(li.utilized), 0);
+        const utilRate = totalAllot > 0 ? totalUsed / totalAllot : 0;
+        if (utilRate > 0.90) {
+          recs.push({
+            id: `REC-${Date.now()}-${prog.id}`,
+            type: 'warning', priority: 'high',
+            title: `${prog.name} near budget cap (${Math.round(utilRate*100)}% utilized)`,
+            narrative: `This program has used ${Math.round(utilRate*100)}% of its allotment. Expenditures should be reviewed or a supplemental budget request filed.`,
+            from_program: prog.name, to_program: null,
+            suggested_pct: 0, suggested_amount: 0,
+            justification: `High utilization rate detected.`,
+            data_points: [`Allotment: ₱${totalAllot.toLocaleString()}`, `Utilized: ₱${totalUsed.toLocaleString()}`],
+            confidence: 85, generated_at: new Date().toISOString(), status: 'pending',
+          });
+        } else if (utilRate < 0.20 && totalAllot > 50000) {
+          recs.push({
+            id: `REC-${Date.now()}-low-${prog.id}`,
+            type: 'reallocation', priority: 'medium',
+            title: `${prog.name} has low utilization (${Math.round(utilRate*100)}%)`,
+            narrative: `Only ${Math.round(utilRate*100)}% of this program's budget has been used. Consider reallocating unused funds to higher-priority programs.`,
+            from_program: prog.name, to_program: null,
+            suggested_pct: 30, suggested_amount: Math.round(totalAllot * 0.30),
+            justification: `Low utilization — funds may be more impactful elsewhere.`,
+            data_points: [`Allotment: ₱${totalAllot.toLocaleString()}`, `Utilized: ₱${totalUsed.toLocaleString()}`],
+            confidence: 72, generated_at: new Date().toISOString(), status: 'pending',
+          });
+        }
+      }
+      if (recs.length === 0) {
+        recs.push({
+          id: `REC-${Date.now()}-ok`,
+          type: 'program', priority: 'low',
+          title: 'Budget utilization appears healthy',
+          narrative: 'All programs are within normal utilization ranges. Continue monitoring monthly and review before end of fiscal year.',
+          from_program: null, to_program: null,
+          suggested_pct: 0, suggested_amount: 0,
+          justification: 'No critical issues detected.',
+          data_points: [`${progs.length} programs reviewed`],
+          confidence: 70, generated_at: new Date().toISOString(), status: 'pending',
+        });
+      }
+      return res.json({ success: true, recommendations: recs, source: 'rule-based' });
+    }
+
+    // Full Anthropic API call
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await response.json() as any;
+    if (!response.ok) return res.status(500).json({ error: data.error?.message || 'Anthropic API error' });
+    const text = (data.content || []).map((c: any) => c.text || '').join('');
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    return res.json({ success: true, recommendations: parsed, source: 'claude' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});

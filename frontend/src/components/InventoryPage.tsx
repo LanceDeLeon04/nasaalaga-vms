@@ -424,7 +424,7 @@ function LogbookModal({ transactions, itemName, onClose }: { transactions: any[]
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
-export default function InventoryPage({ userRole }: Props) {
+export function InventoryPage({ userRole }: Props) {
   const canEdit = ['admin', 'superadmin'].includes(userRole);
   const [tab, setTab] = useState<'overview' | 'medicines' | 'supplies' | 'logbook'>('overview');
   const [medicines, setMedicines] = useState<any[]>([]);
@@ -889,3 +889,5 @@ export default function InventoryPage({ userRole }: Props) {
     </div>
   );
 }
+
+export default InventoryPage;

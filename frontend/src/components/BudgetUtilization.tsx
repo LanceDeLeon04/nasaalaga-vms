@@ -586,26 +586,19 @@ export function BudgetUtilization({ userRole }: Props) {
     try {
       const ctx = await api.getBudgetContext(fy);
       const prompt = buildAIPrompt(ctx);
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-      const data = await response.json();
-      const text = (data.content || []).map((c: any) => c.text || '').join('');
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsed: AIRec[] = JSON.parse(clean);
-      if (Array.isArray(parsed)) {
+      // Route through backend proxy — no API key needed in browser
+      const result = await api.budgetAIAnalyze({ prompt, fiscal_year: fy });
+      const parsed: AIRec[] = result.recommendations || [];
+      if (Array.isArray(parsed) && parsed.length) {
         setRecs(parsed);
         await api.saveBudgetAIRecs({ recommendations: parsed, fiscal_year: fy });
-        showToast(`AI generated ${parsed.length} recommendations`);
+        const source = result.source === 'claude' ? 'Claude AI' : 'Rule-based';
+        showToast(`${source} generated ${parsed.length} recommendation${parsed.length !== 1 ? 's' : ''}`);
+      } else {
+        showToast('No recommendations returned', 'error');
       }
-    } catch (e) {
-      showToast('AI analysis failed. Check API connection.', 'error');
+    } catch (e: any) {
+      showToast(`Analysis failed: ${e.message}`, 'error');
     }
     setAiLoading(false);
   }, [fy, programs]);
