@@ -671,11 +671,35 @@ router.post('/inventory/medicines', authenticate, async (req: AuthRequest, res: 
     const countResult = await query('SELECT COUNT(*) FROM medicine_inventory');
     const count = parseInt(countResult.rows[0].count);
     const newId = `MED-${String(count + 1).padStart(3, '0')}`;
+    const fy = d.fiscalYear || new Date().getFullYear();
+    const qty = d.quantity || 0;
+    const unitCost = d.unitCost || 0;
+    const totalCost = qty * unitCost;
     const result = await query(
-      `INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, manufacture_date, manufacturer, quantity, unit, reorder_level, unit_cost, storage_condition, description, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [newId, d.barcode, d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufactureDate, d.manufacturer, d.quantity || 0, d.unit || 'pieces', d.reorderLevel || 10, d.unitCost || 0, d.storageCondition, d.description, req.user?.username]
+      `INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, manufacture_date, manufacturer, quantity, unit, reorder_level, unit_cost, storage_condition, description, purpose, program_id, line_item_id, fiscal_year, received_by, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+      [newId, d.barcode, d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufactureDate, d.manufacturer, qty, d.unit || 'vials', d.reorderLevel || 10, unitCost, d.storageCondition, d.description, d.purpose || 'program', d.programId || null, d.lineItemId || null, fy, d.receivedBy || null, req.user?.username]
     );
+    // Log IN transaction
+    await query(
+      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes)
+       VALUES ($1,'medicine','IN',$2,0,$2,'New stock received',$3,'purchase',null,$4,$5,$6,$7,$8)`,
+      [newId, qty, req.user?.username, d.name, unitCost, totalCost, d.receivedBy || req.user?.username, d.description || '']
+    );
+    // If linked to a budget line item, add expenditure
+    if (d.lineItemId && totalCost > 0) {
+      await query(
+        `INSERT INTO budget_expenditures(line_item_id,amount,expenditure_type,description,reference_no,vendor,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES($1,$2,'utilized',$3,$4,$5,$6,$7,'inventory',$8,$9,$10)`,
+        [d.lineItemId, totalCost, `Inventory purchase: ${d.name}`, newId, d.manufacturer || '', new Date().toISOString().split('T')[0], req.user?.username, newId, d.name, qty]
+      );
+      await query(`
+        UPDATE budget_line_items SET
+          utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+          updated_at = NOW()
+        WHERE id=$1
+      `, [d.lineItemId]);
+    }
     return res.json({ success: true, medicine: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -686,14 +710,19 @@ router.put('/inventory/medicines/:id', authenticate, async (req: AuthRequest, re
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const d = req.body;
+    const prev = await query('SELECT quantity FROM medicine_inventory WHERE id=$1', [req.params.id]);
+    const prevQty = prev.rows[0]?.quantity || 0;
     const result = await query(
-      `UPDATE medicine_inventory SET name=$1, generic_name=$2, category=$3, type=$4, lot_number=$5, expiry_date=$6, manufacturer=$7, quantity=$8, unit=$9, reorder_level=$10, unit_cost=$11, storage_condition=$12, description=$13, status=$14, updated_at=NOW() WHERE id=$15 RETURNING *`,
-      [d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufacturer, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.storageCondition, d.description, d.status || 'Active', req.params.id]
+      `UPDATE medicine_inventory SET name=$1, generic_name=$2, category=$3, type=$4, lot_number=$5, expiry_date=$6, manufacturer=$7, quantity=$8, unit=$9, reorder_level=$10, unit_cost=$11, storage_condition=$12, description=$13, status=$14, purpose=$15, program_id=$16, line_item_id=$17, fiscal_year=$18, updated_at=NOW() WHERE id=$19 RETURNING *`,
+      [d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufacturer, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.storageCondition, d.description, d.status || 'Active', d.purpose || 'program', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
     );
     // Log transaction
+    const diff = d.quantity - prevQty;
+    const txType = diff > 0 ? 'IN' : diff < 0 ? 'OUT' : 'ADJUST';
     await query(
-      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, reason, performed_by) VALUES ($1,'medicine','update',$2,$3,$4)`,
-      [req.params.id, d.quantity, 'Stock update', req.user?.username]
+      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, item_name, reference_person)
+       VALUES ($1,'medicine',$2,$3,$4,$5,$6,$7,'manual',$8,$9)`,
+      [req.params.id, txType, Math.abs(diff), prevQty, d.quantity, d.reason || 'Manual stock update', req.user?.username, d.name, d.receivedBy || req.user?.username]
     );
     return res.json({ success: true, medicine: result.rows[0] });
   } catch (err: any) {
@@ -728,11 +757,28 @@ router.post('/inventory/supplies', authenticate, async (req: AuthRequest, res: R
     const countResult = await query('SELECT COUNT(*) FROM supplies_inventory');
     const count = parseInt(countResult.rows[0].count);
     const newId = `SUP-${String(count + 1).padStart(3, '0')}`;
+    const fy = d.fiscalYear || new Date().getFullYear();
+    const qty = d.quantity || 0;
+    const unitCost = d.unitCost || 0;
+    const totalCost = qty * unitCost;
     const result = await query(
-      `INSERT INTO supplies_inventory (id, barcode, name, category, type, quantity, unit, reorder_level, unit_cost, supplier, last_restocked, description, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [newId, d.barcode, d.name, d.category, d.type, d.quantity || 0, d.unit || 'pieces', d.reorderLevel || 5, d.unitCost || 0, d.supplier, d.lastRestocked, d.description, req.user?.username]
+      `INSERT INTO supplies_inventory (id, barcode, name, category, type, quantity, unit, reorder_level, unit_cost, supplier, last_restocked, description, purpose, program_id, line_item_id, fiscal_year, received_by, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [newId, d.barcode, d.name, d.category, d.type, qty, d.unit || 'pieces', d.reorderLevel || 5, unitCost, d.supplier, d.lastRestocked, d.description, d.purpose || 'office', d.programId || null, d.lineItemId || null, fy, d.receivedBy || null, req.user?.username]
     );
+    await query(
+      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, item_name, unit_cost, total_cost, reference_person)
+       VALUES ($1,'supply','IN',$2,0,$2,'New stock received',$3,'purchase',$4,$5,$6,$7)`,
+      [newId, qty, req.user?.username, d.name, unitCost, totalCost, d.receivedBy || req.user?.username]
+    );
+    if (d.lineItemId && totalCost > 0) {
+      await query(
+        `INSERT INTO budget_expenditures(line_item_id,amount,expenditure_type,description,reference_no,vendor,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES($1,$2,'utilized',$3,$4,$5,$6,$7,'inventory',$8,$9,$10)`,
+        [d.lineItemId, totalCost, `Inventory purchase: ${d.name}`, newId, d.supplier || '', new Date().toISOString().split('T')[0], req.user?.username, newId, d.name, qty]
+      );
+      await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [d.lineItemId]);
+    }
     return res.json({ success: true, supply: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -744,8 +790,8 @@ router.put('/inventory/supplies/:id', authenticate, async (req: AuthRequest, res
   try {
     const d = req.body;
     const result = await query(
-      `UPDATE supplies_inventory SET name=$1, category=$2, type=$3, quantity=$4, unit=$5, reorder_level=$6, unit_cost=$7, supplier=$8, last_restocked=$9, description=$10, status=$11, updated_at=NOW() WHERE id=$12 RETURNING *`,
-      [d.name, d.category, d.type, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.supplier, d.lastRestocked, d.description, d.status || 'Active', req.params.id]
+      `UPDATE supplies_inventory SET name=$1, category=$2, type=$3, quantity=$4, unit=$5, reorder_level=$6, unit_cost=$7, supplier=$8, last_restocked=$9, description=$10, status=$11, purpose=$12, program_id=$13, line_item_id=$14, fiscal_year=$15, updated_at=NOW() WHERE id=$16 RETURNING *`,
+      [d.name, d.category, d.type, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.supplier, d.lastRestocked, d.description, d.status || 'Active', d.purpose || 'office', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
     );
     return res.json({ success: true, supply: result.rows[0] });
   } catch (err: any) {
@@ -766,11 +812,83 @@ router.delete('/inventory/supplies/:id', authenticate, async (req: AuthRequest, 
 // ── Inventory: Transactions log ────────────────────────────────────────────
 router.get('/inventory/transactions', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM inventory_transactions ORDER BY created_at DESC LIMIT 100');
+    const limit = parseInt(req.query.limit as string) || 200;
+    const itemId = req.query.item_id as string;
+    let q = 'SELECT * FROM inventory_transactions';
+    const params: any[] = [];
+    if (itemId) { q += ' WHERE item_id=$1'; params.push(itemId); }
+    q += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
+    params.push(limit);
+    const result = await query(q, params);
     return res.json({ success: true, transactions: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// POST /inventory/movement — manual IN/OUT with reference person
+router.post('/inventory/movement', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { item_id, item_type, transaction_type, quantity, reason, reference_person, notes, source_type, source_id } = req.body;
+    if (!item_id || !transaction_type || !quantity) return res.status(400).json({ error: 'Missing required fields' });
+    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const prev = await query(`SELECT quantity, name, unit_cost FROM ${table} WHERE id=$1`, [item_id]);
+    if (!prev.rows.length) return res.status(404).json({ error: 'Item not found' });
+    const prevQty = prev.rows[0].quantity;
+    const itemName = prev.rows[0].name;
+    const unitCost = parseFloat(prev.rows[0].unit_cost) || 0;
+    let newQty = prevQty;
+    if (transaction_type === 'IN') newQty = prevQty + parseInt(quantity);
+    else if (transaction_type === 'OUT') {
+      newQty = prevQty - parseInt(quantity);
+      if (newQty < 0) return res.status(400).json({ error: 'Insufficient stock' });
+    }
+    await query(`UPDATE ${table} SET quantity=$1, updated_at=NOW() WHERE id=$2`, [newQty, item_id]);
+    const totalCost = unitCost * parseInt(quantity);
+    await query(
+      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [item_id, item_type || 'medicine', transaction_type, parseInt(quantity), prevQty, newQty, reason || '', req.user?.username, source_type || 'manual', source_id || null, itemName, unitCost, totalCost, reference_person || '', notes || '']
+    );
+    return res.json({ success: true, new_quantity: newQty });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /inventory/outbreak-dispatch
+router.post('/inventory/outbreak-dispatch', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin','cityHealth'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { outbreak_id, assigned_person, items } = req.body;
+    if (!items || !Array.isArray(items) || !items.length) return res.status(400).json({ error: 'No items provided' });
+    const dispatched: any[] = [];
+    for (const item of items) {
+      const table = item.item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+      const lookup = item.barcode
+        ? await query(`SELECT * FROM ${table} WHERE barcode=$1`, [item.barcode])
+        : await query(`SELECT * FROM ${table} WHERE id=$1`, [item.item_id]);
+      if (!lookup.rows.length) continue;
+      const inv = lookup.rows[0];
+      const qty = parseInt(item.quantity) || 1;
+      const newQty = Math.max(0, inv.quantity - qty);
+      await query(`UPDATE ${table} SET quantity=$1, updated_at=NOW() WHERE id=$2`, [newQty, inv.id]);
+      await query(
+        `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes)
+         VALUES ($1,$2,'OUT',$3,$4,$5,$6,$7,'outbreak',$8,$9,$10,$11,$12,$13)`,
+        [inv.id, item.item_type || 'medicine', qty, inv.quantity, newQty, `Dispatched for outbreak ${outbreak_id}`, req.user?.username, outbreak_id, inv.name, inv.unit_cost || 0, (inv.unit_cost || 0) * qty, assigned_person || '', 'Outbreak dispatch']
+      );
+      dispatched.push({ id: inv.id, name: inv.name, quantity: qty, unit: inv.unit });
+    }
+    if (outbreak_id) {
+      const ob = await query('SELECT medicines_dispatched FROM outbreak_records WHERE id=$1', [outbreak_id]);
+      if (ob.rows.length) {
+        const existing = ob.rows[0].medicines_dispatched || [];
+        const updated = [...existing, { dispatched_at: new Date().toISOString(), assigned_to: assigned_person, items: dispatched }];
+        await query('UPDATE outbreak_records SET medicines_dispatched=$1, date_updated=NOW() WHERE id=$2', [JSON.stringify(updated), outbreak_id]);
+      }
+    }
+    return res.json({ success: true, dispatched });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────

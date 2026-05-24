@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   AlertTriangle, MapPin, Filter, TrendingUp, Search, Map, FileText,
   Plus, RefreshCw, CheckCircle, Clock, User, Edit3, X, ChevronDown,
@@ -270,10 +270,54 @@ function UpdateModal({ record, onClose, onSave }: {
     timetable: record.timetable || '',
     newUpdate: '',
   });
+  const [medicines, setMedicines] = useState<any[]>([]);
+  const [dispatchItems, setDispatchItems] = useState<Array<{ item_id: string; item_type: string; quantity: number; barcode: string; name: string; unit: string }>>([]);
+  const [dispatchBarcode, setDispatchBarcode] = useState('');
+  const [dispatchLoading, setDispatchLoading] = useState(false);
+
+  useEffect(() => {
+    api.getMedicines().then(r => setMedicines(r.medicines || [])).catch(() => {});
+  }, []);
+
+  const lookupBarcode = async (barcode: string) => {
+    if (!barcode.trim()) return;
+    const found = medicines.find((m: any) => m.barcode === barcode.trim());
+    if (found) {
+      addDispatchItem(found, 'medicine');
+    } else {
+      try {
+        const r = await api.lookupVaccineBarcode(barcode);
+        if (r.medicine) addDispatchItem(r.medicine, 'medicine');
+        else alert('No item found with that barcode');
+      } catch { alert('Barcode not found'); }
+    }
+    setDispatchBarcode('');
+  };
+
+  const addDispatchItem = (item: any, type: string) => {
+    setDispatchItems(prev => {
+      const ex = prev.find(p => p.item_id === item.id);
+      if (ex) return prev.map(p => p.item_id === item.id ? { ...p, quantity: p.quantity + 1 } : p);
+      return [...prev, { item_id: item.id, item_type: type, quantity: 1, barcode: item.barcode || '', name: item.name, unit: item.unit || 'units' }];
+    });
+  };
 
   const handleSave = async () => {
     setSaving(true);
-    try { await onSave(form); onClose(); }
+    try {
+      await onSave(form);
+      // Dispatch medicines if any
+      if (dispatchItems.length > 0 && form.assigned_to) {
+        try {
+          await api.outbreakDispatch({
+            outbreak_id: record.id,
+            assigned_person: form.assigned_to,
+            items: dispatchItems,
+          });
+        } catch (e: any) { alert('Outbreak saved but medicine dispatch failed: ' + e.message); }
+      }
+      onClose();
+    }
     catch (e) { alert('Failed to save update'); }
     finally { setSaving(false); }
   };
@@ -348,6 +392,43 @@ function UpdateModal({ record, onClose, onSave }: {
               ))}
             </div>
           )}
+
+          {/* Medicine Dispatch */}
+          <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7c3aed', borderBottom: '1.5px solid #ede9fe', paddingBottom: 6, marginBottom: 14 }}>Dispatch Medicines / Supplies (Optional)</p>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <input value={dispatchBarcode} onChange={e => setDispatchBarcode(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && lookupBarcode(dispatchBarcode)}
+                placeholder="Scan barcode or type item barcode..."
+                style={{ flex: 1, height: 38, border: '1.5px solid #ddd6fe', borderRadius: 9, padding: '0 10px', fontSize: 13, outline: 'none' }} />
+              <button onClick={() => lookupBarcode(dispatchBarcode)}
+                style={{ height: 38, padding: '0 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Lookup</button>
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 6 }}>Or select from inventory:</p>
+              <select onChange={e => { const m = medicines.find((x: any) => x.id === e.target.value); if (m) addDispatchItem(m, 'medicine'); e.target.value = ''; }}
+                style={{ width: '100%', height: 36, border: '1.5px solid #e5e7eb', borderRadius: 8, padding: '0 8px', fontSize: 12.5, outline: 'none', background: '#fafafa' }}>
+                <option value="">— Select item to dispatch —</option>
+                {medicines.map((m: any) => <option key={m.id} value={m.id}>{m.name} (Stock: {m.quantity} {m.unit})</option>)}
+              </select>
+            </div>
+            {dispatchItems.length > 0 && (
+              <div style={{ background: '#faf5ff', border: '1.5px solid #ddd6fe', borderRadius: 10, padding: '10px 12px' }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', marginBottom: 8 }}>ITEMS TO DISPATCH (assigned to: <strong>{form.assigned_to || 'TBD'}</strong>)</p>
+                {dispatchItems.map((di, i) => (
+                  <div key={di.item_id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ flex: 1, fontSize: 12.5, color: '#374151' }}>{di.name}</span>
+                    <input type="number" min={1} value={di.quantity}
+                      onChange={e => setDispatchItems(prev => prev.map((p, pi) => pi === i ? { ...p, quantity: parseInt(e.target.value) || 1 } : p))}
+                      style={{ width: 60, height: 30, border: '1.5px solid #ddd6fe', borderRadius: 6, padding: '0 6px', fontSize: 12, textAlign: 'center', outline: 'none' }} />
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{di.unit}</span>
+                    <button onClick={() => setDispatchItems(prev => prev.filter((_, pi) => pi !== i))}
+                      style={{ width: 24, height: 24, background: '#fee2e2', border: 'none', borderRadius: 6, color: '#dc2626', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Resolve warning */}
           {form.status === 'Resolved' && record.status !== 'Resolved' && (

@@ -118,7 +118,7 @@ function ProgramModal({ program, onClose, onSave }: { program?: Program | null; 
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Fiscal Year</label>
               <select value={form.fiscal_year} onChange={e => set('fiscal_year', Number(e.target.value))}
                 className="mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]/30 bg-white">
-                {[2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
+                {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
               </select>
             </div>
           </div>
@@ -337,11 +337,19 @@ function ExpenditureModal({ lineItem, onClose, onSave }: { lineItem: LineItem; o
                       {e.reference_no && ` · ${e.reference_no}`}
                       {e.vendor && ` · ${e.vendor}`}
                       {e.description && ` · ${e.description}`}
+                      {(e as any).source_type && (e as any).source_type !== 'manual' && (
+                        <span className="ml-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-xs font-semibold">📦 From Inventory: {(e as any).inventory_item_name}</span>
+                      )}
                     </div>
                   </div>
-                  <button onClick={() => handleDelete(e.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {!(e as any).inventory_item_id && (
+                    <button onClick={() => handleDelete(e.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {(e as any).inventory_item_id && (
+                    <span className="text-xs text-indigo-400 px-2" title="Auto-deducted from inventory purchase">🔒 Auto</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -721,7 +729,7 @@ export function BudgetUtilization({ userRole }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <select value={fy} onChange={e => setFy(Number(e.target.value))}
             className="border border-gray-200 text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]/30 bg-white">
-            {[2024, 2025, 2026].map(y => <option key={y}>{y}</option>)}
+            {[2023, 2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
           </select>
           <button onClick={() => generateReport(programs, fy)}
             className="flex items-center gap-1.5 border border-gray-200 text-gray-600 text-sm font-semibold px-3 py-2 rounded-xl hover:bg-gray-50">

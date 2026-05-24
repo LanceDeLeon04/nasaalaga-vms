@@ -158,7 +158,14 @@ export const api = {
     request('/inventory/supplies/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSupply: (id: string) =>
     request('/inventory/supplies/' + id, { method: 'DELETE' }),
-  getInventoryTransactions: () => request('/inventory/transactions'),
+  getInventoryTransactions: (params?: { item_id?: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.item_id) p.set('item_id', params.item_id);
+    if (params?.limit) p.set('limit', String(params.limit));
+    return request('/inventory/transactions?' + p.toString());
+  },
+  inventoryMovement: (data: any) => request('/inventory/movement', { method: 'POST', body: JSON.stringify(data) }),
+  outbreakDispatch: (data: any) => request('/inventory/outbreak-dispatch', { method: 'POST', body: JSON.stringify(data) }),
   lookupVaccineBarcode: (barcode: string) => request('/inventory/lookup-barcode/' + encodeURIComponent(barcode)),
   getPetById: (id: string) => request('/pets/lookup/' + id),
   getVaccinationHistory: (petId: string) => request('/vaccination-history/' + petId),

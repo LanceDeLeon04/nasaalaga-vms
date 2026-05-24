@@ -910,8 +910,57 @@ export async function migrateBudget() {
   }
 }
 
+async function migrateInventoryV2() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Add purpose and related fields to medicine_inventory
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS purpose VARCHAR(50) DEFAULT 'program'`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS program_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS line_item_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS fiscal_year INTEGER`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS received_by VARCHAR(255)`);
+
+    // Add purpose fields to supplies_inventory
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS purpose VARCHAR(50) DEFAULT 'office'`);
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS program_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS line_item_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS fiscal_year INTEGER`);
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS received_by VARCHAR(255)`);
+
+    // Expand inventory_transactions with richer log fields
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS reference_person VARCHAR(255)`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'manual'`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS source_id VARCHAR(100)`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS item_name VARCHAR(255)`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,2) DEFAULT 0`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12,2) DEFAULT 0`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS notes TEXT`);
+
+    // Add medicines_dispatched to outbreak_records for tracking what was given out
+    await client.query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS medicines_dispatched JSONB DEFAULT '[]'`);
+
+    // Budget: track inventory-sourced expenditures 
+    await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'manual'`);
+    await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS inventory_item_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS inventory_item_name VARCHAR(255)`);
+    await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS quantity_used INTEGER DEFAULT 0`);
+
+    await client.query('COMMIT');
+    console.log('✅ Inventory V2 migration complete');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Inventory V2 migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 createTables()
   .then(() => migrateBudget())
+  .then(() => migrateInventoryV2())
   .then(() => {
     console.log('Migration complete');
     process.exit(0);
