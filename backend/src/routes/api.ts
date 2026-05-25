@@ -328,7 +328,7 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await query(
-      'SELECT id, email, username, role, owner_id, barangay, verified, created_at, phone, user_type, can_add_livestock, can_add_pets, avatar FROM users ORDER BY created_at'
+      'SELECT id, email, username, role, owner_id, barangay, verified, created_at FROM users ORDER BY created_at'
     );
     return res.json({ success: true, totalUsers: result.rows.length, users: result.rows });
   } catch (err: any) {
@@ -339,12 +339,12 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
 router.put('/users/:id', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { username, role, barangay, verified, user_type } = req.body;
-    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth','both'];
+    const { username, role, barangay, verified } = req.body;
+    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth'];
     if (role && !validRoles.includes(role)) return res.status(400).json({ error: `Invalid role: ${role}` });
     const result = await query(
-      `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, user_type=COALESCE($5,user_type), updated_at=NOW() WHERE id=$6 RETURNING id, email, username, role, barangay, verified, user_type`,
-      [username, role, barangay, verified, user_type || null, req.params.id]
+      `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, updated_at=NOW() WHERE id=$5 RETURNING id, email, username, role, barangay, verified`,
+      [username, role, barangay, verified, req.params.id]
     );
     logAudit(req, 'Update', 'User', req.params.id, { username, role });
     return res.json({ success: true, user: result.rows[0] });
@@ -1016,7 +1016,55 @@ router.put('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: 
 router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
+    const { justification } = req.body || {};
     await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
+    // Audit log the deletion with justification
+    if (justification) {
+      await query(
+        `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [req.user?.id||'', req.user?.username||'', 'DELETE', 'biting_incident', req.params.id,
+         JSON.stringify({ justification }), req.ip]
+      ).catch(() => {});
+    }
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Outbreak by-incident helpers ──────────────────────────────────────────
+
+router.delete('/outbreaks/by-incident/:incidentId', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query(`DELETE FROM outbreak_records WHERE source_id=$1`, [req.params.incidentId]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/outbreaks/by-incident/:incidentId', authenticate, async (req: AuthRequest, res: Response) => {
+  const allowed = ['admin','superadmin','cityHealth'];
+  if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { status, resolution_notes } = req.body;
+    const updateNote = resolution_notes ? JSON.stringify([{
+      id: `UPD-${Date.now()}`,
+      text: resolution_notes,
+      author: req.user?.username || 'System',
+      timestamp: new Date().toISOString(),
+    }]) : null;
+    await query(
+      `UPDATE outbreak_records SET
+         status=$1,
+         resolve_date=CASE WHEN $1='Resolved' THEN NOW() ELSE resolve_date END,
+         updates=CASE WHEN $2::jsonb IS NOT NULL THEN updates || $2::jsonb ELSE updates END,
+         date_updated=NOW()
+       WHERE source_id=$3`,
+      [status || 'Resolved', updateNote, req.params.incidentId]
+    );
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1890,125 +1938,3 @@ router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: Auth
     return res.json({ success: true });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MY PROFILE ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-// GET /profile/me
-router.get('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
-  try {
-    const result = await query(
-      `SELECT id, email, phone, username, role, barangay, address, verified, avatar,
-              calacazen_id, household_number, owner_id, can_add_livestock, can_add_pets,
-              user_type, created_at, updated_at
-       FROM users WHERE id=$1`,
-      [req.user?.id]
-    );
-    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
-    return res.json(result.rows[0]);
-  } catch (err: any) { return res.status(500).json({ error: err.message }); }
-});
-
-// PUT /profile/me
-router.put('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
-  try {
-    const { username, phone, barangay, address, calacazen_id, household_number, avatar } = req.body;
-    const result = await query(
-      `UPDATE users SET
-        username=COALESCE($1,username),
-        phone=COALESCE($2,phone),
-        barangay=COALESCE($3,barangay),
-        address=COALESCE($4,address),
-        calacazen_id=COALESCE($5,calacazen_id),
-        household_number=COALESCE($6,household_number),
-        avatar=COALESCE($7,avatar),
-        updated_at=NOW()
-       WHERE id=$8
-       RETURNING id, email, phone, username, role, barangay, address, avatar, calacazen_id, household_number`,
-      [username||null, phone||null, barangay||null, address||null, calacazen_id||null, household_number||null, avatar||null, req.user?.id]
-    );
-    logAudit(req, 'UPDATE', 'users', req.user?.id, { fields: Object.keys(req.body) });
-    return res.json(result.rows[0]);
-  } catch (err: any) { return res.status(500).json({ error: err.message }); }
-});
-
-// PUT /profile/change-password
-router.put('/profile/change-password', authenticate, async (req: AuthRequest, res: Response) => {
-  const bcrypt = require('bcrypt');
-  try {
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing fields' });
-    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
-    const user = await query('SELECT password_hash FROM users WHERE id=$1', [req.user?.id]);
-    if (!user.rows.length) return res.status(404).json({ error: 'User not found' });
-
-    const ok = await bcrypt.compare(currentPassword, user.rows[0].password_hash);
-    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
-
-    const hash = await bcrypt.hash(newPassword, 10);
-    await query('UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2', [hash, req.user?.id]);
-    logAudit(req, 'CHANGE_PASSWORD', 'users', req.user?.id);
-    return res.json({ success: true });
-  } catch (err: any) { return res.status(500).json({ error: err.message }); }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ADMIN USER CREATION (BAHW, Pet Owner, Livestock, Both)
-// ═══════════════════════════════════════════════════════════════════════════
-
-router.post('/admin/create-user', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
-  const bcrypt = require('bcrypt');
-  const { v4: uuidv4 } = require('uuid');
-  try {
-    const { email, username, password, role, barangay, address, phone, user_type, can_add_livestock, can_add_pets } = req.body;
-    if (!email || !username || !password || !role) return res.status(400).json({ error: 'Missing required fields' });
-
-    const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
-    if (existing.rows.length) return res.status(400).json({ error: 'Email already in use' });
-
-    const countResult = await query('SELECT COUNT(*) FROM users');
-    const count = parseInt(countResult.rows[0].count);
-    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
-    const ownerId = `OWNER-${uuidv4().slice(0,8).toUpperCase()}`;
-    const hash = await bcrypt.hash(password, 10);
-
-    // Determine effective role
-    let effectiveRole = role;
-    let effectiveUserType = user_type || role;
-    if (role === 'both') {
-      effectiveRole = 'petOwner'; // base role is petOwner, both flag is in user_type
-      effectiveUserType = 'both';
-    }
-
-    await query(
-      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, user_type, can_add_livestock, can_add_pets, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12,NOW(),NOW())`,
-      [userId, email.toLowerCase(), phone||null, hash, username, effectiveRole, ownerId, barangay||null, address||null,
-       effectiveUserType, can_add_livestock||false, can_add_pets||false]
-    );
-
-    logAudit(req, 'CREATE', 'users', userId, { role: effectiveRole, user_type: effectiveUserType, created_by: req.user?.username });
-    return res.json({ success: true, userId, message: `Account created for ${username}` });
-  } catch (err: any) { return res.status(500).json({ error: err.message }); }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// CROSS-ACCESS CONTROL (tickbox for livestock/pet cross-access)
-// ═══════════════════════════════════════════════════════════════════════════
-
-router.put('/users/:id/access-flags', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
-  try {
-    const { can_add_livestock, can_add_pets } = req.body;
-    await query(
-      'UPDATE users SET can_add_livestock=$1, can_add_pets=$2, updated_at=NOW() WHERE id=$3',
-      [!!can_add_livestock, !!can_add_pets, req.params.id]
-    );
-    logAudit(req, 'UPDATE_ACCESS', 'users', req.params.id, { can_add_livestock, can_add_pets });
-    return res.json({ success: true });
-  } catch (err: any) { return res.status(500).json({ error: err.message }); }
-});
-

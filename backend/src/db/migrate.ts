@@ -31,10 +31,6 @@ const createTables = async () => {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS calacazen_id VARCHAR(100);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS household_number VARCHAR(100);`);
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS temp_id VARCHAR(100);`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type VARCHAR(50);`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_add_livestock BOOLEAN DEFAULT false;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_add_pets BOOLEAN DEFAULT false;`);
 
     // OTP store table
     await client.query(`

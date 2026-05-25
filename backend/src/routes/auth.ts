@@ -68,13 +68,6 @@ router.post('/login', async (req: Request, res: Response) => {
       role: user.role,
       ownerId: user.owner_id,
       email: user.email,
-      barangay: user.barangay || null,
-      phone: user.phone || null,
-      address: user.address || null,
-      avatar: user.avatar || null,
-      user_type: user.user_type || user.role,
-      can_add_livestock: user.can_add_livestock || false,
-      can_add_pets: user.can_add_pets || false,
     };
 
     // Log successful login
@@ -230,7 +223,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
 // ── Signup ─────────────────────────────────────────────────────────────────
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { email, phone, password, username, barangay, address, temporaryId, calacazenId, householdNumber, userType } = req.body;
+    const { email, phone, password, username, barangay, address, temporaryId, calacazenId, householdNumber } = req.body;
     const key = email ? email.toLowerCase() : phone;
 
     const otpResult = await query('SELECT * FROM otp_store WHERE key=$1 AND verified=true', [key]);
@@ -245,17 +238,11 @@ router.post('/signup', async (req: Request, res: Response) => {
     const ownerId = temporaryId || `OWNER-${uuidv4().slice(0, 8).toUpperCase()}`;
     const hash = await bcrypt.hash(password, 10);
 
-    const resolvedUserType = userType || 'petOwner';
-    let resolvedRole = 'petOwner';
-    if (resolvedUserType === 'livestockManager') resolvedRole = 'livestockManager';
-    const canAddLivestock = resolvedUserType === 'livestockManager' || resolvedUserType === 'both';
-    const canAddPets = resolvedUserType === 'petOwner' || resolvedUserType === 'both';
-
     await query(
-      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, calacazen_id, household_number, temp_id, user_type, can_add_livestock, can_add_pets)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12,$13,$14,$15)`,
-      [userId, key, phone || null, hash, username, resolvedRole, ownerId, barangay || null, address || null,
-       calacazenId || null, householdNumber || null, temporaryId || null, resolvedUserType, canAddLivestock, canAddPets]
+      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, calacazen_id, household_number, temp_id)
+       VALUES ($1,$2,$3,$4,$5,'owner',$6,$7,$8,true,$9,$10,$11)`,
+      [userId, key, phone || null, hash, username, ownerId, barangay || null, address || null,
+       calacazenId || null, householdNumber || null, temporaryId || null]
     );
 
     // If a temporaryId was supplied, link all pets that carry that temp_id to this new user
@@ -270,7 +257,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     await query('DELETE FROM otp_store WHERE key=$1', [key]);
 
-    const payload = { id: userId, username, role: resolvedRole, ownerId, userType: resolvedUserType };
+    const payload = { id: userId, username, role: 'owner', ownerId };
     return res.json({ success: true, user: payload, token: signToken(payload) });
   } catch (err: any) {
     console.error('[Signup]', err);

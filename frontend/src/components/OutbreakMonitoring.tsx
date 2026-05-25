@@ -5,6 +5,7 @@ import {
   ChevronUp, Activity, Layers, Eye, Calendar, Syringe, Shield,
   BarChart3, ArrowRight, Bell, Info, Tag, Crosshair
 } from 'lucide-react';
+import { api } from '../lib/api';
 
 // ── TYPES ──────────────────────────────────────────────────────────────────
 

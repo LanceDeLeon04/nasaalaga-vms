@@ -13,17 +13,18 @@ export function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Check if user is logged in (stored in sessionStorage)
     const storedUser = sessionStorage.getItem('nasaalaga_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
+      // No user logged in, redirect to login
       navigate('/');
     }
   }, [navigate]);
 
   const handleLogout = () => {
     sessionStorage.removeItem('nasaalaga_user');
-    sessionStorage.removeItem('nasaalaga_token');
     setUser(null);
     navigate('/');
   };
@@ -39,30 +40,19 @@ export function Dashboard() {
     );
   }
 
-  const u = user as any;
-  const isAdmin = user.role === 'admin' || user.role === 'superadmin';
-  const isBahw = user.role === 'bahw';
-  const isCityHealth = user.role === 'cityHealth';
-  const isGuest = user.role === 'guest';
-  // Livestock-only: role is livestockManager AND cannot add pets AND not 'both'
-  const isLivestockOnly = user.role === 'livestockManager' && !u.can_add_pets && u.user_type !== 'both';
-  // Pet owner (default for petOwner, owner, both, or livestockManager with pet access)
-  const isPetOwnerOrBoth = user.role === 'petOwner' || user.role === 'owner' ||
-    u.user_type === 'both' || (user.role === 'livestockManager' && u.can_add_pets);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {isAdmin ? (
+      {user.role === 'admin' || user.role === 'superadmin' ? (
         <AdminDashboard user={user} onLogout={handleLogout} />
-      ) : isBahw ? (
+      ) : user.role === 'bahw' ? (
         <BAHWDashboard user={user} onLogout={handleLogout} />
-      ) : isCityHealth ? (
+      ) : user.role === 'cityHealth' ? (
         <CityHealthDashboard user={user} onLogout={handleLogout} />
-      ) : isLivestockOnly ? (
-        <LivestockOwnerDashboard user={user} onLogout={handleLogout} />
-      ) : isPetOwnerOrBoth ? (
+      ) : user.role === 'petOwner' || user.role === 'owner' ? (
         <PetOwnerDashboard user={user} onLogout={handleLogout} />
-      ) : isGuest ? (
+      ) : user.role === 'livestockManager' ? (
+        <LivestockOwnerDashboard user={user} onLogout={handleLogout} />
+      ) : user.role === 'guest' ? (
         <GuestDashboard user={user} onLogout={handleLogout} />
       ) : null}
     </div>

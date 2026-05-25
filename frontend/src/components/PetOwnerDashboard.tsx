@@ -9,8 +9,6 @@ import { PetPreRegistration } from './PetPreRegistration';
 import { VaccinationCard } from './VaccinationCard';
 import { api } from '../lib/api';
 import type { User as UserType } from '../App';
-import { MyProfile } from './MyProfile';
-import { LivestockManagement } from './LivestockManagement';
 
 
 interface PetOwnerDashboardProps {
@@ -71,7 +69,7 @@ interface Notification {
 }
 
 export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'livestock'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound'>('dashboard');
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [showPetDetails, setShowPetDetails] = useState(false);
   const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
@@ -741,7 +739,33 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
   );
 
   const renderProfile = () => (
-    <MyProfile user={user} />
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-1">Profile</h2>
+        <p className="text-gray-600">Manage your account information</p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Name</label>
+            <p className="font-medium text-gray-800">{user.username}</p>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Owner ID</label>
+            <p className="font-medium text-gray-800">{user.ownerId}</p>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Role</label>
+            <p className="font-medium text-gray-800 capitalize">Pet Owner</p>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Registered Pets</label>
+            <p className="font-medium text-gray-800">{pets.length}</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 
   const renderNotifications = () => (
@@ -857,7 +881,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
+      <Header user={user} onLogout={onLogout} />
       
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="md:hidden mb-4">
@@ -940,16 +964,6 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               >
                 Profile
               </button>
-              {(user as any).can_add_livestock && (
-                <button
-                  onClick={() => { setActiveSection('livestock'); setIsMobileMenuOpen(false); }}
-                  className={`w-full px-4 py-3 text-left text-sm font-medium border-t border-gray-200 ${
-                    activeSection === 'livestock' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  🐄 My Livestock
-                </button>
-              )}
             </div>
           )}
         </div>
@@ -1019,18 +1033,6 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
             >
               Profile
             </button>
-            {(user as any).can_add_livestock && (
-              <button
-                onClick={() => setActiveSection('livestock')}
-                className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
-                  activeSection === 'livestock'
-                    ? 'border-[#2B5EA6] text-[#2B5EA6]'
-                    : 'border-transparent text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                🐄 Livestock
-              </button>
-            )}
           </div>
         </div>
 
@@ -1040,7 +1042,6 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         {activeSection === 'notifications' && renderNotifications()}
         {activeSection === 'cvoservices' && renderCVOServices()}
         {activeSection === 'profile' && renderProfile()}
-        {activeSection === 'livestock' && <LivestockManagement />}
       </div>
 
       {showReportLostModal && (

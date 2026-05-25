@@ -4,7 +4,6 @@ import { Footer } from './Footer';
 import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
-import { MyProfile } from './MyProfile';
 
 interface LivestockOwnerDashboardProps {
   user: UserType;
@@ -385,8 +384,77 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
   );
 
   const renderProfile = () => (
-    <MyProfile user={user} />
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-gray-800 mb-1">My Profile</h2>
+        <p className="text-gray-600">View and manage your account information</p>
+      </div>
+
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="w-20 h-20 bg-gradient-to-br from-[#2B5EA6] to-[#60A85C] rounded-full flex items-center justify-center">
+              <User className="w-10 h-10 text-white" />
+            </div>
+            <div>
+              <h3 className="text-gray-800 font-medium">{user.username}</h3>
+              <p className="text-sm text-gray-500">Livestock Manager</p>
+              <p className="text-sm text-gray-500">ID: {user.ownerId}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Username</label>
+            <input
+              type="text"
+              value={user.username}
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Owner ID</label>
+            <input
+              type="text"
+              value={user.ownerId || ''}
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Role</label>
+            <input
+              type="text"
+              value="Livestock Manager"
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Total Animals</label>
+            <input
+              type="text"
+              value={totalAnimals}
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Registered Livestock Types</label>
+            <input
+              type="text"
+              value={livestock.length}
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
+
   const renderNotifications = () => (
     <div className="space-y-6">
       <div>
@@ -422,7 +490,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
+      <Header user={user} onLogout={onLogout} />
       
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Navigation */}

@@ -1447,7 +1447,7 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
 import { BitingIncidents } from './BitingIncidents';
 import { VaccinationCard } from './VaccinationCard';
 
-export function PetRegistration({ userRole, barangayFilter }: { userRole?: string; barangayFilter?: string } = {}) {
+export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [reports, setReports] = useState<LFReport[]>([]);
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);

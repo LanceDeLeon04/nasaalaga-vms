@@ -105,6 +105,27 @@ const S = `
   .bi-hs-option:hover { border-color:#7c3aed; background:#faf5ff; }
   .bi-hs-option.selected { border-color:#7c3aed; background:#ede9fe; color:#5b21b6; }
   .bi-hs-option input { accent-color:#7c3aed; width:15px; height:15px; flex-shrink:0; }
+  .bi-del-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .bi-del-modal { background:#fff; border-radius:18px; width:100%; max-width:480px; box-shadow:0 30px 80px rgba(0,0,0,.25); animation:popIn .25s cubic-bezier(.22,1,.36,1) both; padding:28px 28px 22px; }
+  .bi-del-icon { width:52px; height:52px; border-radius:50%; background:#fee2e2; display:flex; align-items:center; justify-content:center; font-size:24px; margin:0 auto 14px; }
+  .bi-del-title { font-size:17px; font-weight:900; color:#1f2937; text-align:center; margin-bottom:6px; }
+  .bi-del-sub   { font-size:13px; color:#6b7280; text-align:center; margin-bottom:18px; line-height:1.5; }
+  .bi-del-label { font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; display:block; }
+  .bi-del-textarea { width:100%; border:1.5px solid #e5e7eb; border-radius:9px; background:#f9fafb; font-size:13.5px; padding:9px 11px; resize:none; font-family:inherit; outline:none; transition:border-color .18s; box-sizing:border-box; }
+  .bi-del-textarea:focus { border-color:#dc2626; background:#fff; box-shadow:0 0 0 3px rgba(220,38,38,.08); }
+  .bi-del-actions { display:flex; gap:10px; margin-top:16px; }
+  .bi-del-cancel  { flex:1; height:42px; border:1.5px solid #e5e7eb; border-radius:10px; background:#fff; color:#374151; font-size:14px; font-weight:700; cursor:pointer; }
+  .bi-del-confirm { flex:1; height:42px; border:none; border-radius:10px; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; font-size:14px; font-weight:800; cursor:pointer; transition:transform .18s; }
+  .bi-del-confirm:disabled { background:#d1d5db; color:#9ca3af; cursor:not-allowed; }
+  .bi-ob-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .bi-ob-modal   { background:#fff; border-radius:18px; width:100%; max-width:460px; box-shadow:0 30px 80px rgba(0,0,0,.25); animation:popIn .25s cubic-bezier(.22,1,.36,1) both; padding:28px 28px 22px; }
+  .bi-ob-icon    { width:52px; height:52px; border-radius:50%; background:#fef3c7; display:flex; align-items:center; justify-content:center; font-size:26px; margin:0 auto 14px; }
+  .bi-ob-title   { font-size:17px; font-weight:900; color:#1f2937; text-align:center; margin-bottom:6px; }
+  .bi-ob-sub     { font-size:13px; color:#6b7280; text-align:center; margin-bottom:20px; line-height:1.6; }
+  .bi-ob-actions { display:flex; flex-direction:column; gap:8px; }
+  .bi-ob-yes { height:44px; border:none; border-radius:10px; background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; font-size:14px; font-weight:800; cursor:pointer; transition:transform .18s; }
+  .bi-ob-yes:hover { transform:translateY(-1px); }
+  .bi-ob-no  { height:44px; border:1.5px solid #e5e7eb; border-radius:10px; background:#fff; color:#374151; font-size:14px; font-weight:700; cursor:pointer; }
   @media(max-width:580px){ .bi-stats{grid-template-columns:1fr 1fr;} .bi-grid{grid-template-columns:1fr;} .bi-human-status-grid{grid-template-columns:1fr;} }
 `;
 
@@ -311,6 +332,14 @@ export function BitingIncidents({ userRole }: Props) {
   const [petLookupLoading, setPetLookupLoading] = useState(false);
   const [petFound, setPetFound] = useState(false);
 
+  // Delete justification modal
+  const [deleteTarget, setDeleteTarget] = useState<Incident|null>(null);
+  const [deleteJustification, setDeleteJustification] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // Outbreak-end prompt (shown when status changes to Closed on a confirmed-rabies incident)
+  const [outbreakEndPrompt, setOutbreakEndPrompt] = useState<{incidentId:string;petName:string}|null>(null);
+
   // Rabies outbreak coord modal — carries incident info (may be partial for new)
   const [rabiesCoordModal, setRabiesCoordModal] = useState<{pet_name:string;location:string;id?:string}|null>(null);
   // Pending saved incident to create outbreak for (new incidents)
@@ -454,6 +483,7 @@ export function BitingIncidents({ userRole }: Props) {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
       toast.success(editing ? 'Incident updated!' : 'Incident reported!');
+      const wasOpenRabies = editing && editing.confirmed_rabies && editing.status === 'Open' && form.status === 'Closed';
       setShowModal(false);
       load();
 
@@ -466,17 +496,64 @@ export function BitingIncidents({ userRole }: Props) {
       if (editing && !editing.confirmed_rabies && form.confirmedRabies) {
         setRabiesCoordModal({ pet_name: form.petName, location: form.location, id: editing.id });
       }
+      // When closing a confirmed-rabies incident, ask if outbreak should be ended too
+      if (wasOpenRabies) {
+        setOutbreakEndPrompt({ incidentId: editing!.id, petName: editing!.pet_name });
+      }
     } catch(e:any) { toast.error(e.message); }
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this incident record?')) return;
+  const handleDelete = (inc: Incident) => {
+    setDeleteTarget(inc);
+    setDeleteJustification('');
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (!deleteJustification.trim()) { toast.error('Please provide a justification for deletion'); return; }
+    setDeleting(true);
     try {
-      await fetch(`/api/biting-incidents/${id}`, { method:'DELETE' });
-      toast.success('Deleted');
+      // Delete the incident
+      const r = await fetch(`/api/biting-incidents/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ justification: deleteJustification }),
+      });
+      if (!r.ok) throw new Error('Delete failed');
+      toast.success('Incident deleted');
+
+      // If confirmed rabies, also remove the linked outbreak record
+      if (deleteTarget.confirmed_rabies) {
+        try {
+          await fetch(`/api/outbreaks/by-incident/${deleteTarget.id}`, { method: 'DELETE' });
+          toast.success('Linked outbreak record removed');
+        } catch {
+          toast.error('Note: Could not auto-remove linked outbreak. Please remove it manually.');
+        }
+      }
+
+      setDeleteTarget(null);
       load();
     } catch { toast.error('Delete failed'); }
+    finally { setDeleting(false); }
+  };
+
+  const handleEndOutbreak = async (end: boolean) => {
+    if (!outbreakEndPrompt) return;
+    if (end) {
+      try {
+        await fetch(`/api/outbreaks/by-incident/${outbreakEndPrompt.incidentId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Resolved', resolution_notes: `Linked biting incident for ${outbreakEndPrompt.petName} was marked as closed.` }),
+        });
+        toast.success('Outbreak record marked as resolved');
+      } catch {
+        toast.error('Could not update outbreak record. Please resolve it manually in Outbreak Monitoring.');
+      }
+    }
+    setOutbreakEndPrompt(null);
   };
 
   const open = list.filter(i => i.status==='Open').length;
@@ -600,7 +677,7 @@ export function BitingIncidents({ userRole }: Props) {
                       <td>
                         <div style={{display:'flex',gap:5}}>
                           {canEdit && <button className="bi-act bi-act-edit" onClick={()=>openEdit(inc)}>Edit</button>}
-                          {canDelete && <button className="bi-act bi-act-del" onClick={()=>handleDelete(inc.id)}>Del</button>}
+                          {canDelete && <button className="bi-act bi-act-del" onClick={()=>handleDelete(inc)}>Del</button>}
                         </div>
                       </td>
                     </tr>
@@ -769,6 +846,65 @@ export function BitingIncidents({ userRole }: Props) {
             setPendingOutbreakIncident(null);
           }}
         />
+      )}
+
+      {/* ─── DELETE JUSTIFICATION MODAL ─── */}
+      {deleteTarget && (
+        <div className="bi-del-overlay" onClick={e => { if (e.target === e.currentTarget && !deleting) setDeleteTarget(null); }}>
+          <div className="bi-del-modal">
+            <div className="bi-del-icon">🗑️</div>
+            <div className="bi-del-title">Delete Incident Record</div>
+            <div className="bi-del-sub">
+              You are about to delete the biting incident for <strong>{deleteTarget.pet_name}</strong>.
+              {deleteTarget.confirmed_rabies && (
+                <><br/><span style={{color:'#dc2626',fontWeight:700}}>⚠️ This will also remove the linked rabies outbreak record.</span></>
+              )}
+              <br/>This action cannot be undone.
+            </div>
+            <label className="bi-del-label">Justification for deletion *</label>
+            <textarea
+              className="bi-del-textarea"
+              rows={4}
+              value={deleteJustification}
+              onChange={e => setDeleteJustification(e.target.value)}
+              placeholder="State the reason for deleting this record (e.g. duplicate entry, data error, resolved by other means…)"
+              disabled={deleting}
+            />
+            <div className="bi-del-actions">
+              <button className="bi-del-cancel" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
+              <button
+                className="bi-del-confirm"
+                onClick={confirmDelete}
+                disabled={deleting || !deleteJustification.trim()}
+              >
+                {deleting ? 'Deleting…' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── OUTBREAK-END PROMPT ─── */}
+      {outbreakEndPrompt && (
+        <div className="bi-ob-overlay">
+          <div className="bi-ob-modal">
+            <div className="bi-ob-icon">🦠</div>
+            <div className="bi-ob-title">End Linked Outbreak?</div>
+            <div className="bi-ob-sub">
+              The biting incident for <strong>{outbreakEndPrompt.petName}</strong> has been marked as <strong>Closed</strong>.<br/>
+              A rabies outbreak record is linked to this case.<br/><br/>
+              Would you like to mark that outbreak as <strong>Resolved</strong> as well?
+            </div>
+            <div className="bi-ob-actions">
+              <button className="bi-ob-yes" onClick={() => handleEndOutbreak(true)}>
+                ✅ Yes, mark outbreak as Resolved
+              </button>
+              <button className="bi-ob-no" onClick={() => handleEndOutbreak(false)}>
+                No, keep outbreak active
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

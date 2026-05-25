@@ -2,7 +2,7 @@
 // NASaAlaga VMS - Shared Types & Database Schema
 // ============================================================
 
-export type UserRole = 'superadmin' | 'admin' | 'bahw' | 'public';
+export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | 'public' | null;
 
 export interface User {
   id: string;
