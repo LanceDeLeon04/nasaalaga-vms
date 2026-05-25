@@ -236,6 +236,12 @@ export const api = {
   getUnlinkedInventory: () => request('/budget/unlinked-inventory'),
   linkInventoryToBudget: (data: any) => request('/budget/link-inventory', { method: 'POST', body: JSON.stringify(data) }),
   unlinkInventoryFromBudget: (itemId: string, data: any) => request(`/budget/unlink-inventory/${itemId}`, { method: 'DELETE', body: JSON.stringify(data) }),
+
+  // Profile
+  getMyProfile: () => request('/profile/me'),
+  updateMyProfile: (data: any) => request('/profile/me', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    request('/profile/change-password', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export default api;

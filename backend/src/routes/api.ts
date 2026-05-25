@@ -1651,6 +1651,76 @@ router.put('/livestock-pre-registrations/:id', authenticate, async (req: AuthReq
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
+// ── My Profile ────────────────────────────────────────────────────────────────
+
+// GET /profile/me — fetch own full profile
+router.get('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT id, email, phone, username, role, owner_id, barangay, address,
+              calacazen_id, household_number, verified, created_at, avatar
+       FROM users WHERE id = $1`,
+      [req.user?.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+    return res.json(result.rows[0]);
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /profile/me — update own profile (including avatar as base64)
+router.put('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { username, email, phone, barangay, address, calacazen_id, household_number, avatar } = req.body;
+
+    // Validate avatar size — base64 of 2 MB ≈ 2.7 MB string; reject if over 3 MB
+    if (avatar && avatar.length > 3 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Avatar image is too large (max 2 MB)' });
+    }
+
+    const result = await query(
+      `UPDATE users
+       SET username = COALESCE($1, username),
+           email    = COALESCE($2, email),
+           phone    = COALESCE($3, phone),
+           barangay = COALESCE($4, barangay),
+           address  = COALESCE($5, address),
+           calacazen_id     = COALESCE($6, calacazen_id),
+           household_number = COALESCE($7, household_number),
+           avatar   = COALESCE($8, avatar),
+           updated_at = NOW()
+       WHERE id = $9
+       RETURNING id, email, phone, username, role, owner_id, barangay, address,
+                 calacazen_id, household_number, verified, created_at, avatar`,
+      [username || null, email || null, phone || null, barangay || null,
+       address || null, calacazen_id || null, household_number || null,
+       avatar || null, req.user?.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+    logAudit(req, 'UPDATE', 'profile', req.user?.id, { username, email });
+    return res.json(result.rows[0]);
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /profile/change-password — change own password (current password required)
+router.post('/profile/change-password', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both currentPassword and newPassword are required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+    const userRow = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
+    if (!userRow.rows.length) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, userRow.rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [newHash, req.user?.id]);
+    logAudit(req, 'UPDATE', 'password', req.user?.id, {});
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
 export default router;
 
 // ═══════════════════════════════════════════════════════════════════════════

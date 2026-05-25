@@ -1,9 +1,10 @@
 import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
-  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign
+  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign, UserCircle
 } from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
+import { useState, useEffect } from 'react';
 
 interface SidebarProps {
   activeView: ActiveView;
@@ -14,6 +15,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, onClose }: SidebarProps) {
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const refresh = () => forceUpdate(n => n + 1);
+    window.addEventListener('nasaalaga_profile_updated', refresh);
+    return () => window.removeEventListener('nasaalaga_profile_updated', refresh);
+  }, []);
+
   const menuItems = [
     { id: 'dashboard' as ActiveView, label: 'Dashboard',        icon: LayoutDashboard, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin'] },
@@ -28,6 +36,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'budget'    as ActiveView, label: 'Budget',            icon: DollarSign,      roles: ['admin', 'superadmin'] },
     { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'my-profile' as ActiveView, label: 'My Profile',      icon: UserCircle,      roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },
     { id: 'audit'     as ActiveView, label: 'Audit Logs',       icon: ScrollText,      roles: ['admin', 'superadmin'] },
     { id: 'settings'  as ActiveView, label: 'SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
@@ -113,6 +122,33 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
             </div>
           </div>
         )}
+
+        {/* Logged-in user mini card */}
+        {(() => {
+          try {
+            const stored = sessionStorage.getItem('nasaalaga_user');
+            if (!stored) return null;
+            const u = JSON.parse(stored);
+            const initials = (u.username || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
+            return (
+              <button
+                onClick={() => setActiveView('my-profile' as any)}
+                className="mx-4 mb-4 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-2xl border border-white/20 flex items-center gap-3 w-[calc(100%-2rem)] transition-all cursor-pointer"
+              >
+                <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: u.avatar ? 'transparent' : 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {u.avatar
+                    ? <img src={u.avatar} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ color: 'white', fontWeight: 700, fontSize: 13 }}>{initials}</span>
+                  }
+                </div>
+                <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: 'white', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.username}</p>
+                  <p style={{ fontSize: 11, color: 'rgba(219,234,254,0.8)', margin: 0 }}>My Profile →</p>
+                </div>
+              </button>
+            );
+          } catch { return null; }
+        })()}
       </aside>
     </>
   );

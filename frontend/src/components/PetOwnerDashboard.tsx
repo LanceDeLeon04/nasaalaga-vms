@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from './Header';
+import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
 import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
@@ -881,7 +882,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} />
+      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
       
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="md:hidden mb-4">
@@ -1065,7 +1066,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         {activeSection === 'lostfound' && renderLostFound()}
         {activeSection === 'notifications' && renderNotifications()}
         {activeSection === 'cvoservices' && renderCVOServices()}
-        {activeSection === 'profile' && renderProfile()}
+        {activeSection === 'profile' && (
+          <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
+        )}
       </div>
 
       {showReportLostModal && (

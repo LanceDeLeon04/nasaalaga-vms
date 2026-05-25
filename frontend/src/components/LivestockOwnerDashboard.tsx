@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Header } from './Header';
+import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList } from 'lucide-react';
@@ -491,7 +492,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} />
+      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
       
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Navigation */}
@@ -646,7 +647,9 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             barangay={user.barangay || undefined}
           />
         )}
-        {activeSection === 'profile' && renderProfile()}
+        {activeSection === 'profile' && (
+          <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
+        )}
         {activeSection === 'notifications' && renderNotifications()}
       </div>
 

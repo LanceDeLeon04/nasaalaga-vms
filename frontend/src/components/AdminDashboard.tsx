@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { MyProfile } from './MyProfile';
 import { DashboardOverview } from './DashboardOverview';
 import { LivestockManagement } from './LivestockManagement';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
@@ -31,7 +32,7 @@ export type ActiveView =
   | 'dashboard' | 'livestock' | 'rabies' | 'preregistered'
   | 'outbreak'  | 'services'  | 'reports'| 'users'
   | 'audit'     | 'feedback'  | 'wildlife'| 'inventory'
-  | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg';
+  | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg' | 'my-profile';
 
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -48,6 +49,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'budget':        return <BudgetUtilization userRole={user.role} />;
       case 'preregistered': return <PreRegisteredPets />;
       case 'livestock-prereg': return <LivestockPreRegistration userRole={user.role} />;
+      case 'my-profile': return <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />;
       case 'outbreak':     return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':     return <CVOServicesShared userRole={user.role} />;
       case 'reports':      return <ReportsCertificates />;
@@ -74,7 +76,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} onProfileClick={() => setActiveView('my-profile')} />
       <div className="flex flex-1">
         <Sidebar
           activeView={activeView}

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BitingIncidents } from './BitingIncidents';
 import { VaccinationCard } from './VaccinationCard';
+import { MyProfile } from './MyProfile';
 import { api } from '../lib/api';
 import type { User } from '../App';
 
@@ -99,6 +100,14 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
   const [petsLoaded, setPetsLoaded] = useState(false);
   const [incLoaded, setIncLoaded]   = useState(false);
   const [search, setSearch] = useState('');
+  const [, forceUpdate] = useState(0); // triggers re-render on avatar update
+
+  // Re-render when profile updated so avatar refreshes
+  useEffect(() => {
+    const onProfileUpdated = () => forceUpdate(n => n + 1);
+    window.addEventListener('nasaalaga_profile_updated', onProfileUpdated);
+    return () => window.removeEventListener('nasaalaga_profile_updated', onProfileUpdated);
+  }, []);
 
   const [vaxCardPet, setVaxCardPet] = useState<any>(null);
   const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
@@ -187,7 +196,22 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
           </div>
           <div className="cho-sidebar-role">
             <p>Logged in as</p>
-            <span>{user.username}</span>
+            {/* Avatar from sessionStorage */}
+            {(() => {
+              try {
+                const stored = sessionStorage.getItem('nasaalaga_user');
+                const av = stored ? JSON.parse(stored).avatar : null;
+                const initials = (user.username || 'C')[0].toUpperCase();
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, marginBottom: 4 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: av ? 'transparent' : 'rgba(255,255,255,0.25)', border: '2px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {av ? <img src={av} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>{initials}</span>}
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'white', fontSize: 14 }}>{user.username}</span>
+                  </div>
+                );
+              } catch { return <span>{user.username}</span>; }
+            })()}
           </div>
           <nav className="cho-nav">
             {NAV_ITEMS.map(item => (
@@ -214,7 +238,15 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                 <div style={{fontSize:13,fontWeight:700,color:'#1f2937'}}>{user.username}</div>
                 <div style={{fontSize:11,color:'#6b7280'}}>City Health Office</div>
               </div>
-              <div className="cho-avatar">{(user.username||'C')[0].toUpperCase()}</div>
+              {(() => {
+                try {
+                  const stored = sessionStorage.getItem('nasaalaga_user');
+                  const av = stored ? JSON.parse(stored).avatar : null;
+                  return av
+                    ? <div className="cho-avatar" style={{overflow:'hidden',padding:0}}><img src={av} alt="av" style={{width:'100%',height:'100%',objectFit:'cover'}}/></div>
+                    : <div className="cho-avatar">{(user.username||'C')[0].toUpperCase()}</div>;
+                } catch { return <div className="cho-avatar">{(user.username||'C')[0].toUpperCase()}</div>; }
+              })()}
             </div>
           </div>
 
@@ -335,24 +367,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
 
             {/* ── PROFILE ── */}
             {view === 'profile' && (
-              <div className="cho-profile-card">
-                <div className="cho-profile-avatar">{(user.username||'C')[0].toUpperCase()}</div>
-                <h2 className="cho-profile-name">{user.username}</h2>
-                <span className="cho-profile-role" style={{display:"flex",alignItems:"center",gap:4}}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>City Health Office</span>
-                <div>
-                  {[
-                    ['Username', user.username],
-                    ['Email', user.email || '—'],
-                    ['Role', 'City Health Office'],
-                    ['Access Level', 'Pet Records (View) · Biting Incidents (Edit)'],
-                  ].map(([k,v]) => (
-                    <div key={k} className="cho-profile-row">
-                      <span className="cho-profile-key">{k}</span>
-                      <span className="cho-profile-val">{v}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
             )}
 
           </div>

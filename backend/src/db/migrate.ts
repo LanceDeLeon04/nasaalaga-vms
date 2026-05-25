@@ -1003,6 +1003,7 @@ createTables()
   .then(() => migrateBudget())
   .then(() => migrateInventoryV2())
   .then(() => migrateLivestockPreReg())
+  .then(() => migrateProfileColumns())
   .then(() => {
     console.log('Migration complete');
     process.exit(0);
@@ -1011,3 +1012,17 @@ createTables()
     console.error('Migration error:', err);
     process.exit(1);
   });
+
+// Run avatar + phone column additions
+export async function migrateProfileColumns() {
+  const client = await pool.connect();
+  try {
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);`);
+    console.log('✅ Profile columns (avatar, phone) ensured');
+  } catch (err) {
+    console.error('❌ Profile column migration failed:', err);
+  } finally {
+    client.release();
+  }
+}

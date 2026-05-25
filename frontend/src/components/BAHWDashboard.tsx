@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
+import { MyProfile } from './MyProfile';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { DashboardOverview } from './DashboardOverview';
@@ -269,6 +270,8 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
         return <ReportsCertificates />;
       case 'feedback':
         return <FeedbackComplaints userRole={user.role} />;
+      case 'my-profile':
+        return <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />;
       default:
         return barangay ? <BAHWBarangayDashboard barangay={barangay} /> : <DashboardOverview />;
     }
@@ -276,7 +279,7 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} onProfileClick={() => setActiveView('my-profile')} />
       <div className="flex flex-1">
         <Sidebar 
           activeView={activeView} 
