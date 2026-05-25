@@ -167,10 +167,16 @@ router.post('/pre-register', async (req: AuthRequest, res: Response) => {
 
 router.get('/pre-registered', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status } = req.query;
-    let sql = 'SELECT * FROM pet_pre_registrations';
+    const { status, barangay } = req.query;
+    const conditions: string[] = [];
     const params: any[] = [];
-    if (status) { sql += ' WHERE status=$1'; params.push(status); }
+    let idx = 1;
+    if (status) { conditions.push(`status=$${idx++}`); params.push(status); }
+    // BAHW can only see their tagged barangay; others see all
+    const filterBarangay = barangay || (req.user?.role === 'bahw' ? req.user?.barangay : null);
+    if (filterBarangay) { conditions.push(`barangay=$${idx++}`); params.push(filterBarangay); }
+    let sql = 'SELECT * FROM pet_pre_registrations';
+    if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY submitted_date DESC';
     const result = await query(sql, params);
     return res.json({ preRegistrations: result.rows });

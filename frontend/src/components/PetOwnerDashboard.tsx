@@ -69,7 +69,7 @@ interface Notification {
 }
 
 export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound'>('dashboard');
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [showPetDetails, setShowPetDetails] = useState(false);
   const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
@@ -919,6 +919,17 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               </button>
               <button
                 onClick={() => {
+                  setActiveSection('preregistration');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
+                  activeSection === 'preregistration' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Pre-Register Pet
+              </button>
+              <button
+                onClick={() => {
                   setActiveSection('lostfound');
                   setIsMobileMenuOpen(false);
                 }}
@@ -991,6 +1002,16 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               My Pets
             </button>
             <button
+              onClick={() => setActiveSection('preregistration')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+                activeSection === 'preregistration'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Pre-Register Pet
+            </button>
+            <button
               onClick={() => setActiveSection('lostfound')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
                 activeSection === 'lostfound'
@@ -1038,6 +1059,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
         {activeSection === 'dashboard' && renderDashboard()}
         {activeSection === 'pets' && renderPets()}
+        {activeSection === 'preregistration' && (
+          <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email} />
+        )}
         {activeSection === 'lostfound' && renderLostFound()}
         {activeSection === 'notifications' && renderNotifications()}
         {activeSection === 'cvoservices' && renderCVOServices()}

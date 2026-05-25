@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -336,11 +338,61 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── Create Admin (superadmin only) ─────────────────────────────────────────
+router.post('/users/create-admin', authenticate, async (req: AuthRequest, res: Response) => {
+  if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Only SuperAdmin can create Admin accounts' });
+  try {
+    const { username, email, password, barangay } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: 'username, email, and password are required' });
+    const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'Email already in use' });
+    const countResult = await query('SELECT COUNT(*) FROM users');
+    const count = parseInt(countResult.rows[0].count);
+    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const hash = await bcrypt.hash(password, 10);
+    const ownerId = `ADMIN-${uuidv4().slice(0,8).toUpperCase()}`;
+    const result = await query(
+      `INSERT INTO users (id, email, password_hash, username, role, owner_id, barangay, verified, created_at)
+       VALUES ($1,$2,$3,$4,'admin',$5,$6,true,NOW()) RETURNING id, email, username, role, barangay, verified`,
+      [userId, email.toLowerCase(), hash, username, ownerId, barangay || null]
+    );
+    logAudit(req, 'CREATE', 'User', userId, { username, role: 'admin', email });
+    return res.json({ success: true, user: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Create BAHW (admin or superadmin) ─────────────────────────────────────
+router.post('/users/create-bahw', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Only Admin or SuperAdmin can create BAHW accounts' });
+  try {
+    const { username, email, password, barangay } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: 'username, email, and password are required' });
+    const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'Email already in use' });
+    const countResult = await query('SELECT COUNT(*) FROM users');
+    const count = parseInt(countResult.rows[0].count);
+    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const hash = await bcrypt.hash(password, 10);
+    const ownerId = `BAHW-${uuidv4().slice(0,8).toUpperCase()}`;
+    const result = await query(
+      `INSERT INTO users (id, email, password_hash, username, role, owner_id, barangay, verified, created_at)
+       VALUES ($1,$2,$3,$4,'bahw',$5,$6,true,NOW()) RETURNING id, email, username, role, barangay, verified`,
+      [userId, email.toLowerCase(), hash, username, ownerId, barangay || null]
+    );
+    logAudit(req, 'CREATE', 'User', userId, { username, role: 'bahw', email, barangay });
+    return res.json({ success: true, user: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.put('/users/:id', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { username, role, barangay, verified } = req.body;
-    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth'];
+    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth','both'];
     if (role && !validRoles.includes(role)) return res.status(400).json({ error: `Invalid role: ${role}` });
     const result = await query(
       `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, updated_at=NOW() WHERE id=$5 RETURNING id, email, username, role, barangay, verified`,
@@ -1539,6 +1591,63 @@ router.get('/dashboard/disease-intel', authenticate, async (req: AuthRequest, re
              GROUP BY month ORDER BY month`),
     ]);
     return res.json({ success: true, activeEvents: activeEvents.rows, recentMortality: recentMortality.rows, alerts: alerts.rows, bitingTrend: bitingTrend.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Livestock Pre-Registrations ───────────────────────────────────────────
+
+router.get('/livestock-pre-registrations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, barangay } = req.query;
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+    if (status) { conditions.push(`status=$${idx++}`); params.push(status); }
+    // BAHW scoped to their barangay
+    const filterBarangay = barangay || (req.user?.role === 'bahw' ? req.user?.barangay : null);
+    if (filterBarangay) { conditions.push(`barangay=$${idx++}`); params.push(filterBarangay); }
+    let sql = 'SELECT * FROM livestock_pre_registrations';
+    if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+    sql += ' ORDER BY submitted_date DESC';
+    const result = await query(sql, params);
+    return res.json({ preRegistrations: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/livestock-pre-registrations', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const d = req.body;
+    const id = `LPRE-${uuidv4().slice(0,8).toUpperCase()}`;
+    const result = await query(
+      `INSERT INTO livestock_pre_registrations
+       (id, owner_id, owner_name, contact_number, owner_email, barangay, address,
+        animal_type, breed, quantity, farm_type, farm_address, health_status, vaccination_status, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [id, d.owner_id || req.user?.ownerId || null, d.owner_name, d.contact_number || null,
+       d.owner_email || null, d.barangay, d.address || null,
+       d.animal_type, d.breed || null, d.quantity || 1, d.farm_type || 'Backyard',
+       d.farm_address || null, d.health_status || 'Healthy', d.vaccination_status || 'Unknown', d.notes || null]
+    );
+    return res.json({ success: true, preRegistration: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.put('/livestock-pre-registrations/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin','bahw'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { status, denial_reason, livestock_id } = req.body;
+    let sql = `UPDATE livestock_pre_registrations SET status=$1`;
+    const params: any[] = [status];
+    let idx = 2;
+    if (denial_reason) { sql += `, denial_reason=$${idx++}`; params.push(denial_reason); }
+    if (livestock_id)  { sql += `, livestock_id=$${idx++}`; params.push(livestock_id); }
+    if (status === 'Approved') { sql += `, approved_date=NOW()`; }
+    if (status === 'Denied')   { sql += `, denied_date=NOW()`; }
+    sql += ` WHERE id=$${idx} RETURNING *`;
+    params.push(req.params.id);
+    const result = await query(sql, params);
+    logAudit(req, 'UPDATE', 'livestock_pre_registration', req.params.id, { status });
+    return res.json({ success: true, preRegistration: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 

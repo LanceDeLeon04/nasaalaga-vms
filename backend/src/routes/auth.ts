@@ -68,6 +68,7 @@ router.post('/login', async (req: Request, res: Response) => {
       role: user.role,
       ownerId: user.owner_id,
       email: user.email,
+      barangay: user.barangay || null,
     };
 
     // Log successful login
@@ -257,7 +258,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     await query('DELETE FROM otp_store WHERE key=$1', [key]);
 
-    const payload = { id: userId, username, role: 'owner', ownerId };
+    const payload = { id: userId, username, role: 'owner', ownerId, barangay: barangay || null };
     return res.json({ success: true, user: payload, token: signToken(payload) });
   } catch (err: any) {
     console.error('[Signup]', err);

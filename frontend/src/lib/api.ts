@@ -54,6 +54,17 @@ export const api = {
     request('/pets/pre-registered/' + preRegNumber, { method: 'PUT', body: JSON.stringify(data) }),
   validatePreRegistration: (preRegNumber: string, data: any) =>
     request('/pets/validate/' + preRegNumber, { method: 'POST', body: JSON.stringify(data) }),
+  // Livestock pre-registration
+  getLivestockPreRegistrations: (params?: { status?: string; barangay?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.status)    p.set('status',    params.status);
+    if (params?.barangay)  p.set('barangay',  params.barangay);
+    return request('/livestock-pre-registrations?' + p.toString());
+  },
+  createLivestockPreRegistration: (data: any) =>
+    request('/livestock-pre-registrations', { method: 'POST', body: JSON.stringify(data) }),
+  updateLivestockPreRegistration: (id: string, data: any) =>
+    request('/livestock-pre-registrations/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   getPetSurveyData: () => request('/pets/survey-data'),
   getLivestock: (params?: { ownerId?: string; barangay?: string; type?: string; status?: string }) => {
     const p = new URLSearchParams();
@@ -114,6 +125,10 @@ export const api = {
   createOutbreakData: (data: any) =>
     request('/statistics/outbreak-data', { method: 'POST', body: JSON.stringify(data) }),
   getUsers: () => request('/users'),
+  createAdmin: (data: { username: string; email: string; password: string; barangay?: string }) =>
+    request('/users/create-admin', { method: 'POST', body: JSON.stringify(data) }),
+  createBahw: (data: { username: string; email: string; password: string; barangay: string }) =>
+    request('/users/create-bahw', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any) =>
     request('/users/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id: string) =>

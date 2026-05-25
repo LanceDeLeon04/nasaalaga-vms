@@ -3,6 +3,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { DashboardOverview } from './DashboardOverview';
 import { LivestockManagement } from './LivestockManagement';
+import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { PetRegistration } from './PetRegistration';
 import { PreRegisteredPets } from './PreRegisteredPets';
 import { OutbreakMonitoring } from './OutbreakMonitoring';
@@ -30,7 +31,7 @@ export type ActiveView =
   | 'dashboard' | 'livestock' | 'rabies' | 'preregistered'
   | 'outbreak'  | 'services'  | 'reports'| 'users'
   | 'audit'     | 'feedback'  | 'wildlife'| 'inventory'
-  | 'vaccination'| 'settings' | 'budget';
+  | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg';
 
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -46,10 +47,11 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'vaccination':   return <VaccinationModule user={user} />;
       case 'budget':        return <BudgetUtilization userRole={user.role} />;
       case 'preregistered': return <PreRegisteredPets />;
+      case 'livestock-prereg': return <LivestockPreRegistration userRole={user.role} />;
       case 'outbreak':     return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':     return <CVOServicesShared userRole={user.role} />;
       case 'reports':      return <ReportsCertificates />;
-      case 'users':        return <UserManagement />;
+      case 'users':        return <UserManagement currentUserRole={user.role} />;
       case 'audit':        return <AuditLogs />;
       case 'feedback':     return <FeedbackComplaints userRole={user.role} />;
       case 'wildlife':     return <WildlifeTracking />;

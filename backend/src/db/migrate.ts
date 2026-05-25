@@ -958,9 +958,51 @@ async function migrateInventoryV2() {
   }
 }
 
+async function migrateLivestockPreReg() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS livestock_pre_registrations (
+        id VARCHAR(50) PRIMARY KEY DEFAULT ('LPRE-' || substring(gen_random_uuid()::text, 1, 8)),
+        owner_id VARCHAR(100),
+        owner_name VARCHAR(255) NOT NULL,
+        contact_number VARCHAR(50),
+        owner_email VARCHAR(255),
+        barangay VARCHAR(255),
+        address TEXT,
+        animal_type VARCHAR(100) NOT NULL,
+        breed VARCHAR(100),
+        quantity INTEGER DEFAULT 1,
+        farm_type VARCHAR(50) DEFAULT 'Backyard',
+        farm_address TEXT,
+        health_status VARCHAR(50) DEFAULT 'Healthy',
+        vaccination_status VARCHAR(50) DEFAULT 'Unknown',
+        notes TEXT,
+        status VARCHAR(30) DEFAULT 'Pending',
+        denial_reason TEXT,
+        livestock_id VARCHAR(100),
+        submitted_date TIMESTAMPTZ DEFAULT NOW(),
+        approved_date TIMESTAMPTZ,
+        denied_date TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days')
+      )
+    `);
+    await client.query('COMMIT');
+    console.log('✅ Livestock pre-registration table created');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Livestock pre-reg migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 createTables()
   .then(() => migrateBudget())
   .then(() => migrateInventoryV2())
+  .then(() => migrateLivestockPreReg())
   .then(() => {
     console.log('Migration complete');
     process.exit(0);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import {
   FlaskConical, Package, Plus, Search, Edit2, Trash2, AlertTriangle,
   CheckCircle, BarChart2, RefreshCw, X, Barcode, Calendar, Thermometer,
@@ -504,7 +505,28 @@ export function InventoryPage({ userRole }: Props) {
 
   const handleMovement = async (data: any) => {
     try {
+      // Validate quantity
+      if (!data.quantity || data.quantity < 1) {
+        toast.error('Please enter a valid quantity (minimum 1)');
+        return;
+      }
+      // For OUT movements, ensure we don't exceed stock
+      if (data.transaction_type === 'OUT' && showMoveModal) {
+        if (data.quantity > showMoveModal.item.quantity) {
+          toast.error(`Cannot dispatch ${data.quantity} — only ${showMoveModal.item.quantity} ${showMoveModal.item.unit} in stock`);
+          return;
+        }
+      }
+      if (!data.reference_person?.trim()) {
+        toast.error('Please enter the name of the person receiving/requesting this item');
+        return;
+      }
+      if (!data.reason?.trim()) {
+        toast.error('Please enter a reason for this movement');
+        return;
+      }
       await api.inventoryMovement(data);
+      toast.success(`Stock movement recorded — ${data.quantity} ${showMoveModal?.item?.unit || 'units'} ${data.transaction_type === 'IN' ? 'added' : 'dispatched'}`);
       setShowMoveModal(null);
       await loadData();
     } catch (e: any) { setError(e.message); }

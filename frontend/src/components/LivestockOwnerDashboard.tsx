@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Header } from './Header';
 import { Footer } from './Footer';
-import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu } from 'lucide-react';
+import { LivestockPreRegistration } from './LivestockPreRegistration';
+import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
 
@@ -32,7 +33,7 @@ interface Notification {
 }
 
 export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'profile' | 'notifications'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications'>('dashboard');
   const [selectedLivestock, setSelectedLivestock] = useState<Livestock | null>(null);
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -500,6 +501,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             <h3 className="text-gray-800 font-medium">
               {activeSection === 'dashboard' && 'Dashboard'}
               {activeSection === 'livestock' && 'Livestock'}
+              {activeSection === 'preregistration' && 'Pre-Registration'}
               {activeSection === 'notifications' && 'Notifications'}
               {activeSection === 'profile' && 'Profile'}
             </h3>
@@ -535,6 +537,17 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
                 }`}
               >
                 Livestock
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSection('preregistration');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
+                  activeSection === 'preregistration' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Pre-Registration
               </button>
               <button
                 onClick={() => {
@@ -587,6 +600,16 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
               Livestock
             </button>
             <button
+              onClick={() => setActiveSection('preregistration')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+                activeSection === 'preregistration'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Pre-Registration
+            </button>
+            <button
               onClick={() => setActiveSection('notifications')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 relative ${
                 activeSection === 'notifications'
@@ -615,6 +638,14 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
         {/* Content */}
         {activeSection === 'dashboard' && renderDashboard()}
         {activeSection === 'livestock' && renderLivestock()}
+        {activeSection === 'preregistration' && (
+          <LivestockPreRegistration
+            ownerId={user.ownerId}
+            ownerEmail={user.email}
+            userRole={user.role || 'livestockManager'}
+            barangay={user.barangay || undefined}
+          />
+        )}
         {activeSection === 'profile' && renderProfile()}
         {activeSection === 'notifications' && renderNotifications()}
       </div>

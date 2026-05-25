@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
     username: string;
     role: string;
     ownerId?: string;
+    barangay?: string;
   };
 }
 

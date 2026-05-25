@@ -20,6 +20,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'rabies'      as ActiveView, label: 'Pets Management',  icon: PawPrint,    roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'vaccination' as ActiveView, label: 'Vaccination',       icon: Syringe,     roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'preregistered' as ActiveView, label: 'Pre-Registered Pets', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'livestock-prereg' as ActiveView, label: 'Livestock Pre-Reg', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },

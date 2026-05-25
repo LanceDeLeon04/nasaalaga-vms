@@ -3,7 +3,7 @@ import { RouterProvider } from 'react-router-dom';
 import { router } from './routes';
 import { Toaster } from './components/ui/sonner';
 
-export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | null;
+export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | 'both' | null;
 
 export interface User {
   id?: string;
@@ -11,6 +11,7 @@ export interface User {
   role: UserRole;
   ownerId?: string;
   email?: string;
+  barangay?: string;
 }
 
 // ── Secret bypass: Shift + Alt + S  A  (typed while holding Shift+Alt, press S then A)
