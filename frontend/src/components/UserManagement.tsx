@@ -23,7 +23,16 @@ interface CreateUserForm {
   password: string;
   confirmPassword: string;
   barangay: string;
+  role: string;
 }
+
+const BAHW_ROLES: { value: string; label: string; description: string }[] = [
+  { value: 'bahw', label: 'BAHW', description: '🏘️ Barangay Animal Health Worker — scoped to their assigned barangay.' },
+  { value: 'petOwner', label: 'Pet Owner', description: '🐾 Can register and manage their own pets and view vaccination records.' },
+  { value: 'livestockManager', label: 'Livestock Manager', description: '🐄 Can register and manage livestock and related records.' },
+  { value: 'both', label: 'Both (Pet Owner & Livestock Manager)', description: '🐾🐄 Combined access for both pet and livestock management.' },
+  { value: 'cityHealth', label: 'City Health Office', description: '🏥 City-level health monitoring and analytics access.' },
+];
 
 interface CreateModalProps {
   type: 'admin' | 'bahw';
@@ -32,10 +41,13 @@ interface CreateModalProps {
 }
 
 function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
-  const [form, setForm] = useState<CreateUserForm>({ username: '', email: '', password: '', confirmPassword: '', barangay: '' });
+  const [form, setForm] = useState<CreateUserForm>({ username: '', email: '', password: '', confirmPassword: '', barangay: '', role: 'bahw' });
   const [saving, setSaving] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const set = (k: keyof CreateUserForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const selectedRoleInfo = BAHW_ROLES.find(r => r.value === form.role) || BAHW_ROLES[0];
+  const requiresBarangay = form.role === 'bahw';
 
   const handleSubmit = async () => {
     if (!form.username.trim()) { toast.error('Username is required'); return; }
@@ -43,15 +55,15 @@ function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
     if (!form.password) { toast.error('Password is required'); return; }
     if (form.password.length < 8) { toast.error('Password must be at least 8 characters'); return; }
     if (form.password !== form.confirmPassword) { toast.error('Passwords do not match'); return; }
-    if (type === 'bahw' && !form.barangay) { toast.error('Barangay is required for BAHW accounts'); return; }
+    if (requiresBarangay && !form.barangay) { toast.error('Barangay is required for BAHW accounts'); return; }
     setSaving(true);
     try {
       if (type === 'admin') {
         await api.createAdmin({ username: form.username, email: form.email, password: form.password, barangay: form.barangay || undefined });
         toast.success('Admin account created successfully');
       } else {
-        await api.createBahw({ username: form.username, email: form.email, password: form.password, barangay: form.barangay });
-        toast.success('BAHW account created successfully');
+        await api.createBahw({ username: form.username, email: form.email, password: form.password, barangay: form.barangay, role: form.role });
+        toast.success(`${selectedRoleInfo.label} account created successfully`);
       }
       onCreated();
       onClose();
@@ -61,7 +73,7 @@ function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
 
   const isAdmin = type === 'admin';
   const color = isAdmin ? '#2B5EA6' : '#0891b2';
-  const label = isAdmin ? 'Admin' : 'BAHW';
+  const label = isAdmin ? 'Admin' : selectedRoleInfo.label;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -74,6 +86,17 @@ function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
           <button onClick={onClose} className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4">
+          {!isAdmin && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Role *</label>
+              <select value={form.role} onChange={e => set('role', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-400 bg-white">
+                {BAHW_ROLES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Full Name / Username *</label>
             <input value={form.username} onChange={e => set('username', e.target.value)}
@@ -87,7 +110,9 @@ function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Assigned Barangay {type === 'bahw' ? '*' : '(optional)'}</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Assigned Barangay {requiresBarangay ? '*' : '(optional)'}
+            </label>
             <select value={form.barangay} onChange={e => set('barangay', e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white">
               <option value="">— Select Barangay —</option>
@@ -114,7 +139,7 @@ function CreateUserModal({ type, onClose, onCreated }: CreateModalProps) {
           <div className="rounded-lg p-3 text-xs" style={{ background: isAdmin ? '#eff6ff' : '#ecfeff', color: isAdmin ? '#1e40af' : '#164e63' }}>
             {isAdmin
               ? '🛡️ Admin accounts have full system access including user management, approvals, and reports.'
-              : '🏘️ BAHW accounts are scoped to their assigned barangay — they can manage field data, pre-registrations, vaccination records, and local dashboard.'}
+              : selectedRoleInfo.description}
           </div>
         </div>
         <div className="border-t border-gray-100 px-6 py-4 flex gap-2 justify-end">
@@ -222,12 +247,12 @@ export function UserManagement({ currentUserRole }: UserManagementProps) {
               <UserPlus className="w-4 h-4" /> Create Admin
             </button>
           )}
-          {/* Admin and SuperAdmin can create BAHW accounts */}
+          {/* Admin and SuperAdmin can create user accounts */}
           {isAdmin && (
             <button onClick={() => setShowCreateBahw(true)}
               className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity"
               style={{ background: 'linear-gradient(135deg, #0891b2, #06b6d4)' }}>
-              <UserPlus className="w-4 h-4" /> Create BAHW
+              <UserPlus className="w-4 h-4" /> Create User Account
             </button>
           )}
           <button onClick={loadUsers} className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 text-sm">

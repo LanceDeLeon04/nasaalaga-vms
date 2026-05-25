@@ -127,7 +127,7 @@ export const api = {
   getUsers: () => request('/users'),
   createAdmin: (data: { username: string; email: string; password: string; barangay?: string }) =>
     request('/users/create-admin', { method: 'POST', body: JSON.stringify(data) }),
-  createBahw: (data: { username: string; email: string; password: string; barangay: string }) =>
+  createBahw: (data: { username: string; email: string; password: string; barangay: string; role?: string }) =>
     request('/users/create-bahw', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id: string, data: any) =>
     request('/users/' + id, { method: 'PUT', body: JSON.stringify(data) }),

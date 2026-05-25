@@ -365,23 +365,27 @@ router.post('/users/create-admin', authenticate, async (req: AuthRequest, res: R
 
 // ── Create BAHW (admin or superadmin) ─────────────────────────────────────
 router.post('/users/create-bahw', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Only Admin or SuperAdmin can create BAHW accounts' });
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Only Admin or SuperAdmin can create user accounts' });
   try {
-    const { username, email, password, barangay } = req.body;
+    const { username, email, password, barangay, role } = req.body;
     if (!username || !email || !password) return res.status(400).json({ error: 'username, email, and password are required' });
+    // Validate role — only non-privileged roles allowed through this endpoint
+    const allowedRoles = ['bahw', 'petOwner', 'owner', 'livestockManager', 'both', 'cityHealth'];
+    const assignedRole = role && allowedRoles.includes(role) ? role : 'bahw';
+    if (assignedRole === 'bahw' && !barangay) return res.status(400).json({ error: 'Barangay is required for BAHW accounts' });
     const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
     if (existing.rows.length > 0) return res.status(400).json({ error: 'Email already in use' });
     const countResult = await query('SELECT COUNT(*) FROM users');
     const count = parseInt(countResult.rows[0].count);
     const userId = `USER-${String(count + 1).padStart(3, '0')}`;
     const hash = await bcrypt.hash(password, 10);
-    const ownerId = `BAHW-${uuidv4().slice(0,8).toUpperCase()}`;
+    const ownerId = `${assignedRole.toUpperCase().slice(0,4)}-${uuidv4().slice(0,8).toUpperCase()}`;
     const result = await query(
       `INSERT INTO users (id, email, password_hash, username, role, owner_id, barangay, verified, created_at)
-       VALUES ($1,$2,$3,$4,'bahw',$5,$6,true,NOW()) RETURNING id, email, username, role, barangay, verified`,
-      [userId, email.toLowerCase(), hash, username, ownerId, barangay || null]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true,NOW()) RETURNING id, email, username, role, barangay, verified`,
+      [userId, email.toLowerCase(), hash, username, assignedRole, ownerId, barangay || null]
     );
-    logAudit(req, 'CREATE', 'User', userId, { username, role: 'bahw', email, barangay });
+    logAudit(req, 'CREATE', 'User', userId, { username, role: assignedRole, email, barangay });
     return res.json({ success: true, user: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
