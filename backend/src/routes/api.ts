@@ -328,7 +328,7 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const result = await query(
-      'SELECT id, email, username, role, owner_id, barangay, verified, created_at FROM users ORDER BY created_at'
+      'SELECT id, email, username, role, owner_id, barangay, verified, created_at, phone, user_type, can_add_livestock, can_add_pets, avatar FROM users ORDER BY created_at'
     );
     return res.json({ success: true, totalUsers: result.rows.length, users: result.rows });
   } catch (err: any) {
@@ -339,12 +339,12 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
 router.put('/users/:id', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { username, role, barangay, verified } = req.body;
-    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth'];
+    const { username, role, barangay, verified, user_type } = req.body;
+    const validRoles = ['admin','superadmin','bahw','owner','petOwner','livestockManager','guest','cityHealth','both'];
     if (role && !validRoles.includes(role)) return res.status(400).json({ error: `Invalid role: ${role}` });
     const result = await query(
-      `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, updated_at=NOW() WHERE id=$5 RETURNING id, email, username, role, barangay, verified`,
-      [username, role, barangay, verified, req.params.id]
+      `UPDATE users SET username=$1, role=$2, barangay=$3, verified=$4, user_type=COALESCE($5,user_type), updated_at=NOW() WHERE id=$6 RETURNING id, email, username, role, barangay, verified, user_type`,
+      [username, role, barangay, verified, user_type || null, req.params.id]
     );
     logAudit(req, 'Update', 'User', req.params.id, { username, role });
     return res.json({ success: true, user: result.rows[0] });
@@ -1790,3 +1790,225 @@ router.post('/budget/ai-analyze', authenticate, async (req: AuthRequest, res: Re
     return res.status(500).json({ error: err.message });
   }
 });
+
+// GET /budget/unlinked-inventory — inventory items with no line_item_id, grouped by fiscal year
+router.get('/budget/unlinked-inventory', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const meds = await query(`
+      SELECT id, name, category, 'medicine' as item_type, quantity, unit_cost,
+             (quantity * unit_cost) as total_cost, barcode, purpose,
+             line_item_id, program_id, fiscal_year,
+             created_at
+      FROM medicine_inventory
+      WHERE unit_cost > 0 AND quantity > 0
+      ORDER BY created_at DESC
+    `);
+    const sups = await query(`
+      SELECT id, name, category, 'supply' as item_type, quantity, unit_cost,
+             (quantity * unit_cost) as total_cost, barcode, purpose,
+             line_item_id, program_id, fiscal_year,
+             created_at
+      FROM supplies_inventory
+      WHERE unit_cost > 0 AND quantity > 0
+      ORDER BY created_at DESC
+    `);
+    const all = [...meds.rows, ...sups.rows];
+    return res.json({ success: true, items: all });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /budget/link-inventory — link an inventory item to a budget line item and create expenditure
+router.post('/budget/link-inventory', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { item_id, item_type, line_item_id, program_id, fiscal_year, override_amount } = req.body;
+    if (!item_id || !line_item_id) return res.status(400).json({ error: 'item_id and line_item_id required' });
+
+    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const item = await query(`SELECT * FROM ${table} WHERE id=$1`, [item_id]);
+    if (!item.rows.length) return res.status(404).json({ error: 'Item not found' });
+    const inv = item.rows[0];
+
+    const amount = override_amount || (Number(inv.quantity) * Number(inv.unit_cost));
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Item has no value to deduct' });
+
+    // Check if already linked — remove old expenditure first to avoid double-counting
+    if (inv.line_item_id) {
+      await query(`DELETE FROM budget_expenditures WHERE inventory_item_id=$1`, [item_id]);
+    }
+
+    // Update inventory item with link
+    await query(
+      `UPDATE ${table} SET line_item_id=$1, program_id=$2, fiscal_year=$3, updated_at=NOW() WHERE id=$4`,
+      [line_item_id, program_id || null, fiscal_year || new Date().getFullYear(), item_id]
+    );
+
+    // Create expenditure record
+    const acqYear = fiscal_year || (inv.created_at ? new Date(inv.created_at).getFullYear() : new Date().getFullYear());
+    await query(
+      `INSERT INTO budget_expenditures(line_item_id, amount, expenditure_type, description, reference_no, vendor, expenditure_date, recorded_by, source_type, inventory_item_id, inventory_item_name, quantity_used)
+       VALUES($1,$2,'utilized',$3,$4,$5,$6,$7,'inventory',$8,$9,$10)`,
+      [line_item_id, amount, `Inventory: ${inv.name} (${inv.quantity} ${inv.unit || 'units'} × ₱${Number(inv.unit_cost).toLocaleString()})`,
+       item_id, inv.manufacturer || inv.supplier || '', `${acqYear}-12-31`,
+       req.user?.username, item_id, inv.name, inv.quantity]
+    );
+
+    // Recompute line item utilized
+    await query(`
+      UPDATE budget_line_items SET
+        utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+        updated_at = NOW()
+      WHERE id=$1
+    `, [line_item_id]);
+
+    const li = await query(`SELECT * FROM budget_line_items WHERE id=$1`, [line_item_id]);
+    return res.json({ success: true, deducted: amount, line_item: li.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /budget/unlink-inventory/:itemId — remove the link and reverse the expenditure
+router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { item_type } = req.body;
+    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const item = await query(`SELECT line_item_id FROM ${table} WHERE id=$1`, [req.params.itemId]);
+    if (!item.rows.length) return res.status(404).json({ error: 'Not found' });
+    const lineItemId = item.rows[0].line_item_id;
+
+    await query(`DELETE FROM budget_expenditures WHERE inventory_item_id=$1`, [req.params.itemId]);
+    await query(`UPDATE ${table} SET line_item_id=NULL, program_id=NULL, fiscal_year=NULL, updated_at=NOW() WHERE id=$1`, [req.params.itemId]);
+
+    if (lineItemId) {
+      await query(`
+        UPDATE budget_line_items SET
+          utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+          updated_at = NOW()
+        WHERE id=$1
+      `, [lineItemId]);
+    }
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MY PROFILE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GET /profile/me
+router.get('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT id, email, phone, username, role, barangay, address, verified, avatar,
+              calacazen_id, household_number, owner_id, can_add_livestock, can_add_pets,
+              user_type, created_at, updated_at
+       FROM users WHERE id=$1`,
+      [req.user?.id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'User not found' });
+    return res.json(result.rows[0]);
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /profile/me
+router.put('/profile/me', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { username, phone, barangay, address, calacazen_id, household_number, avatar } = req.body;
+    const result = await query(
+      `UPDATE users SET
+        username=COALESCE($1,username),
+        phone=COALESCE($2,phone),
+        barangay=COALESCE($3,barangay),
+        address=COALESCE($4,address),
+        calacazen_id=COALESCE($5,calacazen_id),
+        household_number=COALESCE($6,household_number),
+        avatar=COALESCE($7,avatar),
+        updated_at=NOW()
+       WHERE id=$8
+       RETURNING id, email, phone, username, role, barangay, address, avatar, calacazen_id, household_number`,
+      [username||null, phone||null, barangay||null, address||null, calacazen_id||null, household_number||null, avatar||null, req.user?.id]
+    );
+    logAudit(req, 'UPDATE', 'users', req.user?.id, { fields: Object.keys(req.body) });
+    return res.json(result.rows[0]);
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// PUT /profile/change-password
+router.put('/profile/change-password', authenticate, async (req: AuthRequest, res: Response) => {
+  const bcrypt = require('bcrypt');
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Missing fields' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const user = await query('SELECT password_hash FROM users WHERE id=$1', [req.user?.id]);
+    if (!user.rows.length) return res.status(404).json({ error: 'User not found' });
+
+    const ok = await bcrypt.compare(currentPassword, user.rows[0].password_hash);
+    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2', [hash, req.user?.id]);
+    logAudit(req, 'CHANGE_PASSWORD', 'users', req.user?.id);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN USER CREATION (BAHW, Pet Owner, Livestock, Both)
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/admin/create-user', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  const bcrypt = require('bcrypt');
+  const { v4: uuidv4 } = require('uuid');
+  try {
+    const { email, username, password, role, barangay, address, phone, user_type, can_add_livestock, can_add_pets } = req.body;
+    if (!email || !username || !password || !role) return res.status(400).json({ error: 'Missing required fields' });
+
+    const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+    if (existing.rows.length) return res.status(400).json({ error: 'Email already in use' });
+
+    const countResult = await query('SELECT COUNT(*) FROM users');
+    const count = parseInt(countResult.rows[0].count);
+    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const ownerId = `OWNER-${uuidv4().slice(0,8).toUpperCase()}`;
+    const hash = await bcrypt.hash(password, 10);
+
+    // Determine effective role
+    let effectiveRole = role;
+    let effectiveUserType = user_type || role;
+    if (role === 'both') {
+      effectiveRole = 'petOwner'; // base role is petOwner, both flag is in user_type
+      effectiveUserType = 'both';
+    }
+
+    await query(
+      `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, user_type, can_add_livestock, can_add_pets, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12,NOW(),NOW())`,
+      [userId, email.toLowerCase(), phone||null, hash, username, effectiveRole, ownerId, barangay||null, address||null,
+       effectiveUserType, can_add_livestock||false, can_add_pets||false]
+    );
+
+    logAudit(req, 'CREATE', 'users', userId, { role: effectiveRole, user_type: effectiveUserType, created_by: req.user?.username });
+    return res.json({ success: true, userId, message: `Account created for ${username}` });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROSS-ACCESS CONTROL (tickbox for livestock/pet cross-access)
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.put('/users/:id/access-flags', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { can_add_livestock, can_add_pets } = req.body;
+    await query(
+      'UPDATE users SET can_add_livestock=$1, can_add_pets=$2, updated_at=NOW() WHERE id=$3',
+      [!!can_add_livestock, !!can_add_pets, req.params.id]
+    );
+    logAudit(req, 'UPDATE_ACCESS', 'users', req.params.id, { can_add_livestock, can_add_pets });
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+

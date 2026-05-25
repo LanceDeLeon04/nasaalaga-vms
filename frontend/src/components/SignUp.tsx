@@ -300,6 +300,7 @@ export function SignUp() {
     temporaryId: '',
     calacazenId: '',
     householdNumber: '',
+    userType: 'petOwner' as 'petOwner' | 'livestockManager' | 'both',
     verificationMethod: 'email' as 'email',
   });
 
@@ -411,6 +412,7 @@ export function SignUp() {
           temporaryId:     formData.temporaryId   || undefined,
           calacazenId:     formData.calacazenId   || undefined,
           householdNumber: formData.householdNumber || undefined,
+          userType:        formData.userType,
         }),
       });
       const data = await res.json();
@@ -542,6 +544,29 @@ export function SignUp() {
           <div className="su-header">
             <h1>Create Account</h1>
             <p>Sign up for your NASaAlaga account</p>
+          </div>
+
+          {/* ── ACCOUNT TYPE ── */}
+          <p className="su-section-label">I am registering as a...</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
+            {([
+              { value: 'petOwner', emoji: '🐾', label: 'Pet Owner', desc: 'I have pets to register' },
+              { value: 'livestockManager', emoji: '🐄', label: 'Livestock Manager', desc: 'I manage farm animals' },
+              { value: 'both', emoji: '🐾🐄', label: 'Both', desc: 'I have pets & livestock' },
+            ] as const).map(opt => (
+              <button key={opt.value} type="button"
+                onClick={() => set('userType', opt.value)}
+                style={{
+                  padding: '12px 8px', borderRadius: 10, border: '2px solid',
+                  borderColor: formData.userType === opt.value ? '#2B5EA6' : '#d1d5db',
+                  background: formData.userType === opt.value ? '#eff6ff' : 'white',
+                  cursor: 'pointer', textAlign: 'center' as const, transition: 'all .15s',
+                }}>
+                <div style={{ fontSize: 22 }}>{opt.emoji}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: formData.userType === opt.value ? '#2B5EA6' : '#374151', marginTop: 4 }}>{opt.label}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{opt.desc}</div>
+              </button>
+            ))}
           </div>
 
           {/* ── PERSONAL INFORMATION ── */}

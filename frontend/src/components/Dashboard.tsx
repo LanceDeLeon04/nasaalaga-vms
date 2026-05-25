@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AdminDashboard } from './AdminDashboard';
 import { BAHWDashboard } from './BAHWDashboard';
 import { PetOwnerDashboard } from './PetOwnerDashboard';
+import { LivestockOwnerDashboard } from './LivestockOwnerDashboard';
 import { GuestDashboard } from './GuestDashboard';
 import { CityHealthDashboard } from './CityHealthDashboard';
 import type { User } from '../App';
@@ -12,18 +13,17 @@ export function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is logged in (stored in sessionStorage)
     const storedUser = sessionStorage.getItem('nasaalaga_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
-      // No user logged in, redirect to login
       navigate('/');
     }
   }, [navigate]);
 
   const handleLogout = () => {
     sessionStorage.removeItem('nasaalaga_user');
+    sessionStorage.removeItem('nasaalaga_token');
     setUser(null);
     navigate('/');
   };
@@ -39,17 +39,30 @@ export function Dashboard() {
     );
   }
 
+  const u = user as any;
+  const isAdmin = user.role === 'admin' || user.role === 'superadmin';
+  const isBahw = user.role === 'bahw';
+  const isCityHealth = user.role === 'cityHealth';
+  const isGuest = user.role === 'guest';
+  // Livestock-only: role is livestockManager AND cannot add pets AND not 'both'
+  const isLivestockOnly = user.role === 'livestockManager' && !u.can_add_pets && u.user_type !== 'both';
+  // Pet owner (default for petOwner, owner, both, or livestockManager with pet access)
+  const isPetOwnerOrBoth = user.role === 'petOwner' || user.role === 'owner' ||
+    u.user_type === 'both' || (user.role === 'livestockManager' && u.can_add_pets);
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {user.role === 'admin' || user.role === 'superadmin' ? (
+      {isAdmin ? (
         <AdminDashboard user={user} onLogout={handleLogout} />
-      ) : user.role === 'bahw' ? (
+      ) : isBahw ? (
         <BAHWDashboard user={user} onLogout={handleLogout} />
-      ) : user.role === 'cityHealth' ? (
+      ) : isCityHealth ? (
         <CityHealthDashboard user={user} onLogout={handleLogout} />
-      ) : user.role === 'petOwner' || user.role === 'livestockManager' || user.role === 'owner' ? (
+      ) : isLivestockOnly ? (
+        <LivestockOwnerDashboard user={user} onLogout={handleLogout} />
+      ) : isPetOwnerOrBoth ? (
         <PetOwnerDashboard user={user} onLogout={handleLogout} />
-      ) : user.role === 'guest' ? (
+      ) : isGuest ? (
         <GuestDashboard user={user} onLogout={handleLogout} />
       ) : null}
     </div>

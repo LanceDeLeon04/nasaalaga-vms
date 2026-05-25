@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
-  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign
+  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign, UserCircle2
 } from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 
@@ -30,6 +30,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },
     { id: 'audit'     as ActiveView, label: 'Audit Logs',       icon: ScrollText,      roles: ['admin', 'superadmin'] },
     { id: 'settings'  as ActiveView, label: 'SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
+    { id: 'myprofile' as ActiveView, label: 'My Profile',       icon: UserCircle2, roles: ['admin', 'bahw', 'superadmin'] },
   ];
 
   const handleMenuItemClick = (itemId: ActiveView, isAllowed: boolean) => {

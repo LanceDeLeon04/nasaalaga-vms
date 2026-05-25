@@ -218,6 +218,19 @@ export const api = {
   getBudgetAIRecs: (fy = 2025) => request(`/budget/ai-recommendations?fiscal_year=${fy}`),
   updateBudgetRecStatus: (id: string, status: string) => request(`/budget/ai-recommendations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
   budgetAIAnalyze: (data: any) => request('/budget/ai-analyze', { method: 'POST', body: JSON.stringify(data) }),
+  getUnlinkedInventory: () => request('/budget/unlinked-inventory'),
+  linkInventoryToBudget: (data: any) => request('/budget/link-inventory', { method: 'POST', body: JSON.stringify(data) }),
+  unlinkInventoryFromBudget: (itemId: string, data: any) => request(`/budget/unlink-inventory/${itemId}`, { method: 'DELETE', body: JSON.stringify(data) }),
+  // ── Profile ────────────────────────────────────────────────────────────
+  getMyProfile: () => request('/profile/me'),
+  updateMyProfile: (data: any) => request('/profile/me', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data: any) => request('/profile/change-password', { method: 'PUT', body: JSON.stringify(data) }),
+  // ── Admin user creation ────────────────────────────────────────────────
+  adminCreateUser: (data: any) => request('/admin/create-user', { method: 'POST', body: JSON.stringify(data) }),
+  updateUserAccessFlags: (id: string, data: any) => request(`/users/${id}/access-flags`, { method: 'PUT', body: JSON.stringify(data) }),
 };
 
 export default api;
+
+// ── Profile endpoints ──────────────────────────────────────────────────────
+// (inserted via patch; do not duplicate)

@@ -532,7 +532,7 @@ export function BudgetUtilization({ userRole }: Props) {
   const [recs, setRecs] = useState<AIRec[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'programs' | 'lineitems' | 'ai'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'programs' | 'lineitems' | 'inventory' | 'ai'>('overview');
   const [selectedProgId, setSelectedProgId] = useState<string>('');
   const [filterType, setFilterType] = useState<'all' | 'capex' | 'opex'>('all');
   const [fy, setFy] = useState(2025);
@@ -542,6 +542,12 @@ export function BudgetUtilization({ userRole }: Props) {
   const [editingLI, setEditingLI] = useState<LineItem | null>(null);
   const [expenditureTarget, setExpenditureTarget] = useState<LineItem | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [invItems, setInvItems] = useState<any[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invSearch, setInvSearch] = useState('');
+  const [invFilter, setInvFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
+  const [linkingItem, setLinkingItem] = useState<any | null>(null);
+  const [linkForm, setLinkForm] = useState({ program_id: '', line_item_id: '', fiscal_year: new Date().getFullYear(), override_amount: '' });
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -670,6 +676,45 @@ export function BudgetUtilization({ userRole }: Props) {
     } catch { showToast('Update failed', 'error'); }
   };
 
+  // ── Inventory Link ────────────────────────────────────────────────────────
+  const loadInventory = useCallback(async () => {
+    setInvLoading(true);
+    try {
+      const res = await api.getUnlinkedInventory();
+      setInvItems(res.items || []);
+    } catch { showToast('Failed to load inventory', 'error'); }
+    setInvLoading(false);
+  }, []);
+
+  useEffect(() => { if (activeTab === 'inventory') loadInventory(); }, [activeTab]);
+
+  const handleLinkInventory = async () => {
+    if (!linkingItem || !linkForm.line_item_id) return;
+    try {
+      const res = await api.linkInventoryToBudget({
+        item_id: linkingItem.id,
+        item_type: linkingItem.item_type,
+        line_item_id: linkForm.line_item_id,
+        program_id: linkForm.program_id,
+        fiscal_year: linkForm.fiscal_year,
+        override_amount: linkForm.override_amount ? parseFloat(linkForm.override_amount) : undefined,
+      });
+      showToast(`✅ ₱${Number(res.deducted).toLocaleString('en-PH', { maximumFractionDigits: 0 })} deducted from budget line item`);
+      setLinkingItem(null);
+      setLinkForm({ program_id: '', line_item_id: '', fiscal_year: new Date().getFullYear(), override_amount: '' });
+      await Promise.all([loadInventory(), loadPrograms()]);
+    } catch (e: any) { showToast(e.message, 'error'); }
+  };
+
+  const handleUnlink = async (item: any) => {
+    if (!confirm(`Remove "${item.name}" from its budget link and reverse the deduction?`)) return;
+    try {
+      await api.unlinkInventoryFromBudget(item.id, { item_type: item.item_type });
+      showToast('Unlinked — expenditure reversed');
+      await Promise.all([loadInventory(), loadPrograms()]);
+    } catch (e: any) { showToast(e.message, 'error'); }
+  };
+
   // ── Derived numbers ───────────────────────────────────────────────────────
   const allItems = programs.flatMap(p => p.line_items);
   const totalAllot = programs.reduce((s, p) => s + Number(p.total_allotment), 0);
@@ -769,6 +814,7 @@ export function BudgetUtilization({ userRole }: Props) {
           { key: 'overview', label: 'Overview', icon: BarChart2 },
           { key: 'programs', label: 'Programs', icon: FileText },
           { key: 'lineitems', label: 'Line Items', icon: Package },
+          { key: 'inventory', label: 'Inventory Link', icon: Syringe },
           { key: 'ai', label: `AI Insights${recs.filter(r => r.status !== 'dismissed').length > 0 ? ` (${recs.filter(r => r.status !== 'dismissed').length})` : ''}`, icon: Brain },
         ] as const).map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -1030,6 +1076,227 @@ export function BudgetUtilization({ userRole }: Props) {
       )}
 
       {/* ─── AI INSIGHTS ─── */}
+      {activeTab === 'inventory' && (
+        <div className="space-y-5">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                <Syringe className="w-5 h-5 text-[#2B5EA6]" /> Inventory → Budget Link
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Link existing inventory items to budget line items so their purchase cost is reflected in utilization.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={loadInventory} className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200">
+                <RefreshCw className="w-4 h-4" /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Stats */}
+          {!invLoading && (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'Total Items', value: invItems.length, color: 'bg-blue-50 text-blue-700' },
+                { label: 'Linked to Budget', value: invItems.filter(i => i.line_item_id).length, color: 'bg-green-50 text-green-700' },
+                { label: 'Not Yet Linked', value: invItems.filter(i => !i.line_item_id).length, color: 'bg-amber-50 text-amber-700' },
+              ].map(s => (
+                <div key={s.label} className={`${s.color} rounded-xl p-4 text-center`}>
+                  <p className="text-2xl font-black">{s.value}</p>
+                  <p className="text-xs font-semibold mt-0.5 opacity-80">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="flex gap-2 flex-wrap">
+            <input value={invSearch} onChange={e => setInvSearch(e.target.value)}
+              placeholder="Search items..." className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#2B5EA6]/30 min-w-[160px]" />
+            {(['all', 'linked', 'unlinked'] as const).map(f => (
+              <button key={f} onClick={() => setInvFilter(f)}
+                className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-all capitalize ${invFilter === f ? 'bg-[#2B5EA6] text-white border-[#2B5EA6]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#2B5EA6]'}`}>
+                {f}
+              </button>
+            ))}
+          </div>
+
+          {/* Items Table */}
+          {invLoading ? (
+            <div className="text-center py-12 text-gray-400"><RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />Loading inventory…</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-100">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                    <th className="px-4 py-3 text-left">Item</th>
+                    <th className="px-4 py-3 text-left">Type</th>
+                    <th className="px-4 py-3 text-right">Qty</th>
+                    <th className="px-4 py-3 text-right">Unit Price</th>
+                    <th className="px-4 py-3 text-right">Total Value</th>
+                    <th className="px-4 py-3 text-left">Budget Link</th>
+                    <th className="px-4 py-3 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {invItems
+                    .filter(i => {
+                      const q = invSearch.toLowerCase();
+                      const matchQ = !q || i.name?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q);
+                      const matchF = invFilter === 'all' || (invFilter === 'linked' ? !!i.line_item_id : !i.line_item_id);
+                      return matchQ && matchF;
+                    })
+                    .map(item => {
+                      const totalVal = Number(item.quantity) * Number(item.unit_cost);
+                      const linkedProg = programs.find(p => p.id === item.program_id);
+                      const linkedLI = programs.flatMap(p => p.line_items).find((li: LineItem) => li.id === item.line_item_id);
+                      return (
+                        <tr key={`${item.item_type}-${item.id}`} className="hover:bg-blue-50/20 transition-colors">
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-900">{item.name}</p>
+                            <p className="text-xs text-gray-400">{item.category} · {item.item_type}</p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${item.item_type === 'medicine' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                              {item.item_type === 'medicine' ? '💊 Medicine' : '📦 Supply'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800">{item.quantity}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">₱{Number(item.unit_cost).toLocaleString('en-PH', { maximumFractionDigits: 2 })}</td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-900">₱{totalVal.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</td>
+                          <td className="px-4 py-3">
+                            {item.line_item_id ? (
+                              <div>
+                                <p className="text-xs font-semibold text-green-700">✅ {linkedLI?.name || item.line_item_id}</p>
+                                <p className="text-xs text-gray-400">{linkedProg?.name} · FY{item.fiscal_year}</p>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-amber-600 font-semibold">⚠️ Not linked</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {isAdmin && (
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setLinkingItem(item);
+                                    const guessedYear = item.fiscal_year || new Date(item.created_at).getFullYear() || fy;
+                                    setLinkForm({ program_id: item.program_id || '', line_item_id: item.line_item_id || '', fiscal_year: guessedYear, override_amount: '' });
+                                  }}
+                                  className="px-3 py-1.5 bg-[#2B5EA6] text-white rounded-lg text-xs font-semibold hover:bg-[#2B5EA6]/90">
+                                  {item.line_item_id ? 'Re-link' : 'Link'}
+                                </button>
+                                {item.line_item_id && (
+                                  <button onClick={() => handleUnlink(item)}
+                                    className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100">
+                                    Unlink
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+              {invItems.filter(i => invFilter === 'all' || (invFilter === 'linked' ? !!i.line_item_id : !i.line_item_id)).length === 0 && !invLoading && (
+                <div className="text-center py-10 text-gray-400 text-sm">
+                  <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                  {invFilter === 'unlinked' ? 'All items are linked to budget line items!' : 'No items found.'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Link Modal */}
+      {linkingItem && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Syringe className="w-5 h-5 text-[#2B5EA6]" /> Link to Budget
+              </h2>
+              <button onClick={() => setLinkingItem(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Item summary */}
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <p className="font-bold text-blue-900">{linkingItem.name}</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  {linkingItem.quantity} {linkingItem.unit || 'units'} × ₱{Number(linkingItem.unit_cost).toLocaleString()} = <strong>₱{(Number(linkingItem.quantity) * Number(linkingItem.unit_cost)).toLocaleString('en-PH', { maximumFractionDigits: 0 })}</strong>
+                </p>
+              </div>
+
+              {/* Fiscal Year */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Fiscal Year this was purchased *</label>
+                <select value={linkForm.fiscal_year} onChange={e => setLinkForm(f => ({ ...f, fiscal_year: Number(e.target.value), program_id: '', line_item_id: '' }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-white">
+                  {[2022, 2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>FY {y}</option>)}
+                </select>
+              </div>
+
+              {/* Program */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Budget Program *</label>
+                <select value={linkForm.program_id}
+                  onChange={e => setLinkForm(f => ({ ...f, program_id: e.target.value, line_item_id: '' }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-white">
+                  <option value="">— Select Program —</option>
+                  {programs.map(p => <option key={p.id} value={p.id}>{p.name} (FY{p.fiscal_year})</option>)}
+                </select>
+              </div>
+
+              {/* Line Item */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Budget Line Item *</label>
+                <select value={linkForm.line_item_id}
+                  onChange={e => setLinkForm(f => ({ ...f, line_item_id: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-white"
+                  disabled={!linkForm.program_id}>
+                  <option value="">— Select Line Item —</option>
+                  {(programs.find(p => p.id === linkForm.program_id)?.line_items || []).map((li: LineItem) => (
+                    <option key={li.id} value={li.id}>
+                      {li.name} (Allotment: ₱{Number(li.allotment).toLocaleString()} · Used: ₱{Number(li.utilized).toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Override amount */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Amount to Deduct (₱) — leave blank to auto-compute (Qty × Unit Price)
+                </label>
+                <input type="number" step="0.01" value={linkForm.override_amount}
+                  onChange={e => setLinkForm(f => ({ ...f, override_amount: e.target.value }))}
+                  placeholder={`Auto: ₱${(Number(linkingItem.quantity) * Number(linkingItem.unit_cost)).toLocaleString('en-PH', { maximumFractionDigits: 0 })}`}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#2B5EA6]/30" />
+              </div>
+
+              {linkForm.line_item_id && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-800">
+                  <strong>⚠️ This will charge</strong> ₱{linkForm.override_amount ? Number(linkForm.override_amount).toLocaleString() : (Number(linkingItem.quantity) * Number(linkingItem.unit_cost)).toLocaleString('en-PH', { maximumFractionDigits: 0 })} to the selected line item's utilized amount.
+                  {linkingItem.line_item_id && <span className="block mt-1 text-xs">The previous link will be removed first to avoid double-counting.</span>}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-gray-100 px-6 py-4 flex gap-2 justify-end">
+              <button onClick={() => setLinkingItem(null)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+              <button onClick={handleLinkInventory} disabled={!linkForm.line_item_id}
+                className="px-6 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/90 disabled:opacity-40 disabled:cursor-not-allowed">
+                Link & Deduct from Budget
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'ai' && (
         <div className="space-y-4">
           <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-2xl p-5 flex items-start gap-4">

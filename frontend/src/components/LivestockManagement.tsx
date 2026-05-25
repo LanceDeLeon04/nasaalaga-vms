@@ -469,7 +469,7 @@ type MainTab = 'overview'|'records'|'health'|'disease'|'mortality';
 
 
 
-export function LivestockManagement() {
+export function LivestockManagement({ barangayFilter }: { barangayFilter?: string } = {}) {
   const [tab, setTab]           = useState<MainTab>('overview');
   const [livestock, setLivestock] = useState<Livestock[]>([]);
   const [summary, setSummary]   = useState<Summary|null>(null);
@@ -478,7 +478,7 @@ export function LivestockManagement() {
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
   const [fType, setFType]       = useState('all');
-  const [fBrgy, setFBrgy]       = useState('all');
+  const [fBrgy, setFBrgy]       = useState(barangayFilter || 'all');
   const [fHealth, setFHealth]   = useState('all');
   const [showReg, setShowReg]   = useState(false);
   const [viewItem, setViewItem] = useState<Livestock|null>(null);

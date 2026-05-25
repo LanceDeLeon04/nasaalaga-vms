@@ -11,6 +11,13 @@ export interface User {
   role: UserRole;
   ownerId?: string;
   email?: string;
+  barangay?: string;
+  phone?: string;
+  address?: string;
+  avatar?: string;
+  user_type?: string;
+  can_add_livestock?: boolean;
+  can_add_pets?: boolean;
 }
 
 // ── Secret bypass: Shift + Alt + S  A  (typed while holding Shift+Alt, press S then A)
