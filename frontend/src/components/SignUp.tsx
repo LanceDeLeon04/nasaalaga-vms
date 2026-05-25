@@ -269,11 +269,26 @@ const STYLES = `
     color:#2B5EA6; margin:20px 0 28px; animation:countPulse 1s ease-in-out infinite;
   }
 
+  /* ── role cards ── */
+  .su-role-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:0; }
+  .su-role-card {
+    border:2px solid #e5e7eb; border-radius:14px; padding:16px 12px;
+    cursor:pointer; background:#f9fafb; text-align:center;
+    transition:all .18s; display:flex; flex-direction:column; align-items:center; gap:8px;
+  }
+  .su-role-card:hover { border-color:#2B5EA6; background:#eff6ff; }
+  .su-role-card.selected { border-color:#2B5EA6; background:#eff6ff; box-shadow:0 0 0 3px rgba(43,94,166,.13); }
+  .su-role-card-icon { font-size:28px; line-height:1; }
+  .su-role-card-title { font-size:13px; font-weight:800; color:#1f2937; line-height:1.3; }
+  .su-role-card-desc  { font-size:11px; color:#6b7280; line-height:1.5; }
+  .su-role-card.selected .su-role-card-title { color:#2B5EA6; }
+
   /* ── responsive ── */
   @media(max-width:640px) {
     .su-card          { padding:28px 20px; }
     .su-grid-2        { grid-template-columns:1fr; }
     .su-grid-3        { grid-template-columns:1fr; }
+    .su-role-cards    { grid-template-columns:1fr; }
   }
 `;
 
@@ -301,6 +316,7 @@ export function SignUp() {
     calacazenId: '',
     householdNumber: '',
     verificationMethod: 'email' as 'email',
+    role: 'petOwner' as 'petOwner' | 'livestockManager' | 'both',
   });
 
   const [otp,          setOtp]          = useState('');
@@ -411,6 +427,7 @@ export function SignUp() {
           temporaryId:     formData.temporaryId   || undefined,
           calacazenId:     formData.calacazenId   || undefined,
           householdNumber: formData.householdNumber || undefined,
+          role:            formData.role,
         }),
       });
       const data = await res.json();
@@ -568,6 +585,27 @@ export function SignUp() {
               <input className="su-input no-icon" type="text" placeholder="Dela Cruz"
                 value={formData.lastName} onChange={(e) => set('lastName', e.target.value)} />
             </div>
+          </div>
+
+          {/* ── ACCOUNT TYPE ── */}
+          <p className="su-section-label" style={{ marginTop: 8 }}>Account Type <span style={{ color:'#ef4444' }}>*</span></p>
+
+          <div className="su-role-cards" style={{ marginBottom: 20 }}>
+            {[
+              { value: 'petOwner',         icon: '🐾', title: 'Pet Owner',                   desc: 'Register and manage your pets' },
+              { value: 'livestockManager', icon: '🐄', title: 'Livestock Manager',            desc: 'Register and manage your livestock' },
+              { value: 'both',             icon: '🐾🐄', title: 'Both',                       desc: 'Manage both pets and livestock' },
+            ].map(opt => (
+              <div
+                key={opt.value}
+                className={`su-role-card${formData.role === opt.value ? ' selected' : ''}`}
+                onClick={() => set('role', opt.value)}
+              >
+                <span className="su-role-card-icon">{opt.icon}</span>
+                <span className="su-role-card-title">{opt.title}</span>
+                <span className="su-role-card-desc">{opt.desc}</span>
+              </div>
+            ))}
           </div>
 
           {/* ── ACCOUNT DETAILS ── */}

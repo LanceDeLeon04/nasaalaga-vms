@@ -224,7 +224,7 @@ router.post('/verify-otp', async (req: Request, res: Response) => {
 // ── Signup ─────────────────────────────────────────────────────────────────
 router.post('/signup', async (req: Request, res: Response) => {
   try {
-    const { email, phone, password, username, barangay, address, temporaryId, calacazenId, householdNumber } = req.body;
+    const { email, phone, password, username, barangay, address, temporaryId, calacazenId, householdNumber, role } = req.body;
     const key = email ? email.toLowerCase() : phone;
 
     const otpResult = await query('SELECT * FROM otp_store WHERE key=$1 AND verified=true', [key]);
@@ -232,6 +232,10 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     const existing = await query('SELECT id FROM users WHERE email=$1', [key]);
     if (existing.rows.length > 0) return res.status(400).json({ error: 'User already exists' });
+
+    // Validate and assign role — only public-facing roles allowed through signup
+    const allowedSignupRoles = ['petOwner', 'livestockManager', 'both', 'owner'];
+    const assignedRole = role && allowedSignupRoles.includes(role) ? role : 'petOwner';
 
     const countResult = await query('SELECT COUNT(*) FROM users');
     const count = parseInt(countResult.rows[0].count);
@@ -241,8 +245,8 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     await query(
       `INSERT INTO users (id, email, phone, password_hash, username, role, owner_id, barangay, address, verified, calacazen_id, household_number, temp_id)
-       VALUES ($1,$2,$3,$4,$5,'owner',$6,$7,$8,true,$9,$10,$11)`,
-      [userId, key, phone || null, hash, username, ownerId, barangay || null, address || null,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10,$11,$12)`,
+      [userId, key, phone || null, hash, username, assignedRole, ownerId, barangay || null, address || null,
        calacazenId || null, householdNumber || null, temporaryId || null]
     );
 
@@ -258,7 +262,7 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     await query('DELETE FROM otp_store WHERE key=$1', [key]);
 
-    const payload = { id: userId, username, role: 'owner', ownerId, barangay: barangay || null };
+    const payload = { id: userId, username, role: assignedRole, ownerId, barangay: barangay || null };
     return res.json({ success: true, user: payload, token: signToken(payload) });
   } catch (err: any) {
     console.error('[Signup]', err);
