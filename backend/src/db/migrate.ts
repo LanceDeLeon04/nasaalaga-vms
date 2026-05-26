@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const createTables = async () => {
+export const createTables = async () => {
   const client = await pool.connect();
 
   try {
@@ -935,7 +935,7 @@ export async function migrateBudget() {
   }
 }
 
-async function migrateInventoryV2() {
+export async function migrateInventoryV2() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -983,7 +983,7 @@ async function migrateInventoryV2() {
   }
 }
 
-async function migrateLivestockPreReg() {
+export async function migrateLivestockPreReg() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1024,19 +1024,25 @@ async function migrateLivestockPreReg() {
   }
 }
 
-createTables()
-  .then(() => migrateBudget())
-  .then(() => migrateInventoryV2())
-  .then(() => migrateLivestockPreReg())
-  .then(() => migrateProfileColumns())
-  .then(() => {
-    console.log('Migration complete');
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error('Migration error:', err);
-    process.exit(1);
-  });
+// Only run migration chain when executed directly (ts-node migrate.ts), NOT when imported
+const isMain = require.main === module ||
+  (process.argv[1] && process.argv[1].includes('migrate'));
+
+if (isMain) {
+  createTables()
+    .then(() => migrateBudget())
+    .then(() => migrateInventoryV2())
+    .then(() => migrateLivestockPreReg())
+    .then(() => migrateProfileColumns())
+    .then(() => {
+      console.log('Migration complete');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('Migration error:', err);
+      process.exit(1);
+    });
+}
 
 // Run avatar + phone column additions
 export async function migrateProfileColumns() {

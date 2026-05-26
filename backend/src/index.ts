@@ -9,7 +9,7 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
-import { migrateProfileColumns } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns } from './db/migrate';
 
 dotenv.config();
 
@@ -59,7 +59,17 @@ app.listen(PORT, async () => {
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
   await verifyEmailConnection();
-  await migrateProfileColumns();
+  // Run full migration chain on every startup (all are idempotent)
+  try {
+    await createTables();
+    await migrateBudget();
+    await migrateInventoryV2();
+    await migrateLivestockPreReg();
+    await migrateProfileColumns();
+    console.log('✅ Database ready');
+  } catch (err) {
+    console.error('⚠️  Migration warning (non-fatal):', err);
+  }
   console.log('');
 });
 

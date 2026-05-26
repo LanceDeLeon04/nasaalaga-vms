@@ -2151,7 +2151,14 @@ router.post('/interventions', authenticate, async (req: AuthRequest, res: Respon
          notes, is_outbreak, disease_event_id, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
        ON CONFLICT (id) DO UPDATE SET
-         status=EXCLUDED.status, updated_at=NOW()
+         alert_id=EXCLUDED.alert_id, title=EXCLUDED.title, barangay=EXCLUDED.barangay,
+         type=EXCLUDED.type, severity=EXCLUDED.severity, status=EXCLUDED.status,
+         goal=EXCLUDED.goal, accomplishment=EXCLUDED.accomplishment,
+         progress_pct=EXCLUDED.progress_pct, start_date=EXCLUDED.start_date,
+         end_date=EXCLUDED.end_date, deployed_staff=EXCLUDED.deployed_staff,
+         deployed_resources=EXCLUDED.deployed_resources, deliverables=EXCLUDED.deliverables,
+         notes=EXCLUDED.notes, is_outbreak=EXCLUDED.is_outbreak,
+         disease_event_id=EXCLUDED.disease_event_id, updated_at=NOW()
        RETURNING *`,
       [id, alert_id, title, barangay, type, severity, status || 'pending', goal || '', accomplishment || '',
        progress_pct || 0, start_date || null, end_date || null,

@@ -732,9 +732,11 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       });
 
       // Mortality
-      (disease?.recentMortality || []).slice(0, 5).forEach((m: any, i: number) => {
+      (disease?.recentMortality || []).slice(0, 5).forEach((m: any) => {
+        // Use stable ID based on content, not array index, so it survives refresh
+        const stableId = `mort-${m.id || [m.barangay, m.animal_type, m.date].filter(Boolean).join('-').replace(/\s+/g, '_')}`;
         generated.push({
-          id: `mort-${i}`,
+          id: stableId,
           type: 'mortality',
           severity: m.quantity > 5 ? 'high' : 'medium',
           barangay: m.barangay || 'Unknown',
@@ -747,9 +749,10 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
 
       // Medicine inventory alerts
       const med = medRes.status === 'fulfilled' ? medRes.value : null;
-      (med?.stock || []).filter((m: any) => m.stock_status === 'Critical' || m.stock_status === 'Out of Stock').forEach((m: any, i: number) => {
+      (med?.stock || []).filter((m: any) => m.stock_status === 'Critical' || m.stock_status === 'Out of Stock').forEach((m: any) => {
+        const stableId = `med-${m.id || m.name?.replace(/\s+/g, '_') || Math.random()}`;
         generated.push({
-          id: `med-${i}`,
+          id: stableId,
           type: 'inventory',
           severity: m.quantity === 0 ? 'high' : 'medium',
           barangay: 'CVO Central',
@@ -759,9 +762,10 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
           createdAt: now,
         });
       });
-      (med?.expiring || []).slice(0, 3).forEach((m: any, i: number) => {
+      (med?.expiring || []).slice(0, 3).forEach((m: any) => {
+        const stableId = `exp-${m.id || m.name?.replace(/\s+/g, '_') || Math.random()}`;
         generated.push({
-          id: `exp-${i}`,
+          id: stableId,
           type: 'inventory',
           severity: 'medium',
           barangay: 'CVO Central',
@@ -799,8 +803,6 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
         );
       }
 
-      setAlerts(generated);
-
       // Staff from users (eligible roles only)
       const users = usersRes.status === 'fulfilled' ? (usersRes.value || []) : [];
       const staff: StaffMember[] = users
@@ -808,10 +810,13 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
         .map((u: any) => ({ id: u.id, name: u.username || u.name || u.email, role: u.role, barangay: u.barangay }));
       setEligibleStaff(staff);
 
-      // Load saved interventions from DB
+      // Load saved interventions from DB — do this BEFORE setAlerts so we can
+      // apply linkage in a single atomic call (avoids the race where setAlerts
+      // wipes interventionId then a second setAlerts re-applies it too late)
+      let loaded: Intervention[] = [];
       if (interventionsRes.status === 'fulfilled') {
         const dbRows: any[] = interventionsRes.value || [];
-        const loaded: Intervention[] = dbRows.map((r: any) => ({
+        loaded = dbRows.map((r: any) => ({
           id: r.id, alertId: r.alert_id, title: r.title, barangay: r.barangay,
           type: r.type, severity: r.severity, status: r.status,
           goal: r.goal || '', accomplishment: r.accomplishment || '',
@@ -828,10 +833,11 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
           diseaseEventId: r.disease_event_id || undefined,
         }));
         setInterventions(loaded);
-        // Update alert linkage
-        const linkedAlertIds = new Set(loaded.map(iv => iv.alertId));
-        setAlerts(prev => prev.map(a => ({ ...a, interventionId: linkedAlertIds.has(a.id) ? 'linked' : undefined })));
       }
+
+      // Apply alert linkage in ONE setAlerts call — prevents the two-call race condition
+      const linkedAlertIds = new Set(loaded.map(iv => iv.alertId));
+      setAlerts(generated.map(a => ({ ...a, interventionId: linkedAlertIds.has(a.id) ? 'linked' : undefined })));
     } catch {
       // keep fallback
     } finally {
