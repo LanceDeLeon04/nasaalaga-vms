@@ -228,6 +228,7 @@ export const api = {
   getVaccinationCoverageReport: () => request('/reports/vaccination-coverage'),
   getMedicineMovementReport: () => request('/reports/medicine-movement'),
   getDashboardMedicineIntel: () => request('/dashboard/medicine-intel'),
+  getDashboardMedicineUsageAnalytics: (days = 90) => request(`/dashboard/medicine-usage-analytics?days=${days}`),
   getDashboardAnimalPopulation: () => request('/dashboard/animal-population'),
   getDashboardDiseaseIntel: () => request('/dashboard/disease-intel'),
   // ── Budget Utilization Module ──────────────────────────────────────────

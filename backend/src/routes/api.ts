@@ -1608,6 +1608,194 @@ router.get('/dashboard/medicine-intel', authenticate, async (req: AuthRequest, r
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
+// ── Medicine Usage Analytics — real barangay-tagged data ──────────────────
+// Sources:
+//   1. vaccination_history → pets.barangay (pet vaccinations)
+//   2. inventory_transactions → users.barangay via reference_person OR barangay col (manual releases)
+//   3. outbreak_records.medicines_dispatched → outbreak.barangay (outbreak dispatch)
+//   4. livestock records → livestock.barangay (livestock treatments via transactions)
+router.get('/dashboard/medicine-usage-analytics', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 90;
+
+    // ── 1. Pet vaccinations tagged to pet's barangay ────────────────────
+    const petVaxByBarangay = await query(`
+      SELECT
+        mi.id as medicine_id,
+        mi.name as medicine_name,
+        mi.category,
+        p.barangay,
+        COUNT(*) as qty,
+        'pet_vaccination' as source_type,
+        MAX(vh.date_of_vaccination) as last_used
+      FROM vaccination_history vh
+      JOIN medicine_inventory mi ON vh.medicine_id = mi.id
+      JOIN pets p ON vh.pet_id = p.id
+      WHERE vh.date_of_vaccination >= NOW() - INTERVAL '${days} days'
+        AND p.barangay IS NOT NULL AND p.barangay <> ''
+      GROUP BY mi.id, mi.name, mi.category, p.barangay
+    `).catch(() => ({ rows: [] }));
+
+    // ── 2. Inventory OUT transactions → look up barangay from users or barangay col ─
+    const txByBarangay = await query(`
+      SELECT
+        it.item_id as medicine_id,
+        COALESCE(it.item_name, mi.name) as medicine_name,
+        mi.category,
+        COALESCE(it.barangay, u.barangay, 'CVO Central') as barangay,
+        SUM(it.quantity) as qty,
+        it.source_type,
+        MAX(it.created_at) as last_used
+      FROM inventory_transactions it
+      LEFT JOIN medicine_inventory mi ON it.item_id = mi.id
+      LEFT JOIN users u ON u.username = it.reference_person
+      WHERE it.item_type = 'medicine'
+        AND it.transaction_type IN ('OUT','dispense','dispense_pet','dispense_livestock')
+        AND it.created_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY it.item_id, COALESCE(it.item_name, mi.name), mi.category,
+               COALESCE(it.barangay, u.barangay, 'CVO Central'), it.source_type
+    `).catch(() => ({ rows: [] }));
+
+    // ── 3. Outbreak dispatches tagged to outbreak's barangay ────────────
+    const outbreakRecs = await query(`
+      SELECT id, barangay, disease, medicines_dispatched, date_created
+      FROM outbreak_records
+      WHERE medicines_dispatched IS NOT NULL
+        AND jsonb_array_length(medicines_dispatched) > 0
+        AND date_created >= NOW() - INTERVAL '${days} days'
+    `).catch(() => ({ rows: [] }));
+
+    // Flatten outbreak medicine dispatches
+    const outbreakUsage: any[] = [];
+    for (const ob of outbreakRecs.rows) {
+      const dispatched = Array.isArray(ob.medicines_dispatched) ? ob.medicines_dispatched : [];
+      for (const d of dispatched) {
+        outbreakUsage.push({
+          medicine_id: d.item_id || d.id || null,
+          medicine_name: d.name || d.item_name || 'Unknown',
+          category: d.category || 'Outbreak',
+          barangay: ob.barangay || 'Unknown',
+          qty: parseInt(d.quantity || d.qty || 1),
+          source_type: 'outbreak_dispatch',
+          last_used: ob.date_created,
+        });
+      }
+    }
+
+    // ── 4. Livestock treatments via transactions referencing livestock barangay ─
+    const livestockTx = await query(`
+      SELECT
+        it.item_id as medicine_id,
+        COALESCE(it.item_name, mi.name) as medicine_name,
+        mi.category,
+        COALESCE(it.barangay, l.barangay, 'CVO Central') as barangay,
+        SUM(it.quantity) as qty,
+        'livestock_treatment' as source_type,
+        MAX(it.created_at) as last_used
+      FROM inventory_transactions it
+      LEFT JOIN medicine_inventory mi ON it.item_id = mi.id
+      LEFT JOIN livestock l ON l.id = it.source_id
+      WHERE it.item_type = 'medicine'
+        AND it.source_type IN ('livestock','treatment')
+        AND it.created_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY it.item_id, COALESCE(it.item_name, mi.name), mi.category,
+               COALESCE(it.barangay, l.barangay, 'CVO Central')
+    `).catch(() => ({ rows: [] }));
+
+    // ── Combine all sources ─────────────────────────────────────────────
+    const allRows = [
+      ...petVaxByBarangay.rows.map((r:any) => ({ ...r, qty: parseInt(r.qty) })),
+      ...txByBarangay.rows.map((r:any) => ({ ...r, qty: parseInt(r.qty) })),
+      ...outbreakUsage,
+      ...livestockTx.rows.map((r:any) => ({ ...r, qty: parseInt(r.qty) })),
+    ];
+
+    // ── Aggregate: by medicine + barangay ──────────────────────────────
+    const byMedBarangay: Record<string, any> = {};
+    for (const r of allRows) {
+      if (!r.medicine_name || !r.barangay) continue;
+      const key = `${r.medicine_id || r.medicine_name}__${r.barangay}`;
+      if (!byMedBarangay[key]) {
+        byMedBarangay[key] = {
+          medicine_id: r.medicine_id,
+          medicine_name: r.medicine_name,
+          category: r.category,
+          barangay: r.barangay,
+          total_qty: 0,
+          sources: [],
+          last_used: r.last_used,
+        };
+      }
+      byMedBarangay[key].total_qty += (r.qty || 0);
+      byMedBarangay[key].sources.push(r.source_type);
+      if (r.last_used > byMedBarangay[key].last_used) byMedBarangay[key].last_used = r.last_used;
+    }
+    const usageByMedBarangay = Object.values(byMedBarangay);
+
+    // ── Aggregate: by medicine (top used overall) ───────────────────────
+    const byMed: Record<string, any> = {};
+    for (const r of usageByMedBarangay) {
+      const key = r.medicine_id || r.medicine_name;
+      if (!byMed[key]) {
+        byMed[key] = { medicine_id: r.medicine_id, medicine_name: r.medicine_name, category: r.category, total_qty: 0, barangay_count: 0, last_used: r.last_used };
+      }
+      byMed[key].total_qty += r.total_qty;
+      byMed[key].barangay_count += 1;
+      if (r.last_used > byMed[key].last_used) byMed[key].last_used = r.last_used;
+    }
+    const topMedicines = Object.values(byMed).sort((a:any,b:any) => b.total_qty - a.total_qty).slice(0, 20);
+
+    // ── Aggregate: by barangay (total medicine usage) ───────────────────
+    const byBarangay: Record<string, any> = {};
+    for (const r of usageByMedBarangay) {
+      if (!byBarangay[r.barangay]) {
+        byBarangay[r.barangay] = { barangay: r.barangay, total_qty: 0, medicine_types: new Set(), last_used: r.last_used };
+      }
+      byBarangay[r.barangay].total_qty += r.total_qty;
+      byBarangay[r.barangay].medicine_types.add(r.medicine_name);
+      if (r.last_used > byBarangay[r.barangay].last_used) byBarangay[r.barangay].last_used = r.last_used;
+    }
+    const barangayRanking = Object.values(byBarangay)
+      .map((b:any) => ({ ...b, medicine_types: b.medicine_types.size }))
+      .sort((a:any,b:any) => b.total_qty - a.total_qty);
+
+    // ── Fast-moving detection: medicine in barangay > threshold ────────
+    // Threshold: if usage in one barangay is >=2x average per barangay for that medicine
+    const fastMoving: any[] = [];
+    for (const med of topMedicines) {
+      const medRows = usageByMedBarangay.filter((r:any) => (r.medicine_id || r.medicine_name) === (med.medicine_id || med.medicine_name));
+      if (medRows.length < 1) continue;
+      const avgQty = med.total_qty / medRows.length;
+      for (const row of medRows) {
+        if (row.total_qty >= 2 && row.total_qty >= avgQty * 1.8) {
+          fastMoving.push({
+            medicine_id: med.medicine_id,
+            medicine_name: med.medicine_name,
+            category: med.category,
+            barangay: row.barangay,
+            barangay_qty: row.total_qty,
+            avg_per_barangay: Math.round(avgQty),
+            ratio: Math.round((row.total_qty / Math.max(avgQty, 1)) * 10) / 10,
+            sources: [...new Set(row.sources)],
+            last_used: row.last_used,
+          });
+        }
+      }
+    }
+    fastMoving.sort((a:any,b:any) => b.ratio - a.ratio);
+
+    return res.json({
+      success: true,
+      usageByMedBarangay,
+      topMedicines,
+      barangayRanking,
+      fastMoving,
+      periodDays: days,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
 // ── Dashboard - real animal population data ────────────────────────────────
 router.get('/dashboard/animal-population', authenticate, async (req: AuthRequest, res: Response) => {
   try {
