@@ -1214,8 +1214,9 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
         );
       }
 
-      // Staff from users (eligible roles only)
-      const users = usersRes.status === 'fulfilled' ? (usersRes.value || []) : [];
+      // Staff from users (eligible roles only) — API returns { users: [...] }
+      const usersPayload = usersRes.status === 'fulfilled' ? (usersRes.value || {}) : {};
+      const users: any[] = Array.isArray(usersPayload) ? usersPayload : (usersPayload.users || []);
       const staff: StaffMember[] = users
         .filter((u: any) => ELIGIBLE_ROLES.includes(u.role))
         .map((u: any) => ({ id: u.id, name: u.username || u.name || u.email, role: u.role, barangay: u.barangay }));

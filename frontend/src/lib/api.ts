@@ -276,6 +276,10 @@ export const api = {
   deletePendingOrder: (id: string) => request(`/inventory/pending-orders/${id}`, { method: 'DELETE' }),
   receivePendingOrder: (id: string, data: any) => request(`/inventory/pending-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
   barcodeInventoryLookup: (barcode: string) => request(`/inventory/barcode-lookup/${encodeURIComponent(barcode)}`),
+
+  // AI proxy — routes through backend to avoid CORS
+  aiAnalyze: (prompt: string) =>
+    request('/ai/analyze', { method: 'POST', body: JSON.stringify({ prompt }) }),
 };
 
 export default api;

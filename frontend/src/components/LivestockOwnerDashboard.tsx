@@ -3,7 +3,8 @@ import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
-import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList } from 'lucide-react';
+import { UserFeedback } from './UserFeedback';
+import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
 
@@ -34,7 +35,7 @@ interface Notification {
 }
 
 export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback'>('dashboard');
   const [selectedLivestock, setSelectedLivestock] = useState<Livestock | null>(null);
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -569,11 +570,22 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
                   setActiveSection('profile');
                   setIsMobileMenuOpen(false);
                 }}
-                className={`w-full px-4 py-3 text-left text-sm font-medium ${
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
                   activeSection === 'profile' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 Profile
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSection('feedback');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium ${
+                  activeSection === 'feedback' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Feedback & Complaints
               </button>
             </div>
           )}
@@ -633,6 +645,17 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             >
               Profile
             </button>
+            <button
+              onClick={() => setActiveSection('feedback')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
+                activeSection === 'feedback'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Feedback
+            </button>
           </div>
         </div>
 
@@ -651,6 +674,9 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
           <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
         )}
         {activeSection === 'notifications' && renderNotifications()}
+        {activeSection === 'feedback' && (
+          <UserFeedback user={user} />
+        )}
       </div>
 
       {/* Livestock Details Modal */}

@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
-import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList } from 'lucide-react';
+import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
 import { CVOServicesShared } from './CVOServicesShared';
+import { UserFeedback } from './UserFeedback';
 import { PetPreRegistration } from './PetPreRegistration';
 import { VaccinationCard } from './VaccinationCard';
 import { api } from '../lib/api';
@@ -70,7 +71,7 @@ interface Notification {
 }
 
 export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'feedback'>('dashboard');
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [showPetDetails, setShowPetDetails] = useState(false);
   const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
@@ -967,6 +968,17 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               </button>
               <button
                 onClick={() => {
+                  setActiveSection('feedback');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
+                  activeSection === 'feedback' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Feedback & Complaints
+              </button>
+              <button
+                onClick={() => {
                   setActiveSection('profile');
                   setIsMobileMenuOpen(false);
                 }}
@@ -1046,6 +1058,17 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               CVO Services
             </button>
             <button
+              onClick={() => setActiveSection('feedback')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
+                activeSection === 'feedback'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Feedback
+            </button>
+            <button
               onClick={() => setActiveSection('profile')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
                 activeSection === 'profile'
@@ -1066,6 +1089,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         {activeSection === 'lostfound' && renderLostFound()}
         {activeSection === 'notifications' && renderNotifications()}
         {activeSection === 'cvoservices' && renderCVOServices()}
+        {activeSection === 'feedback' && (
+          <UserFeedback user={user} />
+        )}
         {activeSection === 'profile' && (
           <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
         )}

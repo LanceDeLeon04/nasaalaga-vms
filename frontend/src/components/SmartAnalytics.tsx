@@ -36,20 +36,11 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-// ─── AI API Call ──────────────────────────────────────────────────────────────
+// ─── AI API Call — proxied through backend to avoid CORS ─────────────────────
 
 const callClaudeAI = async (prompt: string): Promise<string> => {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  const data = await response.json();
-  return data.content?.map((b: any) => b.text || '').join('\n') || '';
+  const result = await api.aiAnalyze(prompt);
+  return result.text || '';
 };
 
 // ─── Available metrics ────────────────────────────────────────────────────────
@@ -245,7 +236,7 @@ RECOMMENDATIONS:
     } catch (e) {
       console.error(e);
       setOverviewResult({
-        summary:         'Unable to connect to AI service. Please check your network and try again.',
+        summary:         'Unable to reach the analysis service. Please ensure the backend server is running and try again.',
         findings:        '',
         recommendations: '',
       });
@@ -306,7 +297,7 @@ RECOMMENDATIONS:
     } catch (e) {
       console.error(e);
       setCompResult({
-        interpretation:  'Unable to connect to AI service. Please try again.',
+        interpretation:  'Unable to reach the analysis service. Please ensure the backend server is running and try again.',
         effectiveness:   '',
         recommendation:  '',
       });

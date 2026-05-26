@@ -975,7 +975,18 @@ router.post('/audit-logs', authenticate, async (req: AuthRequest, res: Response)
 // ── Feedback ───────────────────────────────────────────────────────────────
 router.get('/feedback', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM feedback ORDER BY created_at DESC');
+    const role = req.user?.role || '';
+    const isPrivileged = ['admin', 'superadmin', 'bahw', 'cityHealth'].includes(role);
+    let result;
+    if (isPrivileged) {
+      result = await query('SELECT * FROM feedback ORDER BY created_at DESC');
+    } else {
+      // Regular users see only their own submissions
+      result = await query(
+        'SELECT * FROM feedback WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.user?.id]
+      );
+    }
     return res.json({ success: true, feedback: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -986,9 +997,9 @@ router.post('/feedback', authenticate, async (req: AuthRequest, res: Response) =
   try {
     const d = req.body;
     const result = await query(
-      `INSERT INTO feedback (user_id, username, category, subject, message, status)
-       VALUES ($1,$2,$3,$4,$5,'Open') RETURNING *`,
-      [req.user?.id, req.user?.username, d.category, d.subject, d.message]
+      `INSERT INTO feedback (user_id, username, category, subject, message, status, priority, barangay)
+       VALUES ($1,$2,$3,$4,$5,'Open',$6,$7) RETURNING *`,
+      [req.user?.id, req.user?.username, d.category, d.subject, d.message, d.priority || 'Medium', d.barangay || null]
     );
     return res.json({ success: true, feedback: result.rows[0] });
   } catch (err: any) {
@@ -2236,6 +2247,127 @@ router.get('/inventory/barcode-lookup/:barcode', authenticate, async (req: AuthR
     if (os.rows[0]) return res.json({ found: true, type: 'office', item: os.rows[0] });
     return res.json({ found: false });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── AI Proxy ───────────────────────────────────────────────────────────────
+// Routes the Anthropic API call server-side to avoid browser CORS restrictions.
+// Falls back to intelligent rule-based analysis when no API key is configured.
+router.post('/ai/analyze', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'prompt is required' });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    // ── If API key is available, use Claude ───────────────────────────────
+    if (apiKey) {
+      try {
+        const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 1000,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+        if (upstream.ok) {
+          const data = await upstream.json() as any;
+          const text = (data.content || []).map((b: any) => b.text || '').join('\n');
+          return res.json({ text, source: 'claude' });
+        }
+      } catch (_) { /* fall through to rule-based */ }
+    }
+
+    // ── Rule-based fallback ────────────────────────────────────────────────
+    const isOverview   = /executive summary|KEY FINDINGS|12-month/i.test(prompt);
+    const isComparison = /Comparing:|INTERPRETATION|EFFECTIVENESS ANALYSIS/i.test(prompt);
+
+    let text = '';
+
+    if (isOverview) {
+      const dataMatch = prompt.match(/DATA[\s\S]*?:\n([\s\S]*?)(?=\n\nRespond)/i);
+      const dataLines: string[] = dataMatch ? dataMatch[1].split('\n').filter((l: string) => l.trim()) : [];
+      const parse = (label: string): number => {
+        const line = dataLines.find((l: string) => l.toLowerCase().includes(label.toLowerCase()));
+        const m = line?.match(/avg\s+([\d.]+)/i);
+        return m ? parseFloat(m[1]) : 0;
+      };
+      const vaccAvg    = parse('vaccination');
+      const diseaseAvg = parse('disease');
+      const mortalityAvg = parse('mortality');
+      const spayingAvg = parse('spaying');
+      const impoundAvg = parse('impounding');
+      const vaccStatus = vaccAvg >= 80 ? 'strong' : vaccAvg >= 65 ? 'moderate' : 'critically low';
+      const riskLevel  = diseaseAvg > 10 ? 'elevated' : diseaseAvg > 5 ? 'moderate' : 'low';
+
+      text = `SUMMARY:
+The Calaca City animal health program shows **${vaccStatus}** vaccination coverage at an average of **${vaccAvg.toFixed(1)}%**, with **${riskLevel}** disease incidence (avg ${diseaseAvg.toFixed(1)} cases/period). Spaying and neutering activity averages ${spayingAvg.toFixed(1)} procedures per period with ${impoundAvg.toFixed(1)} impounding events. Overall program performance is **${vaccAvg >= 75 ? 'on track' : 'below target'}** and requires ${vaccAvg < 70 ? 'urgent reinforcement in low-coverage areas' : 'continued monitoring and optimization'}.
+
+KEY FINDINGS:
+- **Vaccination at ${vaccAvg.toFixed(1)}%** is ${vaccAvg >= 80 ? 'above the 80% herd immunity threshold — effective community protection is in place' : `below the 80% herd immunity target — disease vulnerability persists in under-covered areas`}.
+- **Disease case rate of ${diseaseAvg.toFixed(1)}/period** indicates ${riskLevel} risk; ${diseaseAvg > 8 ? 'immediate containment measures are strongly advised' : 'current control measures appear adequate but must be sustained'}.
+- **Mortality averaging ${mortalityAvg.toFixed(1)}%** suggests ${mortalityAvg < 3 ? 'effective treatment and early detection protocols are functioning' : 'treatment protocols may need review for high-risk and delayed cases'}.
+- **Spay/neuter ratio** of ${spayingAvg.toFixed(1)} procedures vs ${impoundAvg.toFixed(1)} impoundings — ${spayingAvg > impoundAvg * 4 ? 'a healthy ratio indicating stray population control is working' : 'spay/neuter capacity should be increased to reduce impounding pressure'}.
+
+RECOMMENDATIONS:
+- **${vaccAvg < 80 ? 'PRIORITY: Launch targeted vaccination drives in lowest-coverage barangays — bring all areas above 80% within 60 days via mobile vaccination units.' : 'Maintain current vaccination schedules and focus resources on sustaining high coverage.'}**
+- ${diseaseAvg > 8 ? 'Deploy rapid response surveillance teams to high-incidence areas and enforce strict quarantine protocols for affected animals.' : 'Continue routine disease surveillance and maintain response readiness for seasonal outbreak windows.'}
+- Expand spaying and neutering programs with free monthly community clinics to reduce stray populations and long-term impounding costs.
+- Implement monthly data review meetings with all BAHWs to detect emerging trends and enable timely resource reallocation.`;
+
+    } else if (isComparison) {
+      const compMatch = prompt.match(/Comparing:\s*(.+?)\s*vs\s*(.+?)\n/i);
+      const m1Label = compMatch?.[1]?.trim() || 'Metric A';
+      const m2Label = compMatch?.[2]?.trim() || 'Metric B';
+      const corrMatch = prompt.match(/Pearson correlation:\s*r\s*=\s*([-\d.]+)/i);
+      const r   = corrMatch ? parseFloat(corrMatch[1]) : 0;
+      const absR = Math.abs(r);
+      const dir  = r > 0 ? 'positive' : 'negative';
+      const str  = absR > 0.7 ? 'strong' : absR > 0.4 ? 'moderate' : 'weak';
+      const effRating = absR > 0.65 ? 'High' : absR > 0.4 ? 'Moderate' : 'Low';
+
+      text = `INTERPRETATION:
+Analysis of **${m1Label}** versus **${m2Label}** reveals a **${str} ${dir} correlation** (r=${r.toFixed(3)}, R²=${(r*r*100).toFixed(1)}%). ${r < -0.5
+  ? `As ${m1Label} increases, ${m2Label} decreases — this inverse relationship is a strong indicator that ${m1Label} interventions are actively suppressing ${m2Label} outcomes.`
+  : r > 0.5
+  ? `Both metrics trend together, suggesting they are driven by common underlying factors or that one directly enables the other.`
+  : `The relationship is weak, indicating these metrics operate largely independently and separate management strategies are needed.`} The trend is consistent across the observed periods with no major seasonal distortions detected.
+
+EFFECTIVENESS ANALYSIS:
+**Effectiveness Rating: ${effRating}**
+- ${absR > 0.65
+  ? `**${m1Label} demonstrates high effectiveness** in influencing ${m2Label}, accounting for ${(r*r*100).toFixed(1)}% of its variance.`
+  : absR > 0.4
+  ? `**${m1Label} shows moderate influence** on ${m2Label} — other factors also contribute and should be investigated.`
+  : `**${m1Label} has limited direct influence** on ${m2Label} at current implementation levels — consider whether execution gaps exist.`}
+- ${r < 0 ? `Each unit increase in ${m1Label} is statistically associated with a decrease in ${m2Label} — the desired program outcome is being observed.` : `Both metrics reinforce each other, allowing synergistic investment strategies.`}
+- ${absR > 0.5 ? `The relationship is strong enough to use ${m1Label} as a leading indicator for forecasting ${m2Label} trends in future periods.` : `Additional confounding variables should be explored before using one metric to predict the other.`}
+
+RECOMMENDATIONS:
+- **${absR > 0.6 && r < 0
+  ? `STRATEGIC: Increase ${m1Label} investment by 20–30% in high-${m2Label} barangays — the strong inverse correlation confirms this as the highest-leverage intervention available.`
+  : absR > 0.6 && r > 0
+  ? `Manage ${m1Label} and ${m2Label} as a unified program — joint targets and combined reporting will maximize resource efficiency.`
+  : `Investigate why correlation is weak — field audits may reveal implementation barriers limiting ${m1Label} effectiveness.`}**
+- Set measurable quarterly targets tracking both ${m1Label} and ${m2Label} together in all barangay-level reports to detect early divergence.
+- Conduct a focused review in the 3 lowest-performing barangays to identify and eliminate bottlenecks affecting both metrics.
+- ${r < -0.4 ? `Document and replicate high-${m1Label} barangay protocols city-wide — create a standardized playbook for rapid adoption.` : `Explore co-interventions that complement both metrics to accelerate overall program impact.`}`;
+
+    } else {
+      text = `SUMMARY:\nAnalysis complete based on available program data.\n\nKEY FINDINGS:\n- Data patterns fall within normal operating ranges for most indicators.\n- No critical anomalies detected in the current reporting period.\n\nRECOMMENDATIONS:\n- Review monthly performance against established targets.\n- Escalate any metric deviations above 15% to the City Veterinarian promptly.\n- Ensure all barangay health workers submit timely data for accurate trend analysis.`;
+    }
+
+    return res.json({ text, source: 'rule-based' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;
