@@ -156,6 +156,408 @@ function Toast({ msg, sub, onDone }: { msg: string; sub?: string; onDone: () => 
   );
 }
 
+// ── Alert Detail Modal ────────────────────────────────────────────────────────
+
+function AlertDetailModal({ alert, onClose, onCreateIntervention, onNavigateOutbreak }: {
+  alert: SmartAlert;
+  onClose: () => void;
+  onCreateIntervention: (a: SmartAlert) => void;
+  onNavigateOutbreak: () => void;
+}) {
+  const [detail, setDetail] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const c = SEV_COLORS[alert.severity];
+  const Icon = ALERT_TYPE_ICONS[alert.type];
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    // Map alert type to the backend detail type
+    const detailType = alert.type === 'outbreak' ? 'outbreak'
+      : alert.type === 'inventory' ? 'inventory'
+      : alert.type === 'vaccination' ? 'vaccination'
+      : alert.type === 'mortality' ? (alert.sourceId ? 'disease' : 'mortality')
+      : 'disease'; // default disease events
+    (api as any).getAlertDetail(detailType, alert.sourceId, alert.barangay)
+      .then((d: any) => { setDetail(d); setLoading(false); })
+      .catch((e: any) => { setError(e.message || 'Failed to load details'); setLoading(false); });
+  }, [alert]);
+
+  const fmt = (d: any) => d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  const pct = (a: any, b: any) => b > 0 ? Math.round((a / b) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border-t-4 ${c.border.replace('border-l-4', '')}`}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className={`${c.bg} px-6 py-5 flex items-start gap-4`}>
+          <div className={`p-3 rounded-2xl bg-white/60 ${c.icon} flex-shrink-0`}>
+            <Icon className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${c.badge}`}>
+                {alert.type}
+              </span>
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full text-white ${
+                alert.riskLevel === 'High' ? 'bg-red-500' : alert.riskLevel === 'Medium' ? 'bg-yellow-500' : 'bg-green-500'
+              }`}>{alert.riskLevel} Risk</span>
+              {alert.isOutbreak && <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-700 text-white">⚠ DECLARED OUTBREAK</span>}
+            </div>
+            <p className={`text-base font-bold mt-1 ${c.text}`}>{alert.message}</p>
+            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+              <span>📍 {alert.barangay}</span>
+              {alert.metric && <span>· {alert.metric}</span>}
+              <span>· {fmt(alert.createdAt)}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 flex-shrink-0 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {loading && (
+            <div className="flex items-center justify-center py-12 gap-3 text-gray-400">
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Loading live data from database…</span>
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-sm flex gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>Could not load detail data: {error}</span>
+            </div>
+          )}
+
+          {/* ── DISEASE / OUTBREAK detail ── */}
+          {!loading && !error && detail && (detail.type === 'disease' || detail.type === 'outbreak') && (
+            <>
+              {/* Disease event card */}
+              {(detail.event || detail.outbreak) && (() => {
+                const ev = detail.event || detail.outbreak;
+                return (
+                  <section>
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                      {detail.type === 'outbreak' ? 'Outbreak Record' : 'Disease Event'}
+                    </h3>
+                    <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-2 gap-3 text-sm">
+                      {ev.disease && <div><span className="text-gray-400 text-xs">Disease</span><p className="font-semibold text-gray-800">{ev.disease}</p></div>}
+                      {ev.animal_type && <div><span className="text-gray-400 text-xs">Animal Type</span><p className="font-semibold text-gray-800">{ev.animal_type}</p></div>}
+                      {ev.cases !== undefined && <div><span className="text-gray-400 text-xs">Cases</span><p className="font-bold text-red-600 text-lg">{ev.cases}</p></div>}
+                      {ev.deaths !== undefined && <div><span className="text-gray-400 text-xs">Deaths</span><p className="font-bold text-gray-800 text-lg">{ev.deaths}</p></div>}
+                      {ev.status && <div><span className="text-gray-400 text-xs">Status</span><p className={`font-semibold ${ev.status === 'Active' ? 'text-red-600' : 'text-green-600'}`}>{ev.status}</p></div>}
+                      {ev.date_reported && <div><span className="text-gray-400 text-xs">Reported</span><p className="font-semibold text-gray-800">{fmt(ev.date_reported)}</p></div>}
+                      {ev.severity && <div><span className="text-gray-400 text-xs">Severity</span><p className="font-semibold text-red-700">{ev.severity}</p></div>}
+                      {ev.assigned_to && <div><span className="text-gray-400 text-xs">Assigned To</span><p className="font-semibold text-gray-800">{ev.assigned_to}</p></div>}
+                      {ev.notes && <div className="col-span-2"><span className="text-gray-400 text-xs">Notes</span><p className="text-gray-700 mt-0.5">{ev.notes}</p></div>}
+                      {ev.timetable && <div className="col-span-2"><span className="text-gray-400 text-xs">Timetable</span><p className="text-gray-700 mt-0.5">{ev.timetable}</p></div>}
+                    </div>
+                    {/* Outbreak updates timeline */}
+                    {Array.isArray(ev.updates) && ev.updates.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Update Timeline</p>
+                        <div className="space-y-2 max-h-36 overflow-y-auto">
+                          {ev.updates.slice().reverse().map((u: any, i: number) => (
+                            <div key={i} className="flex gap-2 text-xs">
+                              <span className="text-gray-400 whitespace-nowrap">{fmt(u.timestamp)}</span>
+                              <span className="text-gray-700">{u.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                );
+              })()}
+
+              {/* Livestock at risk */}
+              {(detail.affectedLivestock || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Livestock in {alert.barangay}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {detail.affectedLivestock.map((l: any, i: number) => (
+                      <div key={i} className="bg-gray-50 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400">{l.animal_type}</p>
+                        <p className="text-xl font-bold text-gray-800">{l.total}</p>
+                        {l.sick > 0 && <p className="text-xs text-red-500 font-semibold">{l.sick} sick</p>}
+                        {l.healthy > 0 && <p className="text-xs text-green-500">{l.healthy} healthy</p>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Pet stats */}
+              {detail.petStats && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Pet Registry — {alert.barangay}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-gray-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400">Total Pets</p>
+                      <p className="text-2xl font-bold text-gray-800">{detail.petStats.total || 0}</p>
+                    </div>
+                    <div className="bg-green-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400">Vaccinated</p>
+                      <p className="text-2xl font-bold text-green-700">{detail.petStats.vaccinated || 0}</p>
+                    </div>
+                    <div className="bg-red-50 rounded-xl p-3 text-center">
+                      <p className="text-xs text-gray-400">Coverage</p>
+                      <p className="text-2xl font-bold text-red-700">{pct(detail.petStats.vaccinated, detail.petStats.total)}%</p>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Active disease events in area */}
+              {(detail.activeEvents || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Other Active Events in {alert.barangay}</h3>
+                  <div className="space-y-2">
+                    {detail.activeEvents.map((e: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-red-50 rounded-xl p-3 text-sm">
+                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <div className="flex-1"><span className="font-semibold text-red-800">{e.disease}</span><span className="text-red-600 ml-2">{e.cases} cases</span></div>
+                        <span className="text-xs text-gray-400">{fmt(e.date_reported)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Recent mortality */}
+              {(detail.recentMortality || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Recent Mortality Reports</h3>
+                  <div className="space-y-2">
+                    {detail.recentMortality.slice(0, 5).map((m: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 text-sm">
+                        <Skull className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1">
+                          <span className="font-semibold text-gray-800">{m.quantity} {m.animal_type}</span>
+                          {m.cause && <span className="text-gray-500 ml-2">— {m.cause}</span>}
+                        </div>
+                        <span className="text-xs text-gray-400">{fmt(m.date_reported)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ── MORTALITY detail ── */}
+          {!loading && !error && detail && detail.type === 'mortality' && (
+            <>
+              {detail.record && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Mortality Report</h3>
+                  <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-gray-400 text-xs">Animal Type</span><p className="font-bold text-gray-800">{detail.record.animal_type}</p></div>
+                    <div><span className="text-gray-400 text-xs">Quantity</span><p className="font-bold text-red-600 text-lg">{detail.record.quantity}</p></div>
+                    <div><span className="text-gray-400 text-xs">Cause</span><p className="font-semibold text-gray-800">{detail.record.cause || 'Unknown'}</p></div>
+                    <div><span className="text-gray-400 text-xs">Investigation</span><p className={`font-semibold ${detail.record.investigation_status === 'Pending' ? 'text-yellow-600' : 'text-green-600'}`}>{detail.record.investigation_status}</p></div>
+                    {detail.record.owner_name && <div><span className="text-gray-400 text-xs">Owner</span><p className="font-semibold text-gray-800">{detail.record.owner_name}</p></div>}
+                    <div><span className="text-gray-400 text-xs">Date Reported</span><p className="font-semibold text-gray-800">{fmt(detail.record.date_reported)}</p></div>
+                    {detail.record.notes && <div className="col-span-2"><span className="text-gray-400 text-xs">Notes</span><p className="text-gray-700">{detail.record.notes}</p></div>}
+                  </div>
+                </section>
+              )}
+              {(detail.livestock || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Livestock Population in {alert.barangay}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {detail.livestock.map((l: any, i: number) => (
+                      <div key={i} className="bg-gray-50 rounded-xl p-3 text-center">
+                        <p className="text-xs text-gray-400">{l.animal_type}</p>
+                        <p className="text-xl font-bold text-gray-800">{l.total}</p>
+                        {l.sick > 0 && <p className="text-xs text-red-500">{l.sick} sick</p>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {(detail.recentMortality || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Recent Mortality in {alert.barangay}</h3>
+                  <div className="space-y-2">
+                    {detail.recentMortality.map((m: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 text-sm">
+                        <Skull className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1"><span className="font-semibold">{m.quantity} {m.animal_type}</span>{m.cause && <span className="text-gray-500 ml-2">— {m.cause}</span>}</div>
+                        <span className="text-xs text-gray-400">{fmt(m.date_reported)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ── INVENTORY detail ── */}
+          {!loading && !error && detail && detail.type === 'inventory' && (
+            <>
+              {detail.item && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Inventory Item</h3>
+                  <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-base font-bold text-gray-800">{detail.item.name}</p>
+                        {detail.item.generic_name && <p className="text-sm text-gray-500">{detail.item.generic_name}</p>}
+                        <p className="text-xs text-gray-400 mt-0.5">{detail.item.category} · {detail.item.manufacturer || 'Unknown MFR'}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold text-white ${
+                        detail.item.stock_status === 'Out of Stock' ? 'bg-red-600' :
+                        detail.item.stock_status === 'Critical' ? 'bg-orange-500' :
+                        detail.item.stock_status === 'Low' ? 'bg-yellow-500' : 'bg-green-500'
+                      }`}>{detail.item.stock_status || 'Unknown'}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div className="bg-white rounded-xl p-2.5 text-center">
+                        <p className="text-xs text-gray-400">In Stock</p>
+                        <p className={`text-2xl font-bold ${detail.item.quantity === 0 ? 'text-red-600' : 'text-gray-800'}`}>{detail.item.quantity}</p>
+                        <p className="text-xs text-gray-400">{detail.item.unit}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-2.5 text-center">
+                        <p className="text-xs text-gray-400">Reorder At</p>
+                        <p className="text-2xl font-bold text-yellow-600">{detail.item.reorder_level}</p>
+                        <p className="text-xs text-gray-400">{detail.item.unit}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-2.5 text-center">
+                        <p className="text-xs text-gray-400">Unit Cost</p>
+                        <p className="text-2xl font-bold text-gray-800">₱{parseFloat(detail.item.unit_cost || 0).toFixed(2)}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {detail.item.lot_number && <div><span className="text-gray-400 text-xs">Lot #</span><p className="font-semibold">{detail.item.lot_number}</p></div>}
+                      {detail.item.expiry_date && (
+                        <div>
+                          <span className="text-gray-400 text-xs">Expiry Date</span>
+                          <p className={`font-semibold ${new Date(detail.item.expiry_date) < new Date() ? 'text-red-600' : new Date(detail.item.expiry_date) < new Date(Date.now() + 90*24*60*60*1000) ? 'text-orange-500' : 'text-gray-800'}`}>
+                            {fmt(detail.item.expiry_date)}
+                          </p>
+                        </div>
+                      )}
+                      {detail.item.storage_condition && <div className="col-span-2"><span className="text-gray-400 text-xs">Storage</span><p className="font-semibold">{detail.item.storage_condition}</p></div>}
+                    </div>
+                    {detail.usageStats && (
+                      <div className="bg-blue-50 rounded-xl p-3 text-sm">
+                        <p className="text-xs text-gray-400 mb-1">Usage (last 6 months)</p>
+                        <p className="font-semibold text-blue-800">{detail.usageStats.uses || 0} administrations recorded</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+              {(detail.recentTransactions || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Recent Transactions</h3>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {detail.recentTransactions.map((t: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 text-xs">
+                        <span className={`font-bold px-2 py-0.5 rounded-full ${t.transaction_type === 'addition' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {t.transaction_type}
+                        </span>
+                        <span className="font-semibold text-gray-800">{t.transaction_type === 'addition' ? '+' : '-'}{t.quantity}</span>
+                        {t.reason && <span className="text-gray-500 flex-1 truncate">{t.reason}</span>}
+                        <span className="text-gray-400 whitespace-nowrap">{fmt(t.created_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* ── VACCINATION detail ── */}
+          {!loading && !error && detail && detail.type === 'vaccination' && (
+            <>
+              {detail.coverage && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Vaccination Coverage — {alert.barangay}</h3>
+                  <div className="bg-gray-50 rounded-2xl p-4">
+                    <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                      <div><p className="text-xs text-gray-400">Total Pets</p><p className="text-2xl font-bold text-gray-800">{detail.coverage.total}</p></div>
+                      <div><p className="text-xs text-gray-400">Vaccinated</p><p className="text-2xl font-bold text-green-600">{detail.coverage.vaccinated}</p></div>
+                      <div><p className="text-xs text-gray-400">Coverage</p><p className={`text-2xl font-bold ${parseFloat(detail.coverage.rate) < 50 ? 'text-red-600' : 'text-yellow-600'}`}>{detail.coverage.rate}%</p></div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div className={`h-2.5 rounded-full ${parseFloat(detail.coverage.rate) < 50 ? 'bg-red-500' : 'bg-yellow-500'}`}
+                        style={{ width: `${detail.coverage.rate}%` }} />
+                    </div>
+                  </div>
+                </section>
+              )}
+              {(detail.unvaccinatedPets || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Unvaccinated Pets ({detail.unvaccinatedPets.length})</h3>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {detail.unvaccinatedPets.map((p: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-red-50 rounded-xl px-3 py-2 text-sm">
+                        <span className="text-red-400"><Syringe className="w-3.5 h-3.5" /></span>
+                        <span className="font-semibold text-gray-800 flex-1">{p.pet_name} <span className="text-gray-400 font-normal">({p.species})</span></span>
+                        <span className="text-gray-500 text-xs">{p.owner_name}</span>
+                        {p.next_vaccination_date && <span className="text-xs text-orange-500 whitespace-nowrap">Due {fmt(p.next_vaccination_date)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {(detail.upcomingDue || []).length > 0 && (
+                <section>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Due Within 30 Days</h3>
+                  <div className="space-y-1.5">
+                    {detail.upcomingDue.map((p: any, i: number) => (
+                      <div key={i} className="flex items-center gap-3 bg-yellow-50 rounded-xl px-3 py-2 text-sm">
+                        <Calendar className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                        <span className="font-semibold text-gray-800 flex-1">{p.pet_name} <span className="text-gray-400 font-normal">({p.species})</span></span>
+                        <span className="text-xs text-yellow-700 font-bold">{fmt(p.next_vaccination_date)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+
+          {/* No data fallback */}
+          {!loading && !error && !detail && (
+            <div className="text-center py-10 text-gray-400 text-sm">No additional data available for this alert.</div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3 flex-wrap">
+          {alert.isOutbreak ? (
+            <button onClick={() => { onClose(); onNavigateOutbreak(); }}
+              className="flex items-center gap-1.5 text-sm px-4 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors">
+              <ExternalLink className="w-4 h-4" /> Go to Outbreak Monitoring
+            </button>
+          ) : !alert.interventionId && (
+            <button onClick={() => { onClose(); onCreateIntervention(alert); }}
+              className="flex items-center gap-1.5 text-sm px-4 py-2.5 bg-[#2B5EA6] text-white rounded-xl font-bold hover:bg-[#1e4080] transition-colors">
+              <Plus className="w-4 h-4" /> Create Intervention
+            </button>
+          )}
+          {alert.interventionId && (
+            <span className="flex items-center gap-1.5 text-sm px-4 py-2.5 bg-green-100 text-green-700 rounded-xl font-semibold">
+              <CheckCircle className="w-4 h-4" /> Intervention Created
+            </span>
+          )}
+          <button onClick={onClose} className="ml-auto text-sm px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-semibold hover:bg-gray-200 transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Deliverable Editor ────────────────────────────────────────────────────────
 
 function DeliverableEditor({ deliverables, onChange }: {
@@ -621,15 +1023,19 @@ function InterventionCard({ iv, eligibleStaff, onUpdate, onNavigateOutbreak }: {
 
 // ── Alert Card ────────────────────────────────────────────────────────────────
 
-function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOutbreak }: {
+function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOutbreak, onViewDetail }: {
   alert: SmartAlert; hasIntervention: boolean;
   onCreateIntervention: (a: SmartAlert) => void; onNavigateOutbreak: () => void;
+  onViewDetail: (a: SmartAlert) => void;
 }) {
   const c = SEV_COLORS[alert.severity];
   const Icon = ALERT_TYPE_ICONS[alert.type];
 
   return (
-    <div className={`border-l-4 ${c.border} ${c.bg} p-4 rounded-r-2xl hover:shadow-md transition-all`}>
+    <div
+      className={`border-l-4 ${c.border} ${c.bg} p-4 rounded-r-2xl hover:shadow-md transition-all cursor-pointer`}
+      onClick={() => onViewDetail(alert)}
+    >
       <div className="flex items-start gap-3">
         <div className={`mt-0.5 ${c.icon}`}><Icon className="w-5 h-5" /></div>
         <div className="flex-1 min-w-0">
@@ -646,7 +1052,7 @@ function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOut
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
             {alert.isOutbreak ? (
-              <button onClick={onNavigateOutbreak}
+              <button onClick={e => { e.stopPropagation(); onNavigateOutbreak(); }}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-sm">
                 <ExternalLink className="w-3.5 h-3.5" /> Go to Outbreak Monitoring
               </button>
@@ -655,11 +1061,14 @@ function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOut
                 <CheckCircle className="w-3.5 h-3.5" /> Intervention Created
               </span>
             ) : (
-              <button onClick={() => onCreateIntervention(alert)}
+              <button onClick={e => { e.stopPropagation(); onCreateIntervention(alert); }}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#2B5EA6] text-white rounded-xl font-bold hover:bg-[#1e4080] transition-colors shadow-sm">
                 <Plus className="w-3.5 h-3.5" /> Create Intervention
               </button>
             )}
+            <span className="flex items-center gap-1 text-xs text-gray-400 ml-auto">
+              <Info className="w-3 h-3" /> Tap to view details
+            </span>
           </div>
         </div>
       </div>
@@ -678,6 +1087,7 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
   const [alerts, setAlerts] = useState<SmartAlert[]>([]);
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [eligibleStaff, setEligibleStaff] = useState<StaffMember[]>([]);
+  const [selectedAlert, setSelectedAlert] = useState<SmartAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; sub?: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<IStatus | 'all'>('all');
@@ -1071,6 +1481,7 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
                       hasIntervention={alertsWithIntervention.has(alert.id)}
                       onCreateIntervention={createIntervention}
                       onNavigateOutbreak={onNavigateOutbreak || (() => {})}
+                      onViewDetail={setSelectedAlert}
                     />
                   ))}
                 </div>
@@ -1130,6 +1541,14 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
           </>
         )}
       </div>
+      {selectedAlert && (
+        <AlertDetailModal
+          alert={selectedAlert}
+          onClose={() => setSelectedAlert(null)}
+          onCreateIntervention={(a) => { setSelectedAlert(null); createIntervention(a); }}
+          onNavigateOutbreak={() => { setSelectedAlert(null); if (onNavigateOutbreak) onNavigateOutbreak(); }}
+        />
+      )}
     </>
   );
 }

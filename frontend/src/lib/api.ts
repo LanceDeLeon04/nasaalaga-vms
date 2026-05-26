@@ -100,6 +100,12 @@ export const api = {
   updateOutbreak: (id: string, data: any) =>
     request('/outbreaks/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   getInterventions: () => request('/interventions'),
+  getAlertDetail: (type: string, sourceId?: string, barangay?: string) => {
+    const p = new URLSearchParams({ type });
+    if (sourceId) p.set('sourceId', sourceId);
+    if (barangay) p.set('barangay', barangay);
+    return request('/alerts/detail?' + p.toString());
+  },
   createIntervention: (data: any) =>
     request('/interventions', { method: 'POST', body: JSON.stringify(data) }),
   updateIntervention: (id: string, data: any) =>

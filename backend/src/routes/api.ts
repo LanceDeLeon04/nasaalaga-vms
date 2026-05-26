@@ -2122,6 +2122,124 @@ router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: Auth
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
+// ── Alert Detail — rich data for a single alert ───────────────────────────────
+// GET /alerts/detail?type=disease&sourceId=XXX
+// GET /alerts/detail?type=mortality&sourceId=XXX
+// GET /alerts/detail?type=inventory&sourceId=XXX  (sourceId = medicine id)
+// GET /alerts/detail?type=outbreak&sourceId=XXX   (sourceId = outbreak_records.id)
+// GET /alerts/detail?type=biting&sourceId=XXX
+
+router.get('/alerts/detail', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { type, sourceId, barangay } = req.query as Record<string, string>;
+
+    if (type === 'disease' || type === 'mortality_disease') {
+      // Disease event from livestock_disease_events
+      const [event, mortality, outbreakRec, affectedLivestock, petStats] = await Promise.allSettled([
+        sourceId
+          ? query(`SELECT * FROM livestock_disease_events WHERE id=$1`, [sourceId])
+          : query(`SELECT * FROM livestock_disease_events WHERE status='Active' ORDER BY date_reported DESC LIMIT 1`),
+        query(`SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC LIMIT 10`, [barangay || '']),
+        sourceId
+          ? query(`SELECT * FROM outbreak_records WHERE source_id=$1 ORDER BY date_created DESC LIMIT 1`, [sourceId])
+          : query(`SELECT * FROM outbreak_records WHERE barangay=$1 ORDER BY date_created DESC LIMIT 1`, [barangay || '']),
+        query(`SELECT animal_type, SUM(quantity) as total, SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick, SUM(CASE WHEN health_status='Healthy' THEN quantity ELSE 0 END) as healthy FROM livestock WHERE barangay=$1 GROUP BY animal_type`, [barangay || '']),
+        query(`SELECT COUNT(*) as total, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated FROM pets WHERE barangay=$1`, [barangay || '']),
+      ]);
+      return res.json({
+        type: 'disease',
+        event: event.status === 'fulfilled' ? event.value.rows[0] || null : null,
+        recentMortality: mortality.status === 'fulfilled' ? mortality.value.rows : [],
+        outbreakRecord: outbreakRec.status === 'fulfilled' ? outbreakRec.value.rows[0] || null : null,
+        affectedLivestock: affectedLivestock.status === 'fulfilled' ? affectedLivestock.value.rows : [],
+        petStats: petStats.status === 'fulfilled' ? petStats.value.rows[0] || null : null,
+      });
+    }
+
+    if (type === 'mortality') {
+      // Mortality report from livestock_mortality
+      const [record, otherMortality, livestock, petStats] = await Promise.allSettled([
+        sourceId
+          ? query(`SELECT * FROM livestock_mortality WHERE id=$1`, [sourceId])
+          : query(`SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC LIMIT 1`, [barangay || '']),
+        query(`SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC LIMIT 5`, [barangay || '']),
+        query(`SELECT animal_type, SUM(quantity) as total, SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick FROM livestock WHERE barangay=$1 GROUP BY animal_type ORDER BY total DESC`, [barangay || '']),
+        query(`SELECT COUNT(*) as total, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated FROM pets WHERE barangay=$1`, [barangay || '']),
+      ]);
+      return res.json({
+        type: 'mortality',
+        record: record.status === 'fulfilled' ? record.value.rows[0] || null : null,
+        recentMortality: otherMortality.status === 'fulfilled' ? otherMortality.value.rows : [],
+        livestock: livestock.status === 'fulfilled' ? livestock.value.rows : [],
+        petStats: petStats.status === 'fulfilled' ? petStats.value.rows[0] || null : null,
+      });
+    }
+
+    if (type === 'inventory') {
+      // Medicine / supply low stock or expiry alert
+      const [item, recentTransactions, usageStats, supplyItem] = await Promise.allSettled([
+        sourceId
+          ? query(`SELECT * FROM medicine_inventory WHERE id=$1`, [sourceId])
+          : query(`SELECT * FROM medicine_inventory WHERE stock_status IN ('Critical','Out of Stock') ORDER BY quantity ASC LIMIT 1`),
+        sourceId
+          ? query(`SELECT it.*, mi.name as item_name FROM inventory_transactions it LEFT JOIN medicine_inventory mi ON it.item_id=mi.id WHERE it.item_id=$1 ORDER BY it.created_at DESC LIMIT 10`, [sourceId])
+          : query(`SELECT it.*, mi.name as item_name FROM inventory_transactions it LEFT JOIN medicine_inventory mi ON it.item_id=mi.id ORDER BY it.created_at DESC LIMIT 10`),
+        query(`SELECT mi.name, COUNT(vh.id) as uses FROM vaccination_history vh LEFT JOIN medicine_inventory mi ON vh.medicine_id=mi.id WHERE vh.medicine_id=$1 AND vh.date_of_vaccination >= NOW()-INTERVAL '6 months' GROUP BY mi.name`, [sourceId || '']),
+        sourceId ? query(`SELECT * FROM supplies_inventory WHERE id=$1`, [sourceId]).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
+      ]);
+      return res.json({
+        type: 'inventory',
+        item: item.status === 'fulfilled' ? item.value.rows[0] || null : null,
+        recentTransactions: recentTransactions.status === 'fulfilled' ? recentTransactions.value.rows : [],
+        usageStats: usageStats.status === 'fulfilled' ? usageStats.value.rows[0] || null : null,
+        supplyItem: supplyItem.status === 'fulfilled' ? (supplyItem.value as any).rows[0] || null : null,
+      });
+    }
+
+    if (type === 'outbreak') {
+      // Declared outbreak from outbreak_records
+      const [outbreak, diseaseEvent, affectedLivestock, petStats, recentMortality] = await Promise.allSettled([
+        sourceId
+          ? query(`SELECT * FROM outbreak_records WHERE id=$1`, [sourceId])
+          : query(`SELECT * FROM outbreak_records WHERE barangay=$1 AND status='Active' ORDER BY date_created DESC LIMIT 1`, [barangay || '']),
+        query(`SELECT * FROM livestock_disease_events WHERE barangay=$1 AND status='Active' ORDER BY date_reported DESC LIMIT 5`, [barangay || '']),
+        query(`SELECT animal_type, SUM(quantity) as total, SUM(CASE WHEN health_status='Sick' THEN quantity ELSE 0 END) as sick, SUM(CASE WHEN health_status='Healthy' THEN quantity ELSE 0 END) as healthy FROM livestock WHERE barangay=$1 GROUP BY animal_type`, [barangay || '']),
+        query(`SELECT COUNT(*) as total, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated, SUM(CASE WHEN vaccination_status='Not Vaccinated' THEN 1 ELSE 0 END) as unvaccinated FROM pets WHERE barangay=$1`, [barangay || '']),
+        query(`SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC LIMIT 5`, [barangay || '']),
+      ]);
+      return res.json({
+        type: 'outbreak',
+        outbreak: outbreak.status === 'fulfilled' ? outbreak.value.rows[0] || null : null,
+        activeEvents: diseaseEvent.status === 'fulfilled' ? diseaseEvent.value.rows : [],
+        affectedLivestock: affectedLivestock.status === 'fulfilled' ? affectedLivestock.value.rows : [],
+        petStats: petStats.status === 'fulfilled' ? petStats.value.rows[0] || null : null,
+        recentMortality: recentMortality.status === 'fulfilled' ? recentMortality.value.rows : [],
+      });
+    }
+
+    if (type === 'vaccination') {
+      // Low vaccination coverage alert
+      const [petsByBarangay, unvaccinatedPets, recentVaccinations, upcomingDue] = await Promise.allSettled([
+        query(`SELECT barangay, COUNT(*) as total, SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END) as vaccinated, ROUND(SUM(CASE WHEN vaccination_status='Vaccinated' THEN 1 ELSE 0 END)*100.0/NULLIF(COUNT(*),0),1) as rate FROM pets WHERE barangay=$1 GROUP BY barangay`, [barangay || '']),
+        query(`SELECT id, pet_name, species, owner_name, last_vaccination_date, next_vaccination_date FROM pets WHERE barangay=$1 AND vaccination_status != 'Vaccinated' ORDER BY next_vaccination_date ASC LIMIT 15`, [barangay || '']),
+        query(`SELECT vh.*, p.pet_name, p.owner_name FROM vaccination_history vh LEFT JOIN pets p ON vh.pet_id=p.id WHERE p.barangay=$1 ORDER BY vh.date_of_vaccination DESC LIMIT 10`, [barangay || '']),
+        query(`SELECT id, pet_name, species, owner_name, next_vaccination_date FROM pets WHERE barangay=$1 AND next_vaccination_date <= NOW()+INTERVAL '30 days' AND next_vaccination_date >= NOW() ORDER BY next_vaccination_date ASC LIMIT 10`, [barangay || '']),
+      ]);
+      return res.json({
+        type: 'vaccination',
+        coverage: petsByBarangay.status === 'fulfilled' ? petsByBarangay.value.rows[0] || null : null,
+        unvaccinatedPets: unvaccinatedPets.status === 'fulfilled' ? unvaccinatedPets.value.rows : [],
+        recentVaccinations: recentVaccinations.status === 'fulfilled' ? recentVaccinations.value.rows : [],
+        upcomingDue: upcomingDue.status === 'fulfilled' ? upcomingDue.value.rows : [],
+      });
+    }
+
+    return res.status(400).json({ error: 'Invalid alert type' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Intervention Tickets ─────────────────────────────────────────────────────
 
 router.get('/interventions', authenticate, async (req: AuthRequest, res: Response) => {
