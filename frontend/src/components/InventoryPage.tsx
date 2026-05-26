@@ -6,7 +6,8 @@ import {
   ChevronDown, TrendingDown, ShieldAlert, BookOpen, LogIn, LogOut,
   DollarSign, Activity, Filter, Truck, ClipboardList, Users,
   ShoppingCart, ArrowRight, CheckSquare, FileText, LayoutGrid,
-  Briefcase, ChevronRight, Hash, Layers,
+  Briefcase, ChevronRight, Hash, Layers, SendHorizonal, MapPin,
+  Syringe, Stethoscope, PawPrint,
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
@@ -14,8 +15,9 @@ import {
 } from 'recharts';
 import { api } from '../lib/api';
 import type { UserRole } from '../App';
+import { fetchCalacaBarangays, CALACA_BARANGAYS_FALLBACK } from '../utils/barangays';
 
-interface Props { userRole: UserRole }
+interface Props { userRole: UserRole; currentUser?: { id?: string; username?: string; name?: string; role?: UserRole; barangay?: string; } }
 
 const COLORS = ['#2B5EA6','#60A85C','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6'];
 const MEDICINE_CATEGORIES = ['Vaccine','Antibiotic','Antiparasitic','Vitamin','Analgesic','Antifungal','Other'];
@@ -697,6 +699,353 @@ function ReceiveOrderModal({ order, medicines, supplies, officeSupplies, onClose
   );
 }
 
+// ── Dispatch / Release Medicine Modal ────────────────────────────────────────
+function DispatchMedicineModal({
+  medicines, currentUser, onClose, onSave
+}: {
+  medicines: any[];
+  currentUser?: { id?: string; username?: string; name?: string; role?: UserRole; barangay?: string; };
+  onClose: () => void;
+  onSave: (d: any) => void;
+}) {
+  const isAdmin = ['admin','superadmin'].includes(currentUser?.role || '');
+  const userBarangay = currentUser?.barangay || '';
+
+  const [barangays, setBarangays] = useState<string[]>(CALACA_BARANGAYS_FALLBACK);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [userPets, setUserPets] = useState<any[]>([]);
+  const [userLivestock, setUserLivestock] = useState<any[]>([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [showRecipientDropdown, setShowRecipientDropdown] = useState(false);
+  const [barcodeRaw, setBarcodeRaw] = useState('');
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  const [form, setForm] = useState({
+    itemId: '',
+    itemName: '',
+    genericName: '',
+    lotNumber: '',
+    quantity: 1,
+    toName: '',
+    toUserId: '',
+    purpose: '',
+    animalId: '',
+    animalLabel: '',
+    barangay: isAdmin ? '' : userBarangay,
+    notes: '',
+  });
+
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  // Load barangays and users on mount
+  useEffect(() => {
+    fetchCalacaBarangays().then(setBarangays).catch(() => {});
+    api.getUsers().then((res: any) => setAllUsers(res.users || [])).catch(() => {});
+    barcodeInputRef.current?.focus();
+  }, []);
+
+  // When a recipient is selected, load their pets/livestock
+  const handleRecipientSelect = async (u: any) => {
+    set('toName', u.name || u.username);
+    set('toUserId', u.id);
+    set('barangay', u.barangay || (isAdmin ? form.barangay : userBarangay));
+    set('animalId', '');
+    set('animalLabel', '');
+    setRecipientSearch(u.name || u.username);
+    setShowRecipientDropdown(false);
+    // Fetch pets and livestock for this user
+    try {
+      const [petsRes, lsRes] = await Promise.all([
+        api.getPets(u.id).catch(() => ({ pets: [] })),
+        api.getLivestock({ ownerId: u.id }).catch(() => ({ livestock: [] })),
+      ]);
+      setUserPets((petsRes as any).pets || []);
+      setUserLivestock((lsRes as any).livestock || []);
+    } catch { setUserPets([]); setUserLivestock([]); }
+  };
+
+  // Resolve animal options based on recipient's role
+  const selectedUser = allUsers.find((u: any) => u.id === form.toUserId);
+  const recipientRole: string = selectedUser?.role || '';
+  let animalOptions: { id: string; label: string }[] = [];
+  if (recipientRole === 'petOwner') {
+    animalOptions = userPets.map((p: any) => ({ id: p.id, label: `🐾 ${p.name} (${p.species}${p.breed ? ', '+p.breed : ''})` }));
+  } else if (recipientRole === 'livestockManager') {
+    animalOptions = userLivestock.map((l: any) => ({ id: l.id, label: `🐄 ${l.tag_id || l.id} — ${l.species || l.type || 'Livestock'} (${l.name || ''})` }));
+  } else if (recipientRole === 'both') {
+    animalOptions = [
+      ...userPets.map((p: any) => ({ id: 'pet-'+p.id, label: `🐾 ${p.name} (${p.species})` })),
+      ...userLivestock.map((l: any) => ({ id: 'ls-'+l.id, label: `🐄 ${l.tag_id || l.id} — ${l.species || 'Livestock'}` })),
+    ];
+  }
+  const showAnimalSelect = animalOptions.length > 0 || ['petOwner','livestockManager','both'].includes(recipientRole);
+  const purposeNeedsAnimal = ['petOwner','livestockManager','both'].includes(recipientRole) && !isAdmin;
+
+  // Barcode lookup
+  const handleBarcodeSearch = () => {
+    const code = barcodeRaw.trim();
+    if (!code) return;
+    const found = medicines.find(m => m.barcode === code || m.lot_number === code || m.name?.toLowerCase() === code.toLowerCase());
+    if (found) {
+      set('itemId', found.id);
+      set('itemName', found.name);
+      set('genericName', found.generic_name || '');
+      set('lotNumber', found.lot_number || '');
+    } else {
+      set('itemName', '');
+      set('itemId', '');
+    }
+  };
+
+  // Filtered recipient list
+  const filteredUsers = recipientSearch.length >= 1
+    ? allUsers.filter((u: any) =>
+        (u.name || u.username || '').toLowerCase().includes(recipientSearch.toLowerCase()) ||
+        (u.email || '').toLowerCase().includes(recipientSearch.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  const canSubmit = form.itemId && form.toName.trim() && form.purpose.trim() && form.barangay && form.quantity >= 1;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-gradient-to-r from-[#2B5EA6] to-[#1a3d70] px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <SendHorizonal className="w-5 h-5" /> Dispatch / Release Medicine
+          </h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"><X className="w-4 h-4 text-white" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* ── Barcode ── */}
+          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+            <label className="block text-xs font-bold text-blue-700 mb-2 flex items-center gap-1.5">
+              <Barcode className="w-3.5 h-3.5" /> BARCODE — Scan or Manual Input
+            </label>
+            <div className="flex gap-2">
+              <input
+                ref={barcodeInputRef}
+                value={barcodeRaw}
+                onChange={e => setBarcodeRaw(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleBarcodeSearch()}
+                placeholder="Scan barcode or type Lot No / Name..."
+                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none bg-white"
+              />
+              <button onClick={handleBarcodeSearch}
+                className="px-3 py-2 bg-[#2B5EA6] text-white text-xs font-bold rounded-lg hover:bg-[#1a3d70] transition-colors">
+                Lookup
+              </button>
+            </div>
+            {form.itemId && (
+              <div className="mt-2 bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm">
+                <p className="font-bold text-gray-900">{form.itemName}</p>
+                {form.genericName && <p className="text-xs text-gray-500">{form.genericName}</p>}
+                {form.lotNumber && <p className="text-xs text-gray-400 flex items-center gap-1"><Hash className="w-3 h-3" />Lot: {form.lotNumber}</p>}
+              </div>
+            )}
+            {!form.itemId && barcodeRaw && (
+              <p className="mt-1.5 text-xs text-red-500">No match found. Select manually below.</p>
+            )}
+            {/* Manual select fallback */}
+            {!form.itemId && (
+              <div className="mt-2">
+                <label className="block text-xs font-semibold text-blue-700 mb-1">Or select medicine manually</label>
+                <select
+                  value={form.itemId}
+                  onChange={e => {
+                    const m = medicines.find(x => x.id === e.target.value);
+                    if (m) { set('itemId', m.id); set('itemName', m.name); set('genericName', m.generic_name || ''); set('lotNumber', m.lot_number || ''); }
+                    else { set('itemId',''); set('itemName',''); }
+                  }}
+                  className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none bg-white"
+                >
+                  <option value="">— Select Medicine —</option>
+                  {medicines.filter(m => m.quantity > 0).map(m => (
+                    <option key={m.id} value={m.id}>{m.name}{m.lot_number ? ` [Lot: ${m.lot_number}]` : ''} · {m.quantity} {m.unit}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* ── Product Name (auto-detect read-only) ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Product Name <span className="text-gray-400 font-normal">(Auto-detected)</span></label>
+            <input
+              value={form.itemName}
+              readOnly
+              placeholder="Auto-filled from barcode scan..."
+              className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-700 cursor-not-allowed outline-none"
+            />
+          </div>
+
+          {/* ── Lot/Batch No ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Lot / Batch No.</label>
+            <input
+              value={form.lotNumber}
+              onChange={e => set('lotNumber', e.target.value)}
+              placeholder="e.g. LOT-2024-001"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+            />
+          </div>
+
+          {/* ── Quantity ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Quantity to Dispatch *</label>
+            <input
+              type="number" min={1}
+              value={form.quantity}
+              onChange={e => set('quantity', parseInt(e.target.value) || 1)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+            />
+          </div>
+
+          {/* ── TO: Recipient ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">TO: Recipient *</label>
+            <div className="relative">
+              <input
+                value={recipientSearch}
+                onChange={e => { setRecipientSearch(e.target.value); set('toName', e.target.value); set('toUserId', ''); setShowRecipientDropdown(true); setUserPets([]); setUserLivestock([]); }}
+                onFocus={() => setShowRecipientDropdown(true)}
+                onBlur={() => setTimeout(() => setShowRecipientDropdown(false), 150)}
+                placeholder="Type name or search registered users..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+              />
+              {showRecipientDropdown && filteredUsers.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  {filteredUsers.map((u: any) => (
+                    <button key={u.id} onMouseDown={() => handleRecipientSelect(u)}
+                      className="w-full px-3 py-2.5 hover:bg-blue-50 text-left flex items-center gap-2 transition-colors">
+                      <div className="w-7 h-7 rounded-full bg-[#2B5EA6]/10 flex items-center justify-center text-xs font-bold text-[#2B5EA6]">
+                        {(u.name || u.username || '?')[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{u.name || u.username}</p>
+                        <p className="text-xs text-gray-400">{u.role}{u.barangay ? ` · ${u.barangay}` : ''}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {form.toUserId && (
+              <p className="mt-1 text-xs text-green-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Linked to registered user</p>
+            )}
+          </div>
+
+          {/* ── PURPOSE ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Purpose *</label>
+            {(showAnimalSelect) ? (
+              <div className="space-y-2">
+                <input
+                  value={form.purpose}
+                  onChange={e => set('purpose', e.target.value)}
+                  placeholder="e.g. Rabies vaccination, deworming, treatment..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+                />
+                {/* Animal select */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 flex items-center gap-1">
+                    <PawPrint className="w-3 h-3" /> For Animal (select from tagged animals)
+                  </label>
+                  {animalOptions.length > 0 ? (
+                    <select
+                      value={form.animalId}
+                      onChange={e => {
+                        const opt = animalOptions.find(a => a.id === e.target.value);
+                        set('animalId', e.target.value);
+                        set('animalLabel', opt?.label || '');
+                      }}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="">— Select Animal (optional) —</option>
+                      {animalOptions.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic px-1">No tagged animals found for this user — loading...</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <input
+                value={form.purpose}
+                onChange={e => set('purpose', e.target.value)}
+                placeholder={isAdmin || !form.toUserId ? 'Type purpose (e.g. Routine vaccination, outbreak response...)' : 'e.g. Deworming, rabies vaccine...'}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+              />
+            )}
+          </div>
+
+          {/* ── BARANGAY ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1 flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-[#2B5EA6]" /> Barangay * <span className="text-gray-400 font-normal">(for usage tracking)</span>
+            </label>
+            {isAdmin ? (
+              <select
+                value={form.barangay}
+                onChange={e => set('barangay', e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+              >
+                <option value="">— Select Barangay —</option>
+                {barangays.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            ) : (
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <MapPin className="w-4 h-4 text-[#2B5EA6]" />
+                <span className="text-sm text-gray-700 font-semibold">{form.barangay || 'Barangay not set on profile'}</span>
+                <span className="ml-auto text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Auto-filled</span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Notes ── */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              placeholder="Additional notes..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-5 py-4 flex gap-3 justify-end rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+          <button
+            onClick={() => {
+              if (!form.itemId) return;
+              onSave({
+                item_id: form.itemId,
+                item_type: 'medicine',
+                transaction_type: 'OUT',
+                quantity: form.quantity,
+                lot_number: form.lotNumber,
+                reference_person: form.toName,
+                to_user_id: form.toUserId || undefined,
+                reason: form.purpose + (form.animalLabel ? ` [Animal: ${form.animalLabel}]` : ''),
+                barangay: form.barangay,
+                notes: form.notes,
+                dispatch_type: 'dispatch',
+              });
+            }}
+            disabled={!canSubmit}
+            className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${canSubmit ? 'bg-[#2B5EA6] text-white hover:bg-[#1a3d70]' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+          >
+            <SendHorizonal className="w-4 h-4" /> Dispatch Medicine
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Movement Modal ────────────────────────────────────────────────────────────
 function MovementModal({ item, itemType, onClose, onSave }: { item: any; itemType: string; onClose: () => void; onSave: (d: any) => void; }) {
   const [form, setForm] = useState({ item_id:item.id, item_type:itemType, transaction_type:'OUT', quantity:1, reason:'', reference_person:'', notes:'' });
@@ -779,6 +1128,7 @@ function LogbookModal({ transactions, itemName, onClose }: { transactions: any[]
                   <p className="text-sm text-gray-700 mt-1">{tx.reason||'—'}</p>
                   <div className="flex gap-4 mt-1.5 flex-wrap text-xs text-gray-500">
                     {tx.reference_person&&<span>👤 {isIn?'Received by':'Used by'}: <strong>{tx.reference_person}</strong></span>}
+                    {tx.barangay&&<span>📍 {tx.barangay}</span>}
                     <span>🖊 {tx.performed_by}</span>
                     {tx.total_cost>0&&<span>💰 ₱{Number(tx.total_cost).toLocaleString()}</span>}
                   </div>
@@ -794,7 +1144,7 @@ function LogbookModal({ transactions, itemName, onClose }: { transactions: any[]
 }
 
 // ── MAIN ─────────────────────────────────────────────────────────────────────
-export function InventoryPage({ userRole }: Props) {
+export function InventoryPage({ userRole, currentUser }: Props) {
   const canEdit = ['admin','superadmin'].includes(userRole);
   type TabId = 'overview'|'medicines'|'supplies'|'office'|'orders'|'logbook'|'suppliers';
   const [tab, setTab] = useState<TabId>('overview');
@@ -818,6 +1168,7 @@ export function InventoryPage({ userRole }: Props) {
   const [showReceiveModal, setShowReceiveModal] = useState<any>(null);
   const [showMoveModal, setShowMoveModal] = useState<{ item: any; type: string } | null>(null);
   const [showLogbook, setShowLogbook] = useState<{ item: any; txs: any[] } | null>(null);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
   const [addOrderPrefill, setAddOrderPrefill] = useState<any>(null);
   const [error, setError] = useState('');
@@ -943,6 +1294,22 @@ export function InventoryPage({ userRole }: Props) {
     } catch (e: any) { setError(e.message); }
   };
 
+  const handleDispatch = async (data: any) => {
+    try {
+      const med = medicines.find(m => m.id === data.item_id);
+      if (!med) { toast.error('Medicine not found'); return; }
+      if (data.quantity < 1) { toast.error('Enter a valid quantity'); return; }
+      if (data.quantity > med.quantity) { toast.error(`Cannot dispatch ${data.quantity} — only ${med.quantity} in stock`); return; }
+      if (!data.reference_person?.trim()) { toast.error('Enter recipient name'); return; }
+      if (!data.reason?.trim()) { toast.error('Enter a purpose'); return; }
+      if (!data.barangay?.trim()) { toast.error('Select a barangay'); return; }
+      await api.inventoryMovement({ ...data, source: 'dispatch' });
+      toast.success(`Dispatched ${data.quantity} unit(s) of ${med.name} to ${data.reference_person} (${data.barangay})`);
+      setShowDispatchModal(false);
+      await loadData();
+    } catch (e: any) { setError(e.message); }
+  };
+
   const openLogbook = async (item: any, itemType: string) => {
     try {
       const res = await api.getInventoryTransactions({ item_id: item.id, limit: 200 });
@@ -1026,10 +1393,16 @@ export function InventoryPage({ userRole }: Props) {
             </button>
           )}
           {canEdit && tab === 'medicines' && (
-            <button onClick={() => { setEditItem(null); setShowMedModal(true); }}
-              className="flex items-center gap-2 bg-[#2B5EA6]/10 text-[#2B5EA6] px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/20">
-              <Plus className="w-4 h-4" /> Add Medicine
-            </button>
+            <>
+              <button onClick={() => setShowDispatchModal(true)}
+                className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 shadow">
+                <SendHorizonal className="w-4 h-4" /> Dispatch
+              </button>
+              <button onClick={() => { setEditItem(null); setShowMedModal(true); }}
+                className="flex items-center gap-2 bg-[#2B5EA6]/10 text-[#2B5EA6] px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/20">
+                <Plus className="w-4 h-4" /> Add Medicine
+              </button>
+            </>
           )}
           {canEdit && tab === 'supplies' && (
             <button onClick={() => { setEditItem(null); setShowSupModal(true); }}
@@ -1431,6 +1804,7 @@ export function InventoryPage({ userRole }: Props) {
                       <p className="text-sm text-gray-600 mt-1">{tx.reason||'—'}</p>
                       <div className="flex gap-4 mt-1.5 flex-wrap text-xs text-gray-500">
                         {tx.reference_person&&<span>👤 {tx.reference_person}</span>}
+                        {tx.barangay&&<span>📍 {tx.barangay}</span>}
                         <span>🖊 {tx.performed_by}</span>
                         {tx.previous_qty!=null&&<span>📦 {tx.previous_qty} → {tx.new_qty}</span>}
                         {tx.total_cost>0&&<span>💰 ₱{Number(tx.total_cost).toLocaleString()}</span>}
@@ -1510,6 +1884,7 @@ export function InventoryPage({ userRole }: Props) {
       {showReceiveModal && <ReceiveOrderModal order={showReceiveModal} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} onClose={() => setShowReceiveModal(null)} onReceive={receiveOrder} />}
       {showMoveModal && <MovementModal item={showMoveModal.item} itemType={showMoveModal.type} onClose={() => setShowMoveModal(null)} onSave={handleMovement} />}
       {showLogbook && <LogbookModal transactions={showLogbook.txs} itemName={showLogbook.item.name} onClose={() => setShowLogbook(null)} />}
+      {showDispatchModal && <DispatchMedicineModal medicines={medicines} currentUser={currentUser} onClose={() => setShowDispatchModal(false)} onSave={handleDispatch} />}
     </div>
   );
 }

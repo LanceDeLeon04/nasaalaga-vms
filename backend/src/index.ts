@@ -9,7 +9,7 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3 } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch } from './db/migrate';
 
 dotenv.config();
 
@@ -68,6 +68,7 @@ app.listen(PORT, async () => {
     await migrateLivestockPreReg();
     await migrateProfileColumns();
     await migrateInventoryV3();
+    await migrateDispatch();
   };
 
   const MAX_RETRIES = 3;

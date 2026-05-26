@@ -1111,6 +1111,7 @@ if (isMain) {
     .then(() => migrateLivestockPreReg())
     .then(() => migrateProfileColumns())
     .then(() => migrateInventoryV3())
+    .then(() => migrateDispatch())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1119,6 +1120,24 @@ if (isMain) {
       console.error('Migration error:', err);
       process.exit(1);
     });
+}
+
+// ── Dispatch / Barangay tracking migration ──────────────────────────────────
+export async function migrateDispatch() {
+  const client = await pool.connect();
+  try {
+    // Add barangay and to_user_id columns to inventory_transactions for dispatch tracking
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS barangay VARCHAR(255)`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS to_user_id VARCHAR(50)`);
+    // Index to speed up medicine-intelligence barangay queries
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_inv_tx_barangay ON inventory_transactions (barangay) WHERE barangay IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_inv_tx_source_type ON inventory_transactions (source_type, transaction_type)`);
+    console.log('✅ Dispatch migration complete (barangay, to_user_id columns on inventory_transactions)');
+  } catch (err) {
+    console.error('❌ Dispatch migration failed:', err);
+  } finally {
+    client.release();
+  }
 }
 
 // Run avatar + phone column additions

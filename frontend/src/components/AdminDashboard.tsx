@@ -57,7 +57,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'audit':        return <AuditLogs />;
       case 'feedback':     return <FeedbackComplaints userRole={user.role} />;
       case 'wildlife':     return <WildlifeTracking />;
-      case 'inventory':    return <InventoryPage userRole={user.role} />;
+      case 'inventory':    return <InventoryPage userRole={user.role} currentUser={user} />;
       case 'settings':
         // Only superadmin can access settings page
         if (user.role === 'superadmin') return <SuperAdminSettings user={user} />;

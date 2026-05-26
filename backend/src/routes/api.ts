@@ -886,7 +886,7 @@ router.get('/inventory/transactions', authenticate, async (req: AuthRequest, res
 router.post('/inventory/movement', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { item_id, item_type, transaction_type, quantity, reason, reference_person, notes, source_type, source_id } = req.body;
+    const { item_id, item_type, transaction_type, quantity, reason, reference_person, notes, source_type, source_id, barangay, to_user_id, dispatch_type, lot_number } = req.body;
     if (!item_id || !transaction_type || !quantity) return res.status(400).json({ error: 'Missing required fields' });
     const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
     const prev = await query(`SELECT quantity, name, unit_cost FROM ${table} WHERE id=$1`, [item_id]);
@@ -902,11 +902,18 @@ router.post('/inventory/movement', authenticate, async (req: AuthRequest, res: R
     }
     await query(`UPDATE ${table} SET quantity=$1, updated_at=NOW() WHERE id=$2`, [newQty, item_id]);
     const totalCost = unitCost * parseInt(quantity);
+    const effectiveSourceType = dispatch_type === 'dispatch' ? 'dispatch' : (source_type || 'manual');
     await query(
-      `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-      [item_id, item_type || 'medicine', transaction_type, parseInt(quantity), prevQty, newQty, reason || '', req.user?.username, source_type || 'manual', source_id || null, itemName, unitCost, totalCost, reference_person || '', notes || '']
+      `INSERT INTO inventory_transactions
+        (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by,
+         source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes, barangay, to_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [item_id, item_type || 'medicine', transaction_type, parseInt(quantity), prevQty, newQty,
+       reason || '', req.user?.username, effectiveSourceType, source_id || null,
+       itemName, unitCost, totalCost, reference_person || '', notes || '',
+       barangay || null, to_user_id || null]
     );
+    logAudit(req, 'DISPATCH', 'inventory', item_id, { itemName, quantity, barangay, reference_person, transaction_type });
     return res.json({ success: true, new_quantity: newQty });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -929,9 +936,9 @@ router.post('/inventory/outbreak-dispatch', authenticate, async (req: AuthReques
       const newQty = Math.max(0, inv.quantity - qty);
       await query(`UPDATE ${table} SET quantity=$1, updated_at=NOW() WHERE id=$2`, [newQty, inv.id]);
       await query(
-        `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes)
-         VALUES ($1,$2,'OUT',$3,$4,$5,$6,$7,'outbreak',$8,$9,$10,$11,$12,$13)`,
-        [inv.id, item.item_type || 'medicine', qty, inv.quantity, newQty, `Dispatched for outbreak ${outbreak_id}`, req.user?.username, outbreak_id, inv.name, inv.unit_cost || 0, (inv.unit_cost || 0) * qty, assigned_person || '', 'Outbreak dispatch']
+        `INSERT INTO inventory_transactions (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by, source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes, barangay)
+         VALUES ($1,$2,'OUT',$3,$4,$5,$6,$7,'outbreak',$8,$9,$10,$11,$12,$13,$14)`,
+        [inv.id, item.item_type || 'medicine', qty, inv.quantity, newQty, `Dispatched for outbreak ${outbreak_id}`, req.user?.username, outbreak_id, inv.name, inv.unit_cost || 0, (inv.unit_cost || 0) * qty, assigned_person || '', 'Outbreak dispatch', item.barangay || null]
       );
       dispatched.push({ id: inv.id, name: inv.name, quantity: qty, unit: inv.unit });
     }
@@ -1659,7 +1666,7 @@ router.get('/dashboard/medicine-usage-analytics', authenticate, async (req: Auth
         MAX(it.created_at) as last_used
       FROM inventory_transactions it
       LEFT JOIN medicine_inventory mi ON it.item_id = mi.id
-      LEFT JOIN users u ON u.username = it.reference_person
+      LEFT JOIN users u ON u.id = it.to_user_id OR u.username = it.reference_person
       WHERE it.item_type = 'medicine'
         AND it.transaction_type IN ('OUT','dispense','dispense_pet','dispense_livestock')
         AND it.created_at >= NOW() - INTERVAL '${days} days'
