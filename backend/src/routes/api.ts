@@ -1131,13 +1131,26 @@ router.patch('/outbreaks/by-incident/:incidentId', authenticate, async (req: Aut
 
 router.get('/outbreaks', authenticate, async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure archive/delete columns exist (idempotent migrations)
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS archived_reason TEXT`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS deleted_by TEXT`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS deletion_justification TEXT`).catch(() => {});
+    await query(`ALTER TABLE outbreak_records ADD COLUMN IF NOT EXISTS medicines_dispatched JSONB DEFAULT '[]'`).catch(() => {});
+
+    const includeArchived = req.query.include_archived === 'true';
     const result = await query(`
-      SELECT o.*, 
+      SELECT o.*,
         COALESCE(
           (SELECT json_agg(u ORDER BY u->>'timestamp') FROM jsonb_array_elements(o.updates) AS u),
           '[]'::json
         ) as updates_parsed
-      FROM outbreak_records o 
+      FROM outbreak_records o
+      WHERE o.is_deleted IS NOT TRUE
+        ${!includeArchived ? "AND o.is_archived IS NOT TRUE" : ""}
       ORDER BY o.date_created DESC
     `);
     const outbreaks = result.rows.map((r: any) => ({
@@ -1146,7 +1159,6 @@ router.get('/outbreaks', authenticate, async (req: AuthRequest, res: Response) =
     }));
     return res.json({ outbreaks });
   } catch (err: any) {
-    // Table may not exist yet — return empty
     return res.json({ outbreaks: [] });
   }
 });
@@ -1183,6 +1195,14 @@ router.post('/outbreaks', authenticate, async (req: AuthRequest, res: Response) 
         updates JSONB DEFAULT '[]',
         pet_name VARCHAR(255),
         owner_name VARCHAR(255),
+        is_archived BOOLEAN DEFAULT FALSE,
+        archived_at TIMESTAMPTZ,
+        archived_reason TEXT,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        deleted_at TIMESTAMPTZ,
+        deleted_by TEXT,
+        deletion_justification TEXT,
+        medicines_dispatched JSONB DEFAULT '[]',
         date_created TIMESTAMPTZ DEFAULT NOW(),
         date_updated TIMESTAMPTZ DEFAULT NOW()
       )
@@ -1216,16 +1236,52 @@ router.put('/outbreaks/:id', authenticate, async (req: AuthRequest, res: Respons
       paramIdx++;
     }
 
+    // Archiving logic: Resolved + closed flag = archive
+    const shouldArchive = d.status === 'Resolved' && d.close_record === true;
+    const archiveClause = shouldArchive
+      ? `, is_archived=TRUE, archived_at=NOW(), archived_reason=$${paramIdx + 6}`
+      : '';
+    const archiveParam = shouldArchive ? [d.archived_reason || 'Marked as Resolved and Closed'] : [];
+
     const result = await query(
       `UPDATE outbreak_records SET
          status=$${paramIdx}, severity=$${paramIdx+1}, assigned_to=$${paramIdx+2},
          resolve_date=$${paramIdx+3}, timetable=$${paramIdx+4},
          updates=${updatesQuery}, date_updated=NOW()
-       WHERE id=$${paramIdx+5} RETURNING *`,
-      [...params, d.status, d.severity, d.assigned_to||null, d.resolve_date||null, d.timetable||null, req.params.id]
+         ${archiveClause}
+       WHERE id=$${paramIdx+5+(shouldArchive?1:0)} RETURNING *`,
+      [...params, d.status, d.severity, d.assigned_to||null, d.resolve_date||null, d.timetable||null,
+       ...archiveParam, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     return res.json({ success: true, outbreak: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /outbreaks/:id — permanently remove from DB, requires justification (admin/superadmin only)
+router.delete('/outbreaks/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const { justification } = req.body;
+    if (!justification || !justification.trim()) {
+      return res.status(400).json({ error: 'Deletion justification is required' });
+    }
+
+    // First soft-mark as deleted for audit trail before hard delete
+    await query(
+      `UPDATE outbreak_records SET
+         is_deleted=TRUE, deleted_at=NOW(), deleted_by=$1, deletion_justification=$2, date_updated=NOW()
+       WHERE id=$3`,
+      [req.user?.username || 'System', justification.trim(), req.params.id]
+    ).catch(() => {});
+
+    // Hard delete
+    const result = await query(`DELETE FROM outbreak_records WHERE id=$1 RETURNING id`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Record not found' });
+
+    return res.json({ success: true, message: `Outbreak record ${req.params.id} permanently deleted.` });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
