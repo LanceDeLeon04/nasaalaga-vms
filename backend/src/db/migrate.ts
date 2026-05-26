@@ -838,6 +838,31 @@ export async function migrateBudget() {
       );
     `);
 
+    // Intervention tickets table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS intervention_tickets (
+        id VARCHAR(50) PRIMARY KEY,
+        alert_id VARCHAR(100),
+        title TEXT NOT NULL,
+        barangay VARCHAR(255),
+        type VARCHAR(50),
+        severity VARCHAR(20) DEFAULT 'medium',
+        status VARCHAR(20) DEFAULT 'pending',
+        goal TEXT,
+        accomplishment TEXT,
+        progress_pct INTEGER DEFAULT 0,
+        start_date DATE,
+        end_date DATE,
+        deployed_staff JSONB DEFAULT '[]',
+        deployed_resources JSONB DEFAULT '[]',
+        deliverables JSONB DEFAULT '[]',
+        notes TEXT,
+        is_outbreak BOOLEAN DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS budget_ai_recommendations (
         id VARCHAR(50) PRIMARY KEY,

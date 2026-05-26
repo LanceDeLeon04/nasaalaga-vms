@@ -2121,3 +2121,73 @@ router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: Auth
     return res.json({ success: true });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
+
+// ── Intervention Tickets ─────────────────────────────────────────────────────
+
+router.get('/interventions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM intervention_tickets ORDER BY created_at DESC`);
+    res.json(result.rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/interventions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, alert_id, title, barangay, type, severity, status, goal, accomplishment,
+      progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,
+      notes, is_outbreak } = req.body;
+    const result = await query(
+      `INSERT INTO intervention_tickets
+        (id, alert_id, title, barangay, type, severity, status, goal, accomplishment,
+         progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,
+         notes, is_outbreak, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())
+       RETURNING *`,
+      [id, alert_id, title, barangay, type, severity, status || 'pending', goal, accomplishment,
+       progress_pct || 0, start_date, end_date,
+       JSON.stringify(deployed_staff || []), JSON.stringify(deployed_resources || []),
+       JSON.stringify(deliverables || []), notes, is_outbreak || false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/interventions/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, barangay, type, severity, status, goal, accomplishment,
+      progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,
+      notes, is_outbreak, closed_at, approved_at, completed_at } = req.body;
+    const result = await query(
+      `UPDATE intervention_tickets SET
+        title=$2, barangay=$3, type=$4, severity=$5, status=$6, goal=$7, accomplishment=$8,
+        progress_pct=$9, start_date=$10, end_date=$11, deployed_staff=$12, deployed_resources=$13,
+        deliverables=$14, notes=$15, is_outbreak=$16, closed_at=$17, approved_at=$18,
+        completed_at=$19, updated_at=NOW()
+       WHERE id=$1 RETURNING *`,
+      [id, title, barangay, type, severity, status, goal, accomplishment,
+       progress_pct, start_date, end_date,
+       JSON.stringify(deployed_staff || []), JSON.stringify(deployed_resources || []),
+       JSON.stringify(deliverables || []), notes, is_outbreak,
+       closed_at || null, approved_at || null, completed_at || null]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM intervention_tickets WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+

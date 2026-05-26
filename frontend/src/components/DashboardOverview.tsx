@@ -29,8 +29,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { SmartAlerts } from "./SmartAlerts";
-import { InterventionRecommendations } from "./InterventionRecommendations";
+import { SmartAlertsInterventions } from "./SmartAlertsInterventions";
 import { ComparativeAnalytics } from "./ComparativeAnalytics";
 import { MedicineIntelligence } from "./MedicineIntelligence";
 import { InterventionEffectiveness } from "./InterventionEffectiveness";
@@ -312,14 +311,8 @@ export function DashboardOverview() {
     },
     {
       value: "alerts",
-      label: "Smart Alerts",
+      label: "Alerts & Interventions",
       bg: "#dc2626",
-      text: "#ffffff",
-    },
-    {
-      value: "interventions",
-      label: "Interventions",
-      bg: "#d97706",
       text: "#ffffff",
     },
     {
@@ -931,12 +924,9 @@ export function DashboardOverview() {
           </div>
         </TabsContent>
 
-        {/* ── Other Tabs (unchanged) ─────────────────────────────────── */}
+        {/* ── Alerts & Interventions (combined) ─────────────────────── */}
         <TabsContent value="alerts" className="mt-6">
-          <SmartAlerts />
-        </TabsContent>
-        <TabsContent value="interventions" className="mt-6">
-          <InterventionRecommendations />
+          <SmartAlertsInterventions />
         </TabsContent>
         <TabsContent value="analytics" className="mt-6">
           <ComparativeAnalytics />

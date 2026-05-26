@@ -99,6 +99,13 @@ export const api = {
     request('/outbreaks', { method: 'POST', body: JSON.stringify(data) }),
   updateOutbreak: (id: string, data: any) =>
     request('/outbreaks/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  getInterventions: () => request('/interventions'),
+  createIntervention: (data: any) =>
+    request('/interventions', { method: 'POST', body: JSON.stringify(data) }),
+  updateIntervention: (id: string, data: any) =>
+    request('/interventions/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteIntervention: (id: string) =>
+    request('/interventions/' + id, { method: 'DELETE' }),
   getLostFound: (type?: string, ownerId?: string) => {
     const params = new URLSearchParams();
     if (type) params.set('type', type);
