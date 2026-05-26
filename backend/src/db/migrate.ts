@@ -1024,6 +1024,84 @@ export async function migrateLivestockPreReg() {
   }
 }
 
+export async function migrateInventoryV3() {
+  const client = await pool.connect();
+  try {
+    // Suppliers table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        contact_person VARCHAR(255),
+        phone VARCHAR(100),
+        email VARCHAR(255),
+        address TEXT,
+        category VARCHAR(100) DEFAULT 'General',
+        notes TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Office supplies table (no expiry, non-perishable)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS office_supplies (
+        id VARCHAR(50) PRIMARY KEY,
+        barcode VARCHAR(100) UNIQUE,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'General',
+        quantity INTEGER DEFAULT 0,
+        unit VARCHAR(50) DEFAULT 'pieces',
+        reorder_level INTEGER DEFAULT 5,
+        unit_cost NUMERIC(10,2) DEFAULT 0,
+        supplier_id VARCHAR(50) REFERENCES suppliers(id) ON DELETE SET NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'Active',
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Pending orders table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pending_orders (
+        id VARCHAR(50) PRIMARY KEY,
+        item_name VARCHAR(255) NOT NULL,
+        item_type VARCHAR(50) DEFAULT 'medicine',
+        category VARCHAR(100),
+        quantity INTEGER NOT NULL,
+        unit VARCHAR(50) DEFAULT 'vials',
+        unit_cost NUMERIC(10,2) DEFAULT 0,
+        supplier_id VARCHAR(50) REFERENCES suppliers(id) ON DELETE SET NULL,
+        program_id VARCHAR(50),
+        line_item_id VARCHAR(50),
+        fiscal_year INTEGER,
+        notes TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        source VARCHAR(50) DEFAULT 'manual',
+        received_at TIMESTAMPTZ,
+        received_by VARCHAR(255),
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Add supplier_id to medicine and supplies
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS supplier_id VARCHAR(50) REFERENCES suppliers(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE supplies_inventory ADD COLUMN IF NOT EXISTS supplier_id VARCHAR(50) REFERENCES suppliers(id) ON DELETE SET NULL;`);
+
+    console.log('✅ Inventory V3 tables (suppliers, office_supplies, pending_orders) created');
+  } catch (err) {
+    console.error('❌ Inventory V3 migration failed:', err);
+  } finally {
+    client.release();
+  }
+}
+
 // Only run migration chain when executed directly (ts-node migrate.ts), NOT when imported
 const isMain = require.main === module ||
   (process.argv[1] && process.argv[1].includes('migrate'));
@@ -1034,6 +1112,7 @@ if (isMain) {
     .then(() => migrateInventoryV2())
     .then(() => migrateLivestockPreReg())
     .then(() => migrateProfileColumns())
+    .then(() => migrateInventoryV3())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);

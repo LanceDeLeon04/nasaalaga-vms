@@ -926,7 +926,11 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
           <ComparativeAnalytics />
         </TabsContent>
         <TabsContent value="medicine" className="mt-6">
-          <MedicineIntelligence />
+          <MedicineIntelligence onOrderFromIntel={onNavigate ? (prefill) => {
+            // Store prefill for inventory page to pick up, then navigate
+            sessionStorage.setItem('inventory_order_prefill', JSON.stringify(prefill));
+            onNavigate('inventory');
+          } : undefined} />
         </TabsContent>
         <TabsContent value="effectiveness" className="mt-6">
           <InterventionEffectiveness />

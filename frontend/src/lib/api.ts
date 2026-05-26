@@ -256,6 +256,26 @@ export const api = {
   updateMyProfile: (data: any) => request('/profile/me', { method: 'PUT', body: JSON.stringify(data) }),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     request('/profile/change-password', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Suppliers
+  getSuppliers: () => request('/inventory/suppliers'),
+  createSupplier: (data: any) => request('/inventory/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+  updateSupplier: (id: string, data: any) => request(`/inventory/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSupplier: (id: string) => request(`/inventory/suppliers/${id}`, { method: 'DELETE' }),
+
+  // Office Supplies
+  getOfficeSupplies: () => request('/inventory/office-supplies'),
+  createOfficeSupply: (data: any) => request('/inventory/office-supplies', { method: 'POST', body: JSON.stringify(data) }),
+  updateOfficeSupply: (id: string, data: any) => request(`/inventory/office-supplies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteOfficeSupply: (id: string) => request(`/inventory/office-supplies/${id}`, { method: 'DELETE' }),
+
+  // Pending Orders
+  getPendingOrders: () => request('/inventory/pending-orders'),
+  createPendingOrder: (data: any) => request('/inventory/pending-orders', { method: 'POST', body: JSON.stringify(data) }),
+  updatePendingOrder: (id: string, data: any) => request(`/inventory/pending-orders/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePendingOrder: (id: string) => request(`/inventory/pending-orders/${id}`, { method: 'DELETE' }),
+  receivePendingOrder: (id: string, data: any) => request(`/inventory/pending-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
+  barcodeInventoryLookup: (barcode: string) => request(`/inventory/barcode-lookup/${encodeURIComponent(barcode)}`),
 };
 
 export default api;

@@ -1969,6 +1969,275 @@ router.post('/profile/change-password', authenticate, async (req: AuthRequest, r
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
+// ── Suppliers ─────────────────────────────────────────────────────────────
+router.get('/inventory/suppliers', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM suppliers ORDER BY name ASC`);
+    return res.json({ success: true, suppliers: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/inventory/suppliers', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `SUP-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO suppliers (id, name, contact_person, phone, email, address, category, notes, is_active, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,$9) RETURNING *`,
+      [id, d.name, d.contactPerson||'', d.phone||'', d.email||'', d.address||'', d.category||'General', d.notes||'', req.user?.username]
+    );
+    return res.json({ success: true, supplier: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.put('/inventory/suppliers/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE suppliers SET name=$1,contact_person=$2,phone=$3,email=$4,address=$5,category=$6,notes=$7,is_active=$8,updated_at=NOW() WHERE id=$9 RETURNING *`,
+      [d.name,d.contactPerson||'',d.phone||'',d.email||'',d.address||'',d.category||'General',d.notes||'',d.isActive!==false,req.params.id]
+    );
+    return res.json({ success: true, supplier: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/inventory/suppliers/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query('DELETE FROM suppliers WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Office Supplies ────────────────────────────────────────────────────────
+router.get('/inventory/office-supplies', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM office_supplies ORDER BY category, name`);
+    return res.json({ success: true, items: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/inventory/office-supplies', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `OS-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO office_supplies (id, barcode, name, category, quantity, unit, reorder_level, unit_cost, supplier_id, description, status, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Active',$11) RETURNING *`,
+      [id,d.barcode||null,d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',req.user?.username]
+    );
+    return res.json({ success: true, item: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.put('/inventory/office-supplies/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE office_supplies SET name=$1,category=$2,quantity=$3,unit=$4,reorder_level=$5,unit_cost=$6,supplier_id=$7,description=$8,status=$9,updated_at=NOW() WHERE id=$10 RETURNING *`,
+      [d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',d.status||'Active',req.params.id]
+    );
+    return res.json({ success: true, item: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/inventory/office-supplies/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query('DELETE FROM office_supplies WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// ── Pending Orders ─────────────────────────────────────────────────────────
+router.get('/inventory/pending-orders', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT po.*, s.name as supplier_name, s.contact_person, s.phone as supplier_phone
+      FROM pending_orders po
+      LEFT JOIN suppliers s ON po.supplier_id = s.id
+      ORDER BY po.created_at DESC
+    `);
+    return res.json({ success: true, orders: result.rows });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.post('/inventory/pending-orders', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const id = `PO-${Date.now()}`;
+    const result = await query(
+      `INSERT INTO pending_orders (id, item_name, item_type, category, quantity, unit, unit_cost, supplier_id,
+        program_id, line_item_id, fiscal_year, notes, status, created_by, source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14) RETURNING *`,
+      [id, d.itemName, d.itemType||'medicine', d.category||'', d.quantity, d.unit||'vials',
+       d.unitCost||0, d.supplierId||null, d.programId||null, d.lineItemId||null,
+       d.fiscalYear||new Date().getFullYear(), d.notes||'', req.user?.username, d.source||'manual']
+    );
+    return res.json({ success: true, order: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.put('/inventory/pending-orders/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE pending_orders SET item_name=$1,item_type=$2,category=$3,quantity=$4,unit=$5,unit_cost=$6,
+       supplier_id=$7,program_id=$8,line_item_id=$9,notes=$10,status=$11,updated_at=NOW() WHERE id=$12 RETURNING *`,
+      [d.itemName,d.itemType||'medicine',d.category||'',d.quantity,d.unit||'vials',d.unitCost||0,
+       d.supplierId||null,d.programId||null,d.lineItemId||null,d.notes||'',d.status||'pending',req.params.id]
+    );
+    return res.json({ success: true, order: result.rows[0] });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/inventory/pending-orders/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    await query('DELETE FROM pending_orders WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// POST /inventory/pending-orders/:id/receive — barcode scan receive flow
+router.post('/inventory/pending-orders/:id/receive', authenticate, async (req: AuthRequest, res: Response) => {
+  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  try {
+    const d = req.body;
+    const orderId = req.params.id;
+    // Get the order
+    const orderRes = await query(`SELECT * FROM pending_orders WHERE id=$1`, [orderId]);
+    if (!orderRes.rows.length) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRes.rows[0];
+
+    const qty = parseInt(d.quantity || order.quantity);
+    const unitCost = parseFloat(d.unitCost || order.unit_cost) || 0;
+    const totalCost = qty * unitCost;
+
+    if (order.item_type === 'medicine') {
+      // Check if item exists (by barcode or name)
+      let existingId: string | null = null;
+      if (d.barcode) {
+        const existing = await query(`SELECT id FROM medicine_inventory WHERE barcode=$1`, [d.barcode]);
+        if (existing.rows.length) existingId = existing.rows[0].id;
+      }
+      if (!existingId && d.matchItemId) {
+        existingId = d.matchItemId;
+      }
+
+      if (existingId) {
+        // Update existing item qty
+        const prev = await query(`SELECT quantity FROM medicine_inventory WHERE id=$1`, [existingId]);
+        const prevQty = prev.rows[0].quantity;
+        const newQty = prevQty + qty;
+        await query(`UPDATE medicine_inventory SET quantity=$1, lot_number=COALESCE($2, lot_number), expiry_date=COALESCE($3::date, expiry_date), updated_at=NOW() WHERE id=$4`,
+          [newQty, d.lotNumber||null, d.expiryDate||null, existingId]);
+        await query(
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
+           VALUES ($1,'medicine','IN',$2,$3,$4,'Received from PO: '||$5,$6,'purchase',$7,$8,$9,$10,$11)`,
+          [existingId,qty,prevQty,newQty,orderId,req.user?.username,orderId,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+        );
+      } else {
+        // Create new medicine item
+        const newId = `MED-${Date.now()}`;
+        await query(
+          `INSERT INTO medicine_inventory (id,barcode,name,category,quantity,unit,reorder_level,unit_cost,lot_number,expiry_date,purpose,program_id,line_item_id,fiscal_year,received_by,created_by,status)
+           VALUES ($1,$2,$3,$4,$5,$6,10,$7,$8,$9::date,$10,$11,$12,$13,$14,$15,'Active')`,
+          [newId,d.barcode||null,order.item_name,order.category||'Other',qty,order.unit||'vials',
+           unitCost,d.lotNumber||null,d.expiryDate||null,order.program_id?'program':'office',
+           order.program_id||null,order.line_item_id||null,order.fiscal_year,d.receivedBy||req.user?.username,req.user?.username]
+        );
+        await query(
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
+           VALUES ($1,'medicine','IN',$2,0,$2,'Initial stock from PO: '||$3,$4,'purchase',$3,$5,$6,$7,$8)`,
+          [newId,qty,orderId,req.user?.username,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+        );
+      }
+    } else if (order.item_type === 'supply') {
+      let existingId: string | null = null;
+      if (d.barcode) {
+        const existing = await query(`SELECT id FROM supplies_inventory WHERE barcode=$1`, [d.barcode]);
+        if (existing.rows.length) existingId = existing.rows[0].id;
+      }
+      if (!existingId && d.matchItemId) existingId = d.matchItemId;
+
+      if (existingId) {
+        const prev = await query(`SELECT quantity FROM supplies_inventory WHERE id=$1`, [existingId]);
+        const prevQty = prev.rows[0].quantity;
+        const newQty = prevQty + qty;
+        await query(`UPDATE supplies_inventory SET quantity=$1,updated_at=NOW() WHERE id=$2`, [newQty, existingId]);
+        await query(
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
+           VALUES ($1,'supply','IN',$2,$3,$4,'Received from PO: '||$5,$6,'purchase',$7,$8,$9,$10,$11)`,
+          [existingId,qty,prevQty,newQty,orderId,req.user?.username,orderId,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+        );
+      } else {
+        const newId = `SUP-INV-${Date.now()}`;
+        await query(
+          `INSERT INTO supplies_inventory (id,barcode,name,category,quantity,unit,reorder_level,unit_cost,supplier,purpose,program_id,line_item_id,fiscal_year,received_by,created_by,status)
+           VALUES ($1,$2,$3,$4,$5,$6,5,$7,$8,$9,$10,$11,$12,$13,$14,'Active')`,
+          [newId,d.barcode||null,order.item_name,order.category||'Other',qty,order.unit||'pieces',
+           unitCost,'',order.program_id?'program':'office',order.program_id||null,order.line_item_id||null,
+           order.fiscal_year,d.receivedBy||req.user?.username,req.user?.username]
+        );
+        await query(
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
+           VALUES ($1,'supply','IN',$2,0,$2,'Initial stock from PO: '||$3,$4,'purchase',$3,$5,$6,$7,$8)`,
+          [newId,qty,orderId,req.user?.username,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+        );
+      }
+    } else if (order.item_type === 'office') {
+      // Office supply — no expiry needed
+      const newId = `OS-${Date.now()}`;
+      await query(
+        `INSERT INTO office_supplies (id,barcode,name,category,quantity,unit,reorder_level,unit_cost,created_by,status)
+         VALUES ($1,$2,$3,$4,$5,$6,5,$7,$8,'Active')
+         ON CONFLICT (barcode) DO UPDATE SET quantity=office_supplies.quantity+$5, updated_at=NOW()`,
+        [newId,d.barcode||null,order.item_name,order.category||'General',qty,order.unit||'pieces',unitCost,req.user?.username]
+      );
+    }
+
+    // Deduct from budget line item if linked
+    if (order.line_item_id && totalCost > 0) {
+      await query(
+        `INSERT INTO budget_expenditures (id, line_item_id, amount, description, reference_id, vendor, date_incurred, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT DO NOTHING`,
+        [`EXP-PO-${orderId}`, order.line_item_id, totalCost, `Purchase Order received: ${order.item_name}`,
+         orderId, '', new Date().toISOString().split('T')[0], req.user?.username]
+      );
+      await query(`UPDATE budget_line_items SET utilized=COALESCE(utilized,0)+$1, updated_at=NOW() WHERE id=$2`, [totalCost, order.line_item_id]);
+    }
+
+    // Mark order as received
+    await query(`UPDATE pending_orders SET status='received', received_at=NOW(), received_by=$1, updated_at=NOW() WHERE id=$2`, [req.user?.username, orderId]);
+
+    return res.json({ success: true, message: 'Order received and inventory updated' });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
+// Barcode lookup for receiving — checks all inventory tables
+router.get('/inventory/barcode-lookup/:barcode', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const bc = decodeURIComponent(req.params.barcode);
+    const [med, sup, os] = await Promise.all([
+      query(`SELECT id,name,category,quantity,unit,lot_number,expiry_date FROM medicine_inventory WHERE barcode=$1`, [bc]),
+      query(`SELECT id,name,category,quantity,unit FROM supplies_inventory WHERE barcode=$1`, [bc]),
+      query(`SELECT id,name,category,quantity,unit FROM office_supplies WHERE barcode=$1`, [bc]),
+    ]);
+    if (med.rows[0]) return res.json({ found: true, type: 'medicine', item: med.rows[0] });
+    if (sup.rows[0]) return res.json({ found: true, type: 'supply', item: sup.rows[0] });
+    if (os.rows[0]) return res.json({ found: true, type: 'office', item: os.rows[0] });
+    return res.json({ found: false });
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
+});
+
 export default router;
 
 // ═══════════════════════════════════════════════════════════════════════════

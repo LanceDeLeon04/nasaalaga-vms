@@ -312,7 +312,7 @@ function ResupplyModal({ name, currentQty, unit, onClose, onConfirm }: {
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-export function MedicineIntelligence() {
+export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: (prefill: any) => void } = {}) {
   type ViewType = "alerts" | "usage" | "trends";
   const [view, setView] = useState<ViewType>("alerts");
   const [periodDays, setPeriodDays] = useState(90);
@@ -328,7 +328,7 @@ export function MedicineIntelligence() {
   // Modals
   const [barangayModal, setBarangayModal]   = useState<BarangayRank|null>(null);
   const [fastMoverModal, setFastMoverModal] = useState<FastMover|null>(null);
-  const [resupplyModal, setResupplyModal]   = useState<{name:string;qty:number;unit:string}|null>(null);
+  const [resupplyModal, setResupplyModal]   = useState<{name:string;qty:number;unit:string;category?:string;stockItem?:StockItem}|null>(null);
 
   // Notifs
   const [notifs, setNotifs] = useState<Notif[]>([]);
@@ -390,7 +390,17 @@ export function MedicineIntelligence() {
       )}
       {resupplyModal && (
         <ResupplyModal {...resupplyModal} onClose={()=>setResupplyModal(null)}
-          onConfirm={qty=>push("Resupply Ordered",`${qty} ${resupplyModal.unit} of ${resupplyModal.name} ordered. ETA: 24–48 hrs.`,"success")}/>
+          onConfirm={async qty=>{
+            if (onOrderFromIntel) {
+              onOrderFromIntel({ itemName:resupplyModal.name, itemType:'medicine', quantity:qty, unit:resupplyModal.unit, source:'medicine_intel' });
+              push("Order Form Opened",`Fill in the details for ${resupplyModal.name}.`,"info");
+            } else {
+              try {
+                await (api as any).createPendingOrder({ itemName:resupplyModal.name, itemType:'medicine', quantity:qty, unit:resupplyModal.unit, source:'medicine_intel' });
+                push("Pending Order Created",`${qty} ${resupplyModal.unit} of ${resupplyModal.name} added to Pending Orders.`,"success");
+              } catch { push("Failed","Could not place order.","warning"); }
+            }
+          }}/>
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">

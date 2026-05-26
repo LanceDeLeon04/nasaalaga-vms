@@ -9,7 +9,7 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3 } from './db/migrate';
 
 dotenv.config();
 
@@ -66,6 +66,7 @@ app.listen(PORT, async () => {
     await migrateInventoryV2();
     await migrateLivestockPreReg();
     await migrateProfileColumns();
+    await migrateInventoryV3();
     console.log('✅ Database ready');
   } catch (err) {
     console.error('⚠️  Migration warning (non-fatal):', err);
