@@ -2135,20 +2135,28 @@ router.get('/interventions', authenticate, async (req: AuthRequest, res: Respons
 
 router.post('/interventions', authenticate, async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure all required columns exist (safe to call every time — IF NOT EXISTS)
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS disease_event_id VARCHAR(50)`).catch(() => {});
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`).catch(() => {});
+
     const { id, alert_id, title, barangay, type, severity, status, goal, accomplishment,
       progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,
-      notes, is_outbreak } = req.body;
+      notes, is_outbreak, disease_event_id } = req.body;
     const result = await query(
       `INSERT INTO intervention_tickets
         (id, alert_id, title, barangay, type, severity, status, goal, accomplishment,
          progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,
-         notes, is_outbreak, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())
+         notes, is_outbreak, disease_event_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         status=EXCLUDED.status, updated_at=NOW()
        RETURNING *`,
-      [id, alert_id, title, barangay, type, severity, status || 'pending', goal, accomplishment,
-       progress_pct || 0, start_date, end_date,
+      [id, alert_id, title, barangay, type, severity, status || 'pending', goal || '', accomplishment || '',
+       progress_pct || 0, start_date || null, end_date || null,
        JSON.stringify(deployed_staff || []), JSON.stringify(deployed_resources || []),
-       JSON.stringify(deliverables || []), notes, is_outbreak || false]
+       JSON.stringify(deliverables || []), notes || '', is_outbreak || false, disease_event_id || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err: any) {
@@ -2158,6 +2166,11 @@ router.post('/interventions', authenticate, async (req: AuthRequest, res: Respon
 
 router.put('/interventions/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure timestamp columns exist
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`).catch(() => {});
+    await query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`).catch(() => {});
+
     const { id } = req.params;
     const { title, barangay, type, severity, status, goal, accomplishment,
       progress_pct, start_date, end_date, deployed_staff, deployed_resources, deliverables,

@@ -96,6 +96,7 @@ interface Intervention {
   closedAt?: string;
   approvedAt?: string;
   completedAt?: string;
+  diseaseEventId?: string; // linked livestock_disease_events.id — used to auto-resolve on close
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -700,21 +701,33 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       const generated: SmartAlert[] = [];
       const now = new Date().toISOString();
 
+      // Build a set of disease_event source_ids that are DECLARED outbreaks in outbreak_records
+      // A disease event is only an outbreak if City Vet has formally declared it via Outbreak Monitoring
+      const declaredOutbreakSourceIds = new Set<string>();
+      const outbreakRows = outbreakRes.status === 'fulfilled'
+        ? (outbreakRes.value?.outbreaks || outbreakRes.value || [])
+        : [];
+      outbreakRows.forEach((o: any) => {
+        if (o.source_id) declaredOutbreakSourceIds.add(String(o.source_id));
+        // Also match by disease name + barangay as fallback
+      });
+
       // Disease events / outbreaks
       const disease = diseaseRes.status === 'fulfilled' ? diseaseRes.value : null;
       (disease?.activeEvents || []).forEach((e: any, i: number) => {
-        const isOutbreak = e.status?.toLowerCase().includes('outbreak') || (e.cases || 0) >= 5;
+        // isOutbreak ONLY if City Vet has formally declared it in outbreak_records
+        const isDeclaredOutbreak = declaredOutbreakSourceIds.has(String(e.id));
         generated.push({
           id: `disease-${e.id || i}`,
-          type: isOutbreak ? 'outbreak' : 'mortality',
+          type: isDeclaredOutbreak ? 'outbreak' : 'mortality',
           severity: e.cases > 10 ? 'high' : e.cases > 3 ? 'medium' : 'low',
           barangay: e.barangay || 'Unknown',
-          message: `${e.disease} — ${e.cases} cases reported. Status: ${e.status}`,
+          message: `${e.disease} — ${e.cases} case${e.cases !== 1 ? 's' : ''} reported. Status: ${e.status}`,
           metric: `${e.cases} cases, ${e.deaths || 0} deaths`,
           riskLevel: e.cases > 10 ? 'High' : e.cases > 3 ? 'Medium' : 'Low',
           sourceId: e.id,
-          isOutbreak,
-          createdAt: e.date || now,
+          isOutbreak: isDeclaredOutbreak,
+          createdAt: e.date_reported || e.date || now,
         });
       });
 
@@ -759,21 +772,20 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
         });
       });
 
-      // Outbreaks from outbreak table
-      const outbreaks = outbreakRes.status === 'fulfilled' ? (outbreakRes.value || []) : [];
-      outbreaks.slice(0, 3).forEach((o: any, i: number) => {
-        if (!generated.find(a => a.sourceId === o.id)) {
+      // Declared outbreaks from outbreak_records — add as high-severity outbreak alerts
+      outbreakRows.slice(0, 5).forEach((o: any, i: number) => {
+        if (!generated.find(a => a.sourceId === String(o.source_id || o.id))) {
           generated.push({
             id: `outbreak-${o.id || i}`,
             type: 'outbreak',
             severity: 'high',
             barangay: o.barangay || o.location || 'Unknown',
-            message: `${o.disease || o.name} outbreak — ${o.cases || 0} confirmed cases`,
+            message: `${o.disease || o.name} — DECLARED OUTBREAK — ${o.cases || 0} confirmed cases`,
             metric: `${o.cases || 0} cases`,
             riskLevel: 'High',
-            sourceId: o.id,
+            sourceId: String(o.source_id || o.id),
             isOutbreak: true,
-            createdAt: o.date_reported || now,
+            createdAt: o.date_created || o.date_reported || now,
           });
         }
       });
@@ -781,7 +793,7 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       // Fallback if empty
       if (generated.length === 0) {
         generated.push(
-          { id: 'fb-1', type: 'outbreak', severity: 'high', barangay: 'Bisaya', message: 'ASF suspect case — LS-005 quarantined. RVL confirmation pending.', metric: '22 swine quarantined', riskLevel: 'High', isOutbreak: true, createdAt: new Date().toISOString() },
+          { id: 'fb-1', type: 'mortality', severity: 'high', barangay: 'Bisaya', message: 'ASF suspect case — LS-005 quarantined. RVL confirmation pending.', metric: '22 swine quarantined', riskLevel: 'High', isOutbreak: false, createdAt: new Date().toISOString() },
           { id: 'fb-2', type: 'mortality', severity: 'medium', barangay: 'Loma', message: '2 swine mortality reported — suspected PED. Investigation ongoing.', metric: '2 animals', riskLevel: 'Medium', createdAt: new Date().toISOString() },
           { id: 'fb-3', type: 'inventory', severity: 'medium', barangay: 'CVO Central', message: 'Check medicine inventory for reorder levels', metric: 'Review needed', riskLevel: 'Low', createdAt: new Date().toISOString() },
         );
@@ -813,6 +825,7 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
           isOutbreak: r.is_outbreak || false,
           createdAt: r.created_at, updatedAt: r.updated_at,
           closedAt: r.closed_at, approvedAt: r.approved_at, completedAt: r.completed_at,
+          diseaseEventId: r.disease_event_id || undefined,
         }));
         setInterventions(loaded);
         // Update alert linkage
@@ -853,26 +866,51 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isOutbreak: alert.isOutbreak,
+      diseaseEventId: alert.sourceId,
     } as any;
 
-    // Persist to DB
+    // Persist to DB — must succeed for data durability
+    let savedToDB = false;
     try {
       await (api as any).createIntervention({
         id: iv.id, alert_id: iv.alertId, title: iv.title, barangay: iv.barangay,
         type: iv.type, severity: iv.severity, status: iv.status,
         start_date: iv.startDate, end_date: iv.endDate, is_outbreak: iv.isOutbreak || false,
+        disease_event_id: iv.diseaseEventId || null,
       });
-    } catch { /* local state still works */ }
+      savedToDB = true;
+    } catch (err: any) {
+      // Still add to local state for this session, but warn the user
+      console.error('Failed to persist intervention to DB:', err);
+    }
 
     setInterventions(prev => [iv, ...prev]);
     setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, interventionId: iv.id } : a));
     setActiveTab('interventions');
-    showToast('Intervention Created', `Ticket ${iv.id} opened for ${alert.barangay}`);
+    showToast(
+      'Intervention Created',
+      savedToDB
+        ? `Ticket ${iv.id} saved for ${alert.barangay}`
+        : `Ticket ${iv.id} created (DB sync pending — check connection)`,
+    );
   };
 
   const updateIntervention = async (updated: Intervention) => {
     setInterventions(prev => prev.map(iv => iv.id === updated.id ? updated : iv));
-    // Persist to DB
+
+    // Auto-resolve the linked disease event when ticket is closed
+    if (updated.status === 'closed' && updated.diseaseEventId) {
+      try {
+        await api.updateDiseaseEvent(updated.diseaseEventId, {
+          status: 'Resolved',
+          resolved_date: new Date().toISOString().split('T')[0],
+        });
+        // Remove the resolved alert from the active alerts list
+        setAlerts(prev => prev.filter(a => a.sourceId !== updated.diseaseEventId));
+      } catch { /* non-blocking — disease event resolve is best-effort */ }
+    }
+
+    // Persist intervention to DB
     try {
       await (api as any).updateIntervention(updated.id, {
         title: updated.title, barangay: updated.barangay, type: updated.type,
@@ -880,13 +918,20 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
         accomplishment: updated.accomplishment, progress_pct: updated.progressPct,
         start_date: updated.startDate || null, end_date: updated.endDate || null,
         deployed_staff: updated.deployedStaff, deployed_resources: updated.deployedResources,
-        deliverables: updated.deliverables, notes: updated.notes, is_outbreak: updated.isOutbreak || false,
+        deliverables: updated.deliverables, notes: updated.notes, is_outbreak: (updated as any).isOutbreak || false,
         closed_at: updated.status === 'closed' ? new Date().toISOString() : null,
-        approved_at: updated.status === 'in-progress' ? (updated.approvedAt || new Date().toISOString()) : null,
-        completed_at: updated.status === 'completed' ? (updated.completedAt || new Date().toISOString()) : null,
+        approved_at: updated.status === 'in-progress' ? ((updated.approvedAt) || new Date().toISOString()) : null,
+        completed_at: updated.status === 'completed' ? ((updated.completedAt) || new Date().toISOString()) : null,
       });
-    } catch { /* local state still updated */ }
-    showToast('Intervention Updated', `${updated.id} saved successfully`);
+    } catch (err: any) {
+      console.error('Failed to persist intervention update to DB:', err);
+    }
+    showToast(
+      updated.status === 'closed' ? 'Ticket Closed' : 'Intervention Updated',
+      updated.status === 'closed' && updated.diseaseEventId
+        ? `${updated.id} closed — disease threat marked as Resolved`
+        : `${updated.id} saved successfully`,
+    );
   };
 
   // ── Filtered lists ───────────────────────────────────────────────────────

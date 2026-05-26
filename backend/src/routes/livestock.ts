@@ -232,10 +232,23 @@ router.post('/disease-events', authenticate, async (req: AuthRequest, res: Respo
 router.put('/disease-events/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
+    // Support partial updates — COALESCE keeps existing values when fields are not provided
     const result = await query(
-      `UPDATE livestock_disease_events SET status=$1, cases=$2, deaths=$3, resolved_date=$4, notes=$5
+      `UPDATE livestock_disease_events
+         SET status=COALESCE($1, status),
+             cases=COALESCE($2, cases),
+             deaths=COALESCE($3, deaths),
+             resolved_date=COALESCE($4, resolved_date),
+             notes=COALESCE($5, notes)
        WHERE id=$6 RETURNING *`,
-      [d.status, d.cases, d.deaths, d.resolvedDate || null, d.notes, req.params.id]
+      [
+        d.status ?? null,
+        d.cases !== undefined ? d.cases : null,
+        d.deaths !== undefined ? d.deaths : null,
+        d.resolvedDate ?? d.resolved_date ?? null,
+        d.notes !== undefined ? d.notes : null,
+        req.params.id,
+      ]
     );
     return res.json({ event: result.rows[0], success: true });
   } catch (err: any) {

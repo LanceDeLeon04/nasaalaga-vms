@@ -42,7 +42,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
     // Superadmin cannot access the 'settings' route directly from admin sidebar
     // They go through SuperAdminSettings component which is shown for superadmin only
     switch (activeView) {
-      case 'dashboard':    return <DashboardOverview />;
+      case 'dashboard':    return <DashboardOverview onNavigate={setActiveView} />;
       case 'livestock':    return <LivestockManagement />;
       case 'rabies':        return <PetRegistration userRole={user.role} />;
       case 'vaccination':   return <VaccinationModule user={user} />;
@@ -70,7 +70,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
             </div>
           </div>
         );
-      default: return <DashboardOverview />;
+      default: return <DashboardOverview onNavigate={setActiveView} />;
     }
   };
 

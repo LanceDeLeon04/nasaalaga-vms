@@ -1050,4 +1050,17 @@ export async function migrateProfileColumns() {
   } finally {
     client.release();
   }
+
+  const client2 = await pool.connect();
+  try {
+    await client2.query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS disease_event_id VARCHAR(50);`);
+    await client2.query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;`);
+    await client2.query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;`);
+    await client2.query(`ALTER TABLE intervention_tickets ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;`);
+    console.log('✅ intervention_tickets columns (disease_event_id, closed_at, approved_at, completed_at) ensured');
+  } catch (err) {
+    console.error('❌ intervention_tickets column migration failed:', err);
+  } finally {
+    client2.release();
+  }
 }

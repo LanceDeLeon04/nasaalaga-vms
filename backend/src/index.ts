@@ -9,6 +9,7 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
+import { migrateProfileColumns } from './db/migrate';
 
 dotenv.config();
 
@@ -58,6 +59,7 @@ app.listen(PORT, async () => {
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
   await verifyEmailConnection();
+  await migrateProfileColumns();
   console.log('');
 });
 

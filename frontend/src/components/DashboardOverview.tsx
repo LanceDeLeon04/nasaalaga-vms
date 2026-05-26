@@ -33,7 +33,7 @@ import { SmartAlertsInterventions } from "./SmartAlertsInterventions";
 import { ComparativeAnalytics } from "./ComparativeAnalytics";
 import { MedicineIntelligence } from "./MedicineIntelligence";
 import { InterventionEffectiveness } from "./InterventionEffectiveness";
-import { ResourceDeployment } from "./ResourceDeployment";
+
 import { PetSurveyChart } from "./PetSurveyChart";
 import {
   Tabs,
@@ -89,7 +89,7 @@ const PieTooltip = ({ active, payload }: any) => {
   );
 };
 
-export function DashboardOverview() {
+export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => void }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [lsData, setLsData] = useState<any[]>([]);
   const [tData, setTData] = useState<any[]>([]);
@@ -331,12 +331,6 @@ export function DashboardOverview() {
       value: "effectiveness",
       label: "Effectiveness",
       bg: "#0891b2",
-      text: "#ffffff",
-    },
-    {
-      value: "deployment",
-      label: "Deployment",
-      bg: "#ea580c",
       text: "#ffffff",
     },
   ];
@@ -926,7 +920,7 @@ export function DashboardOverview() {
 
         {/* ── Alerts & Interventions (combined) ─────────────────────── */}
         <TabsContent value="alerts" className="mt-6">
-          <SmartAlertsInterventions />
+          <SmartAlertsInterventions onNavigateOutbreak={onNavigate ? () => onNavigate('outbreak') : undefined} />
         </TabsContent>
         <TabsContent value="analytics" className="mt-6">
           <ComparativeAnalytics />
@@ -936,9 +930,6 @@ export function DashboardOverview() {
         </TabsContent>
         <TabsContent value="effectiveness" className="mt-6">
           <InterventionEffectiveness />
-        </TabsContent>
-        <TabsContent value="deployment" className="mt-6">
-          <ResourceDeployment />
         </TabsContent>
       </Tabs>
     </div>
