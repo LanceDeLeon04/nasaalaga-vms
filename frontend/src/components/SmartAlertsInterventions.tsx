@@ -97,6 +97,7 @@ interface Intervention {
   approvedAt?: string;
   completedAt?: string;
   diseaseEventId?: string; // linked livestock_disease_events.id — used to auto-resolve on close
+  isOutbreak?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1293,35 +1294,34 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       updatedAt: new Date().toISOString(),
       isOutbreak: alert.isOutbreak,
       diseaseEventId: alert.sourceId,
-    } as any;
+    };
 
-    // Persist to DB — must succeed for data durability
-    let savedToDB = false;
+    // Persist to DB first — optimistic update only after success
     try {
-      await (api as any).createIntervention({
+      await api.createIntervention({
         id: iv.id, alert_id: iv.alertId, title: iv.title, barangay: iv.barangay,
         type: iv.type, severity: iv.severity, status: iv.status,
-        start_date: iv.startDate, end_date: iv.endDate, is_outbreak: iv.isOutbreak || false,
+        goal: iv.goal, accomplishment: iv.accomplishment, progress_pct: iv.progressPct,
+        start_date: iv.startDate, end_date: iv.endDate,
+        deployed_staff: iv.deployedStaff, deployed_resources: iv.deployedResources,
+        deliverables: iv.deliverables, notes: iv.notes,
+        is_outbreak: iv.isOutbreak || false,
         disease_event_id: iv.diseaseEventId || null,
       });
-      savedToDB = true;
     } catch (err: any) {
-      // Still add to local state for this session, but warn the user
       console.error('Failed to persist intervention to DB:', err);
+      showToast('Save Failed', `Could not save intervention — ${err.message || 'check connection'}`);
+      return; // Do NOT update local state if DB save failed
     }
 
     setInterventions(prev => [iv, ...prev]);
     setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, interventionId: iv.id } : a));
     setActiveTab('interventions');
-    showToast(
-      'Intervention Created',
-      savedToDB
-        ? `Ticket ${iv.id} saved for ${alert.barangay}`
-        : `Ticket ${iv.id} created (DB sync pending — check connection)`,
-    );
+    showToast('Intervention Created', `Ticket ${iv.id} saved for ${alert.barangay}`);
   };
 
   const updateIntervention = async (updated: Intervention) => {
+    // Optimistic local update
     setInterventions(prev => prev.map(iv => iv.id === updated.id ? updated : iv));
 
     // Auto-resolve the linked disease event when ticket is closed
@@ -1338,19 +1338,24 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
 
     // Persist intervention to DB
     try {
-      await (api as any).updateIntervention(updated.id, {
+      await api.updateIntervention(updated.id, {
         title: updated.title, barangay: updated.barangay, type: updated.type,
         severity: updated.severity, status: updated.status, goal: updated.goal,
         accomplishment: updated.accomplishment, progress_pct: updated.progressPct,
         start_date: updated.startDate || null, end_date: updated.endDate || null,
         deployed_staff: updated.deployedStaff, deployed_resources: updated.deployedResources,
-        deliverables: updated.deliverables, notes: updated.notes, is_outbreak: (updated as any).isOutbreak || false,
-        closed_at: updated.status === 'closed' ? new Date().toISOString() : null,
-        approved_at: updated.status === 'in-progress' ? ((updated.approvedAt) || new Date().toISOString()) : null,
-        completed_at: updated.status === 'completed' ? ((updated.completedAt) || new Date().toISOString()) : null,
+        deliverables: updated.deliverables, notes: updated.notes,
+        is_outbreak: updated.isOutbreak || false,
+        closed_at: updated.status === 'closed' ? (updated.closedAt || new Date().toISOString()) : null,
+        approved_at: updated.status === 'in-progress' ? (updated.approvedAt || new Date().toISOString()) : (updated.approvedAt || null),
+        completed_at: updated.status === 'completed' ? (updated.completedAt || new Date().toISOString()) : (updated.completedAt || null),
       });
     } catch (err: any) {
       console.error('Failed to persist intervention update to DB:', err);
+      // Rollback optimistic update — refetch from DB to restore true state
+      fetchData();
+      showToast('Save Failed', `Could not save changes — ${err.message || 'check connection'}`);
+      return;
     }
     showToast(
       updated.status === 'closed' ? 'Ticket Closed' : 'Intervention Updated',

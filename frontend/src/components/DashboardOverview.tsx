@@ -30,9 +30,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { SmartAlertsInterventions } from "./SmartAlertsInterventions";
-import { ComparativeAnalytics } from "./ComparativeAnalytics";
+import { SmartAnalytics } from "./SmartAnalytics";
 import { MedicineIntelligence } from "./MedicineIntelligence";
-import { InterventionEffectiveness } from "./InterventionEffectiveness";
 
 import { PetSurveyChart } from "./PetSurveyChart";
 import {
@@ -317,7 +316,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
     },
     {
       value: "analytics",
-      label: "Analytics",
+      label: "Smart Analytics",
       bg: "#16a34a",
       text: "#ffffff",
     },
@@ -325,12 +324,6 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       value: "medicine",
       label: "Medicine Intel",
       bg: "#7c3aed",
-      text: "#ffffff",
-    },
-    {
-      value: "effectiveness",
-      label: "Effectiveness",
-      bg: "#0891b2",
       text: "#ffffff",
     },
   ];
@@ -923,17 +916,13 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
           <SmartAlertsInterventions onNavigateOutbreak={onNavigate ? () => onNavigate('outbreak') : undefined} />
         </TabsContent>
         <TabsContent value="analytics" className="mt-6">
-          <ComparativeAnalytics />
+          <SmartAnalytics />
         </TabsContent>
         <TabsContent value="medicine" className="mt-6">
           <MedicineIntelligence onOrderFromIntel={onNavigate ? (prefill) => {
-            // Store prefill for inventory page to pick up, then navigate
             sessionStorage.setItem('inventory_order_prefill', JSON.stringify(prefill));
             onNavigate('inventory');
           } : undefined} />
-        </TabsContent>
-        <TabsContent value="effectiveness" className="mt-6">
-          <InterventionEffectiveness />
         </TabsContent>
       </Tabs>
     </div>
