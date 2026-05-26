@@ -554,6 +554,94 @@ const seed = async () => {
     }
     console.log(`  ✓ Supplies inventory seeded (${supplies.length})`);
 
+    // ── Suppliers ────────────────────────────────────────────────────────────
+    const suppliers = [
+      { id: 'SUPL-001', name: 'MedSource Philippines, Inc.', contact_person: 'Ramon dela Cruz', phone: '0917-555-1001', email: 'orders@medsource.com.ph', address: 'Unit 4B, Bridgeway Business Park, Caloocan City', category: 'Medical Supplies', notes: 'Primary supplier for syringes, needles, wound care. Delivers weekly Wednesdays.' },
+      { id: 'SUPL-002', name: 'Zoetis Philippines Inc.', contact_person: 'Maria Santos', phone: '0918-555-2002', email: 'ph.orders@zoetis.com', address: '16F Philplans Corporate Center, 1148 EDSA, Mandaluyong City', category: 'Medicine Supplier', notes: 'Official distributor of Zoetis vet pharmaceuticals. Lead time: 5–7 business days.' },
+      { id: 'SUPL-003', name: 'BIAH Philippines (BAI Accredited)', contact_person: 'Dr. Elena Ramos', phone: '(02) 8527-1001', email: 'biahphilippines@gmail.com', address: 'BAI Compound, Visayas Avenue, Diliman, Quezon City', category: 'Medicine Supplier', notes: 'Government-accredited biological products: Newcastle Disease, Hog Cholera vaccines.' },
+      { id: 'SUPL-004', name: 'VetEquip Philippines Corp.', contact_person: 'Jose Enriquez', phone: '0919-555-4004', email: 'sales@vetequip.ph', address: '88 Timog Avenue, Quezon City', category: 'Equipment', notes: 'Veterinary instruments and diagnostic equipment. Offers calibration services.' },
+      { id: 'SUPL-005', name: 'SafePro Safety Solutions PH', contact_person: 'Ana Reyes', phone: '0920-555-5005', email: 'orders@safepro.com.ph', address: '234 Shaw Boulevard, Mandaluyong City', category: 'Medical Supplies', notes: 'PPE and safety consumables. Bulk discount for orders over ₱10,000.' },
+      { id: 'SUPL-006', name: 'ColdChain Logistics PH', contact_person: 'Benjamin Tan', phone: '0921-555-6006', email: 'coldchain@logistics.ph', address: 'PEZA Zone, Calamba, Laguna', category: 'Equipment', notes: 'Cold chain equipment. Also provides dry ice and refrigerant packs on request.' },
+      { id: 'SUPL-007', name: 'LabMed Diagnostics Corp.', contact_person: 'Christine Uy', phone: '0922-555-7007', email: 'orders@labmed.com.ph', address: 'Laguna Technopark, Biñan, Laguna', category: 'Medical Supplies', notes: 'Laboratory consumables and diagnostic reagents. ISO-certified.' },
+      { id: 'SUPL-008', name: 'Intervet/MSD Animal Health PH', contact_person: 'Richard Lim', phone: '0923-555-8008', email: 'ph.animalhealth@msd.com', address: '8F 8 Rockwell, Rockwell Center, Makati City', category: 'Medicine Supplier', notes: 'MSD Animal Health products including Vitamin E+Se and antiparasitic lines.' },
+      { id: 'SUPL-009', name: 'National Book Store (Calaca Branch)', contact_person: 'Lorna Bustamante', phone: '0924-555-9009', email: 'calaca@nationalbookstore.com.ph', address: 'National Highway, Calaca, Batangas 4212', category: 'Office Supplies', notes: 'Office and school supplies. Walk-in purchases accepted. Accepts PhilGEPS.' },
+      { id: 'SUPL-010', name: 'Batangas Provincial Government Supply Office', contact_person: 'Eduardo Manalo', phone: '(043) 980-0100', email: 'supply@batangas.gov.ph', address: 'Capitol Compound, Kumintang Ibaba, Batangas City', category: 'General', notes: 'Procures office equipment and computer supplies through BAC. Requires PR/PO documentation.' },
+    ];
+    for (const s of suppliers) {
+      await client.query(
+        `INSERT INTO suppliers (id, name, contact_person, phone, email, address, category, notes, is_active, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,'system')
+         ON CONFLICT (id) DO NOTHING`,
+        [s.id, s.name, s.contact_person, s.phone, s.email, s.address, s.category, s.notes]
+      );
+    }
+    console.log(`  ✓ Suppliers seeded (${suppliers.length})`);
+
+    // ── Link medicine_inventory to suppliers ──────────────────────────────────
+    const medLinks: [string, string][] = [
+      ['MED-001', 'SUPL-002'], ['MED-002', 'SUPL-002'], ['MED-003', 'SUPL-002'],
+      ['MED-004', 'SUPL-002'], ['MED-005', 'SUPL-003'], ['MED-006', 'SUPL-002'],
+      ['MED-007', 'SUPL-008'], ['MED-008', 'SUPL-002'],
+      ['MED-DEMO-001', 'SUPL-002'], ['MED-DEMO-002', 'SUPL-002'], ['MED-DEMO-003', 'SUPL-002'],
+    ];
+    for (const [itemId, supplierId] of medLinks) {
+      await client.query(`UPDATE medicine_inventory SET supplier_id=$1 WHERE id=$2`, [supplierId, itemId]);
+    }
+
+    // ── Link supplies_inventory to suppliers ──────────────────────────────────
+    const supLinks: [string, string][] = [
+      ['SUP-001', 'SUPL-001'], ['SUP-002', 'SUPL-005'], ['SUP-003', 'SUPL-007'],
+      ['SUP-004', 'SUPL-004'], ['SUP-005', 'SUPL-006'], ['SUP-006', 'SUPL-001'],
+      ['SUP-007', 'SUPL-001'], ['SUP-008', 'SUPL-004'],
+    ];
+    for (const [itemId, supplierId] of supLinks) {
+      await client.query(`UPDATE supplies_inventory SET supplier_id=$1 WHERE id=$2`, [supplierId, itemId]);
+    }
+    console.log('  ✓ Supplier FK links applied to medicine and supply inventory');
+
+    // ── Office Supplies ───────────────────────────────────────────────────────
+    const officeSupplies = [
+      { id: 'OS-001', barcode: 'OS-BAR-001', name: 'A4 Bond Paper (500 sheets/ream)', category: 'Paper & Stationery', quantity: 20, unit: 'reams', reorder_level: 5, unit_cost: 275.00, supplier_id: 'SUPL-009', description: '80gsm A4 bond paper for official documents and reports' },
+      { id: 'OS-002', barcode: 'OS-BAR-002', name: 'Ballpen Blue (Box of 12)', category: 'Paper & Stationery', quantity: 8, unit: 'boxes', reorder_level: 2, unit_cost: 120.00, supplier_id: 'SUPL-009', description: 'Standard blue ballpoint pens for office use' },
+      { id: 'OS-003', barcode: 'OS-BAR-003', name: 'Stamp Pad (Violet)', category: 'Paper & Stationery', quantity: 6, unit: 'pieces', reorder_level: 2, unit_cost: 85.00, supplier_id: 'SUPL-009', description: 'Violet ink stamp pad for official stamps and certifications' },
+      { id: 'OS-004', barcode: 'OS-BAR-004', name: 'Stapler Heavy Duty', category: 'Paper & Stationery', quantity: 4, unit: 'pieces', reorder_level: 1, unit_cost: 450.00, supplier_id: 'SUPL-009', description: 'Heavy duty stapler for thick document binding' },
+      { id: 'OS-005', barcode: 'OS-BAR-005', name: 'Staple Wire No. 35 (Box)', category: 'Paper & Stationery', quantity: 10, unit: 'boxes', reorder_level: 3, unit_cost: 55.00, supplier_id: 'SUPL-009', description: 'Standard staple wire refill No. 35' },
+      { id: 'OS-006', barcode: 'OS-BAR-006', name: 'Ink Cartridge Black Canon PG-745', category: 'Printer Supplies', quantity: 5, unit: 'pieces', reorder_level: 2, unit_cost: 650.00, supplier_id: 'SUPL-010', description: 'Black ink cartridge for Canon office printer' },
+      { id: 'OS-007', barcode: 'OS-BAR-007', name: 'Ink Cartridge Color Canon CL-746', category: 'Printer Supplies', quantity: 3, unit: 'pieces', reorder_level: 1, unit_cost: 780.00, supplier_id: 'SUPL-010', description: 'Tri-color ink cartridge for Canon office printer' },
+      { id: 'OS-008', barcode: 'OS-BAR-008', name: 'Photocopy Paper Legal (ream)', category: 'Paper & Stationery', quantity: 10, unit: 'reams', reorder_level: 3, unit_cost: 320.00, supplier_id: 'SUPL-009', description: 'Legal size bond paper for forms and records' },
+      { id: 'OS-009', barcode: 'OS-BAR-009', name: 'Long Folder Pressboard (10 pcs/pack)', category: 'Storage', quantity: 15, unit: 'packs', reorder_level: 3, unit_cost: 180.00, supplier_id: 'SUPL-009', description: 'Long pressboard folders for filing official documents' },
+      { id: 'OS-010', barcode: 'OS-BAR-010', name: 'Record Book 500 pages', category: 'Paper & Stationery', quantity: 12, unit: 'pieces', reorder_level: 2, unit_cost: 145.00, supplier_id: 'SUPL-009', description: 'Logbook for daily transaction entries' },
+      { id: 'OS-011', barcode: 'OS-BAR-011', name: 'Rubber Band Box 350g', category: 'Paper & Stationery', quantity: 4, unit: 'boxes', reorder_level: 1, unit_cost: 110.00, supplier_id: 'SUPL-009', description: 'Assorted rubber bands for bundling documents' },
+      { id: 'OS-012', barcode: 'OS-BAR-012', name: 'Flash Drive 32GB USB 3.0', category: 'Computer Accessories', quantity: 5, unit: 'pieces', reorder_level: 2, unit_cost: 380.00, supplier_id: 'SUPL-010', description: 'USB 3.0 flash drives for data backup and transfers' },
+      { id: 'OS-013', barcode: 'OS-BAR-013', name: 'Dishwashing Liquid 500ml', category: 'Cleaning', quantity: 8, unit: 'bottles', reorder_level: 3, unit_cost: 68.00, supplier_id: 'SUPL-009', description: 'Dishwashing liquid for pantry and glassware cleaning' },
+      { id: 'OS-014', barcode: 'OS-BAR-014', name: 'Tissue Paper (12 rolls/pack)', category: 'Cleaning', quantity: 10, unit: 'packs', reorder_level: 3, unit_cost: 195.00, supplier_id: 'SUPL-009', description: 'Multi-purpose tissue paper for restrooms and reception' },
+      { id: 'OS-015', barcode: 'OS-BAR-015', name: 'Whiteboard Marker Set (4 colors)', category: 'Paper & Stationery', quantity: 6, unit: 'sets', reorder_level: 2, unit_cost: 160.00, supplier_id: 'SUPL-009', description: 'Dry-erase markers for conference room whiteboard' },
+    ];
+    for (const o of officeSupplies) {
+      await client.query(
+        `INSERT INTO office_supplies (id, barcode, name, category, quantity, unit, reorder_level, unit_cost, supplier_id, description, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Active','system')
+         ON CONFLICT (id) DO NOTHING`,
+        [o.id, o.barcode, o.name, o.category, o.quantity, o.unit, o.reorder_level, o.unit_cost, o.supplier_id, o.description]
+      );
+    }
+    console.log(`  ✓ Office supplies seeded (${officeSupplies.length})`);
+
+    // ── Sample Pending Orders ─────────────────────────────────────────────────
+    const pendingOrders = [
+      { id: 'PO-SEED-001', item_name: 'Rabisin Anti-Rabies Vaccine', item_type: 'medicine', category: 'Vaccine', quantity: 200, unit: 'vials', unit_cost: 100.00, supplier_id: 'SUPL-002', notes: 'Q3 quarterly restock for mass vaccination drive', status: 'pending', source: 'manual' },
+      { id: 'PO-SEED-002', item_name: 'Disposable Syringes 5ml', item_type: 'supply', category: 'Medical Supplies', quantity: 1000, unit: 'pieces', unit_cost: 8.50, supplier_id: 'SUPL-001', notes: 'Replenishment for upcoming vaccination campaigns', status: 'pending', source: 'manual' },
+      { id: 'PO-SEED-003', item_name: 'A4 Bond Paper (500 sheets/ream)', item_type: 'office', category: 'Paper & Stationery', quantity: 10, unit: 'reams', unit_cost: 275.00, supplier_id: 'SUPL-009', notes: 'Monthly office supply replenishment', status: 'received', source: 'manual' },
+    ];
+    for (const p of pendingOrders) {
+      await client.query(
+        `INSERT INTO pending_orders (id, item_name, item_type, category, quantity, unit, unit_cost, supplier_id, notes, status, source, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'system')
+         ON CONFLICT (id) DO NOTHING`,
+        [p.id, p.item_name, p.item_type, p.category, p.quantity, p.unit, p.unit_cost, p.supplier_id, p.notes, p.status, p.source]
+      );
+    }
+    console.log(`  ✓ Pending orders seeded (${pendingOrders.length})`);
 
     // ── Inventory Transactions (medicine movements) ──────────────────────────
     const inventoryTxns = [

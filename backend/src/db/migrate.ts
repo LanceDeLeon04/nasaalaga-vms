@@ -83,25 +83,6 @@ export const createTables = async () => {
       );
     `);
 
-
-    // Patch vaccination_schedules notes column
-    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
-    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
-
-
-    // ── Livestock table enhancements ──────────────────────────────────────
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS age VARCHAR(50)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS color_markings VARCHAR(255)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS purpose VARCHAR(100)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS source VARCHAR(100)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS notes TEXT`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS tag_number VARCHAR(100)`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_date DATE`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_reason TEXT`);
-    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS farm_type VARCHAR(50) DEFAULT 'Backyard'`);
-    await client.query(`ALTER TABLE livestock ALTER COLUMN owner_id DROP NOT NULL`);
-
     // ── Health records table ───────────────────────────────────────────────
     await client.query(`
       CREATE TABLE IF NOT EXISTS health_records (
@@ -290,6 +271,19 @@ export const createTables = async () => {
       );
     `);
 
+    // ── Livestock table enhancements ──────────────────────────────────────
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS gender VARCHAR(20)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS age VARCHAR(50)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS color_markings VARCHAR(255)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS purpose VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS source VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS notes TEXT`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS tag_number VARCHAR(100)`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_date DATE`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_reason TEXT`);
+    await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS farm_type VARCHAR(50) DEFAULT 'Backyard'`);
+    await client.query(`ALTER TABLE livestock ALTER COLUMN owner_id DROP NOT NULL`);
+
     // Lost & Found reports table
     await client.query(`
       CREATE TABLE IF NOT EXISTS lost_found_reports (
@@ -337,6 +331,10 @@ export const createTables = async () => {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // Patch vaccination_schedules columns
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
 
     // Livestock stats by barangay table
     await client.query(`

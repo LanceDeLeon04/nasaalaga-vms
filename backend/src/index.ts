@@ -59,18 +59,33 @@ app.listen(PORT, async () => {
   console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
   await verifyEmailConnection();
+
   // Run full migration chain on every startup (all are idempotent)
-  try {
+  const runMigrations = async () => {
     await createTables();
     await migrateBudget();
     await migrateInventoryV2();
     await migrateLivestockPreReg();
     await migrateProfileColumns();
     await migrateInventoryV3();
-    console.log('✅ Database ready');
-  } catch (err) {
-    console.error('⚠️  Migration warning (non-fatal):', err);
+  };
+
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await runMigrations();
+      console.log('✅ Database ready');
+      break;
+    } catch (err) {
+      if (attempt < MAX_RETRIES) {
+        console.warn(`⚠️  Migration attempt ${attempt} failed, retrying in 3s...`);
+        await new Promise(r => setTimeout(r, 3000));
+      } else {
+        console.error('⚠️  Migration warning (non-fatal):', err);
+      }
+    }
   }
+
   console.log('');
 });
 
