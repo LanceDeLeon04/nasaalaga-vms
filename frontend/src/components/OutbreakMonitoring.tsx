@@ -7,6 +7,7 @@ import {
   History, AlertOctagon
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { CALACA_BARANGAYS_GEOJSON } from '../data/calacaBarangaysGeoJSON';
 
 // ── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,6 @@ const STATUS_COLOR: Record<string, string> = {
   Pending:    'bg-yellow-100 text-yellow-800 border border-yellow-300',
   'On-Going': 'bg-blue-100 text-blue-800 border border-blue-200',
   Resolved:   'bg-green-100 text-green-800 border border-green-200',
-  // Legacy statuses kept for compatibility
   Active:     'bg-red-100 text-red-800 border border-red-200',
   Monitoring: 'bg-blue-100 text-blue-800 border border-blue-200',
   Contained:  'bg-yellow-100 text-yellow-800 border border-yellow-200',
@@ -61,14 +61,42 @@ const CIRCLE_COLOR: Record<string, string> = {
   Pending:    '#f59e0b',
   'On-Going': '#3b82f6',
   Resolved:   '#22c55e',
-  // Legacy
   Active:     '#ef4444',
   Monitoring: '#3b82f6',
   Contained:  '#f59e0b',
 };
 
 const CALACA_CENTER = { lat: 13.9345, lng: 120.8135 };
-const CALACA_ZOOM = 12;
+const CALACA_ZOOM = 13;
+
+// ── BARANGAY CHOROPLETH HELPERS ──────────────────────────────────────────────
+
+/**
+ * Returns a fill colour for a barangay based on total active case count.
+ * Green (0) → Yellow (1-2) → Orange (3-5) → Red (6+)
+ */
+function casesColor(cases: number): string {
+  if (cases === 0)  return '#d1fae5'; // light green — clear
+  if (cases <= 2)   return '#fef08a'; // yellow — low
+  if (cases <= 5)   return '#fb923c'; // orange — moderate
+  if (cases <= 10)  return '#ef4444'; // red — high
+  return '#7f1d1d';                   // dark red — critical
+}
+
+function casesBorderColor(cases: number): string {
+  if (cases === 0)  return '#6ee7b7';
+  if (cases <= 2)   return '#eab308';
+  if (cases <= 5)   return '#ea580c';
+  if (cases <= 10)  return '#dc2626';
+  return '#450a0a';
+}
+
+function casesOpacity(cases: number): number {
+  if (cases === 0) return 0.18;
+  if (cases <= 2)  return 0.45;
+  if (cases <= 5)  return 0.60;
+  return 0.75;
+}
 
 // ── LEAFLET MAP ─────────────────────────────────────────────────────────────
 
@@ -77,14 +105,24 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const circlesRef = useRef<any[]>([]);
+  const mapRef        = useRef<HTMLDivElement>(null);
+  const leafletMap    = useRef<any>(null);
+  const markersRef    = useRef<any[]>([]);
+  const circlesRef    = useRef<any[]>([]);
+  const geoLayerRef   = useRef<any>(null);
   const [loaded, setLoaded] = useState(false);
 
   // Only show non-archived records on map
   const mappable = outbreaks.filter(o => !o.is_archived && o.lat != null && o.lng != null);
+
+  // Build per-barangay case totals (active + on-going only)
+  const barangayCases: Record<string, number> = {};
+  outbreaks
+    .filter(o => !o.is_archived && o.status !== 'Resolved')
+    .forEach(o => {
+      const key = o.barangay;
+      barangayCases[key] = (barangayCases[key] || 0) + o.cases;
+    });
 
   const initMap = () => {
     const el = mapRef.current;
@@ -94,15 +132,22 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
     if (!L) return;
     let map: any;
     try {
-      map = L.map(el, { center: [CALACA_CENTER.lat, CALACA_CENTER.lng], zoom: CALACA_ZOOM, zoomControl: true });
+      map = L.map(el, {
+        center: [CALACA_CENTER.lat, CALACA_CENTER.lng],
+        zoom: CALACA_ZOOM,
+        zoomControl: true,
+      });
     } catch { setLoaded(true); return; }
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 18,
+      attribution: '© OpenStreetMap contributors', maxZoom: 19,
     }).addTo(map);
+
     leafletMap.current = map;
     setLoaded(true);
   };
 
+  // ── Load Leaflet ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
@@ -113,51 +158,154 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
     if ((window as any).L) { initMap(); }
     else if (!document.getElementById('leaflet-js')) {
       const script = document.createElement('script');
-      script.id = 'leaflet-js'; script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = initMap; document.head.appendChild(script);
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = initMap;
+      document.head.appendChild(script);
     } else {
-      const poll = setInterval(() => { if ((window as any).L) { clearInterval(poll); initMap(); } }, 50);
+      const poll = setInterval(() => {
+        if ((window as any).L) { clearInterval(poll); initMap(); }
+      }, 50);
     }
     return () => {
       if (leafletMap.current) {
-        try { leafletMap.current.remove(); } catch { }
-        leafletMap.current = null; setLoaded(false);
+        try { leafletMap.current.remove(); } catch {}
+        leafletMap.current = null;
+        setLoaded(false);
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Draw GeoJSON barangay polygons ─────────────────────────────────────────
   useEffect(() => {
     if (!loaded || !leafletMap.current) return;
-    const L = (window as any).L;
-    if (!L) return;
+    const L   = (window as any).L;
     const map = leafletMap.current;
-    markersRef.current.forEach(m => { try { map.removeLayer(m); } catch { } });
-    circlesRef.current.forEach(c => { try { map.removeLayer(c); } catch { } });
-    markersRef.current = []; circlesRef.current = [];
+    if (!L) return;
+
+    // Remove old GeoJSON layer
+    if (geoLayerRef.current) {
+      try { map.removeLayer(geoLayerRef.current); } catch {}
+      geoLayerRef.current = null;
+    }
+
+    const geoLayer = L.geoJSON(CALACA_BARANGAYS_GEOJSON, {
+      style: (feature: any) => {
+        const name   = feature.properties.name as string;
+        const cases  = barangayCases[name] ?? 0;
+        return {
+          fillColor:   casesColor(cases),
+          fillOpacity: casesOpacity(cases),
+          color:       casesBorderColor(cases),
+          weight:      1.8,
+          dashArray:   cases === 0 ? '4,3' : undefined,
+        };
+      },
+      onEachFeature: (feature: any, layer: any) => {
+        const name   = feature.properties.name as string;
+        const num    = feature.properties.number as number;
+        const cases  = barangayCases[name] ?? 0;
+        const active = outbreaks
+          .filter(o => !o.is_archived && o.barangay === name)
+          .map(o => `<br/>&nbsp;&nbsp;• ${o.disease} (${o.status}) — ${o.cases} case${o.cases !== 1 ? 's' : ''}`)
+          .join('');
+
+        layer.bindTooltip(
+          `<div style="font-family:sans-serif;min-width:160px;">
+            <strong style="font-size:13px;">${name}</strong>
+            <span style="font-size:11px;color:#6b7280;"> (#${num})</span><br/>
+            <span style="font-size:12px;color:${cases > 0 ? '#dc2626' : '#16a34a'};">
+              ${cases > 0 ? `⚠️ ${cases} active case${cases !== 1 ? 's' : ''}` : '✅ No active cases'}
+            </span>
+            ${active ? `<div style="font-size:11.5px;color:#374151;margin-top:4px;">${active}</div>` : ''}
+          </div>`,
+          { sticky: true, direction: 'top' }
+        );
+
+        // Highlight on hover
+        layer.on('mouseover', () => {
+          layer.setStyle({ weight: 3, fillOpacity: Math.min(casesOpacity(cases) + 0.15, 0.9) });
+        });
+        layer.on('mouseout', () => {
+          geoLayer.resetStyle(layer);
+        });
+
+        // Add barangay number label
+        const center = feature.properties.center as [number, number];
+        const divIcon = L.divIcon({
+          html: `<div style="
+            font-size: 9px;
+            font-weight: 800;
+            color: #374151;
+            background: rgba(255,255,255,0.75);
+            border-radius: 4px;
+            padding: 1px 3px;
+            white-space: nowrap;
+            line-height: 1.2;
+            text-align: center;
+            border: 1px solid rgba(0,0,0,0.12);
+            pointer-events: none;
+          ">${num}</div>`,
+          className: '',
+          iconAnchor: [8, 8],
+        });
+        L.marker([center[0], center[1]], { icon: divIcon, interactive: false }).addTo(map);
+      },
+    }).addTo(map);
+
+    geoLayerRef.current = geoLayer;
+
+    // Fit map to Calaca bounds
+    try {
+      const bounds = geoLayer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.05));
+    } catch {}
+
+  // Re-render whenever case counts change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, JSON.stringify(barangayCases)]);
+
+  // ── Draw outbreak markers & containment circles ────────────────────────────
+  useEffect(() => {
+    if (!loaded || !leafletMap.current) return;
+    const L   = (window as any).L;
+    const map = leafletMap.current;
+    if (!L) return;
+
+    markersRef.current.forEach(m => { try { map.removeLayer(m); } catch {} });
+    circlesRef.current.forEach(c => { try { map.removeLayer(c); } catch {} });
+    markersRef.current = [];
+    circlesRef.current = [];
     if (!map.getPanes().overlayPane) return;
 
     mappable.forEach(ob => {
-      const color = CIRCLE_COLOR[ob.status] || '#ef4444';
+      const color      = CIRCLE_COLOR[ob.status] || '#ef4444';
       const isSelected = ob.id === selectedId;
+
       try {
         const circle = L.circle([ob.lat, ob.lng], {
-          radius: (ob.radius_km || 10) * 1000, color, fillColor: color,
-          fillOpacity: isSelected ? 0.25 : 0.12, weight: isSelected ? 3 : 1.5,
-          dashArray: ob.status === 'Resolved' ? '6,4' : undefined,
+          radius:      (ob.radius_km || 10) * 1000,
+          color,
+          fillColor:   color,
+          fillOpacity: isSelected ? 0.20 : 0.08,
+          weight:      isSelected ? 3 : 1.5,
+          dashArray:   ob.status === 'Resolved' ? '6,4' : undefined,
         }).addTo(map);
         circle.bindTooltip(
           `<strong>${ob.disease}</strong><br/>${ob.barangay} · ${ob.cases} case${ob.cases !== 1 ? 's' : ''}<br/>Containment: ${ob.radius_km}km`,
           { sticky: true }
         );
         circlesRef.current.push(circle);
-      } catch { }
+      } catch {}
 
       try {
         const sz = isSelected ? 36 : 28;
         const icon = L.divIcon({
           html: `<div style="background:${color};width:${sz}px;height:${sz}px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;"><div style="transform:rotate(45deg);font-size:${isSelected ? 14 : 11}px;color:white;font-weight:900;">${ob.cases}</div></div>`,
-          className: '', iconSize: [sz, sz], iconAnchor: [sz / 2, sz],
+          className: '',
+          iconSize:   [sz, sz],
+          iconAnchor: [sz / 2, sz],
         });
         const marker = L.marker([ob.lat, ob.lng], { icon }).addTo(map);
         marker.on('click', () => onSelect(ob.id));
@@ -170,24 +318,19 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
           </div>`
         );
         markersRef.current.push(marker);
-      } catch { }
+      } catch {}
     });
 
     try {
-      if (!selectedId && circlesRef.current.length > 0) {
-        const group = L.featureGroup(circlesRef.current);
-        const bounds = group.getBounds();
-        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
-      }
       if (selectedId) {
         const sel = mappable.find(o => o.id === selectedId);
-        if (sel?.lat != null) map.flyTo([sel.lat, sel.lng], 14, { duration: 1 });
+        if (sel?.lat != null) leafletMap.current.flyTo([sel.lat, sel.lng], 14, { duration: 1 });
       }
-    } catch { }
+    } catch {}
   }, [loaded, mappable, selectedId]);
 
   return (
-    <div style={{ position: 'relative', height: '460px', borderRadius: 16, overflow: 'hidden', border: '2px solid #e5e7eb' }}>
+    <div style={{ position: 'relative', height: '500px', borderRadius: 16, overflow: 'hidden', border: '2px solid #e5e7eb' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0, background: '#f0f4f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
@@ -196,22 +339,43 @@ function OutbreakMap({ outbreaks, selectedId, onSelect }: {
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
       )}
-      {/* Map legend */}
-      <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(255,255,255,.95)', borderRadius: 10, padding: '10px 14px', boxShadow: '0 2px 12px rgba(0,0,0,.15)', fontSize: 11.5, minWidth: 150 }}>
-        <p style={{ fontWeight: 800, marginBottom: 6, color: '#374151', fontSize: 11 }}>LEGEND</p>
+
+      {/* ── Choropleth legend ── */}
+      <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(255,255,255,.95)', borderRadius: 10, padding: '10px 14px', boxShadow: '0 2px 12px rgba(0,0,0,.15)', fontSize: 11.5, minWidth: 170, zIndex: 1000 }}>
+        <p style={{ fontWeight: 800, marginBottom: 6, color: '#374151', fontSize: 11 }}>BARANGAY CASE HEAT MAP</p>
         {[
-          { label: 'Pending',    color: '#f59e0b' },
-          { label: 'On-Going',   color: '#3b82f6' },
-          { label: 'Resolved',   color: '#22c55e' },
+          { label: 'No active cases',  color: '#d1fae5', border: '#6ee7b7' },
+          { label: '1–2 cases (Low)',  color: '#fef08a', border: '#eab308' },
+          { label: '3–5 (Moderate)',   color: '#fb923c', border: '#ea580c' },
+          { label: '6–10 (High)',      color: '#ef4444', border: '#dc2626' },
+          { label: '11+ (Critical)',   color: '#7f1d1d', border: '#450a0a' },
         ].map(l => (
           <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', background: l.color, opacity: 0.7, border: `2px solid ${l.color}` }} />
+            <div style={{ width: 14, height: 14, borderRadius: 3, background: l.color, border: `2px solid ${l.border}`, flexShrink: 0 }} />
             <span style={{ color: '#374151' }}>{l.label}</span>
           </div>
         ))}
-        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 6, paddingTop: 5, color: '#9ca3af', fontSize: 10 }}>
-          Archived records not shown on map
+        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 6, paddingTop: 5 }}>
+          <p style={{ fontWeight: 800, marginBottom: 5, color: '#374151', fontSize: 11 }}>OUTBREAK MARKERS</p>
+          {[
+            { label: 'Pending',    color: '#f59e0b' },
+            { label: 'On-Going',   color: '#3b82f6' },
+            { label: 'Resolved',   color: '#22c55e' },
+          ].map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: l.color, border: `2px solid ${l.color}` }} />
+              <span style={{ color: '#374151' }}>{l.label}</span>
+            </div>
+          ))}
         </div>
+        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 5, paddingTop: 5, color: '#9ca3af', fontSize: 10 }}>
+          Hover barangay for details
+        </div>
+      </div>
+
+      {/* Badge: barangay count */}
+      <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(43,94,166,.92)', color: '#fff', borderRadius: 8, padding: '4px 10px', fontSize: 11, fontWeight: 800, zIndex: 1000 }}>
+        40 Barangays · Calaca City
       </div>
     </div>
   );
@@ -225,8 +389,8 @@ function DeleteModal({ record, onClose, onConfirm }: {
   onConfirm: (justification: string) => Promise<void>;
 }) {
   const [justification, setJustification] = useState('');
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState('');
+  const [deleting, setDeleting]           = useState(false);
+  const [error, setError]                 = useState('');
 
   const handleDelete = async () => {
     if (!justification.trim() || justification.trim().length < 10) {
@@ -234,18 +398,13 @@ function DeleteModal({ record, onClose, onConfirm }: {
       return;
     }
     setDeleting(true);
-    try {
-      await onConfirm(justification.trim());
-    } catch (e: any) {
-      setError(e.message || 'Delete failed.');
-      setDeleting(false);
-    }
+    try { await onConfirm(justification.trim()); }
+    catch (e: any) { setError(e.message || 'Delete failed.'); setDeleting(false); }
   };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 480, boxShadow: '0 30px 80px rgba(0,0,0,.3)' }}>
-        {/* Header */}
         <div style={{ background: 'linear-gradient(135deg,#7f1d1d,#dc2626)', padding: '20px 24px', borderRadius: '20px 20px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ background: 'rgba(255,255,255,.15)', borderRadius: 10, padding: 8, display: 'flex' }}>
@@ -258,19 +417,15 @@ function DeleteModal({ record, onClose, onConfirm }: {
           </div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
         </div>
-
         <div style={{ padding: '22px 24px' }}>
-          {/* Record info */}
           <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 12, padding: '12px 16px', marginBottom: 18 }}>
             <p style={{ fontSize: 13.5, fontWeight: 700, color: '#991b1b', margin: '0 0 4px' }}>{record.disease} — {record.barangay}</p>
             <p style={{ fontSize: 12, color: '#b91c1c', margin: 0 }}>ID: {record.id} · {record.cases} case{record.cases !== 1 ? 's' : ''} · Status: {record.status}</p>
           </div>
-
           <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 18, fontSize: 12.5, color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <AlertOctagon size={15} style={{ flexShrink: 0, marginTop: 1, color: '#d97706' }} />
             <span><strong>Warning:</strong> This will <strong>permanently remove</strong> this outbreak record from the database. This action is irreversible. Only use deletion for erroneous or duplicate records. For resolved cases, consider archiving instead.</span>
           </div>
-
           <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>
             Justification for Deletion <span style={{ color: '#dc2626' }}>*</span>
           </label>
@@ -278,15 +433,12 @@ function DeleteModal({ record, onClose, onConfirm }: {
             value={justification}
             onChange={e => { setJustification(e.target.value); setError(''); }}
             rows={4}
-            placeholder="Provide a detailed reason for permanently deleting this record (e.g., duplicate entry, data error, incorrect barangay)…"
+            placeholder="Provide a detailed reason for permanently deleting this record…"
             style={{ width: '100%', border: `1.5px solid ${error ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 10, padding: '10px 12px', fontSize: 13.5, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box', background: error ? '#fff5f5' : '#f9fafb' }}
           />
           {error && <p style={{ color: '#dc2626', fontSize: 12, marginTop: 5 }}>{error}</p>}
-
           <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-            <button onClick={onClose} style={{ flex: 1, height: 44, border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-              Cancel
-            </button>
+            <button onClick={onClose} style={{ flex: 1, height: 44, border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
             <button onClick={handleDelete} disabled={deleting} style={{ flex: 1.5, height: 44, border: 'none', borderRadius: 10, background: deleting ? '#d1d5db' : 'linear-gradient(135deg,#7f1d1d,#dc2626)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: deleting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               {deleting ? <><RefreshCw size={15} style={{ animation: 'spin .7s linear infinite' }} />Deleting…</> : <><Trash2 size={15} />Confirm Delete</>}
             </button>
@@ -305,19 +457,19 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
   onSave: (data: Partial<OutbreakRecord> & { newUpdate?: string; close_record?: boolean; archived_reason?: string }) => Promise<void>;
   isAdmin: boolean;
 }) {
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    status: record.status as string,
-    severity: record.severity,
-    assigned_to: record.assigned_to || '',
-    resolve_date: record.resolve_date || '',
-    timetable: record.timetable || '',
-    newUpdate: '',
-    close_record: false,
+  const [saving, setSaving]         = useState(false);
+  const [form, setForm]             = useState({
+    status:          record.status as string,
+    severity:        record.severity,
+    assigned_to:     record.assigned_to || '',
+    resolve_date:    record.resolve_date || '',
+    timetable:       record.timetable || '',
+    newUpdate:       '',
+    close_record:    false,
     archived_reason: '',
   });
-  const [medicines, setMedicines] = useState<any[]>([]);
-  const [dispatchItems, setDispatchItems] = useState<Array<{ item_id: string; item_type: string; quantity: number; barcode: string; name: string; unit: string }>>([]);
+  const [medicines, setMedicines]           = useState<any[]>([]);
+  const [dispatchItems, setDispatchItems]   = useState<Array<{ item_id: string; item_type: string; quantity: number; barcode: string; name: string; unit: string }>>([]);
   const [dispatchBarcode, setDispatchBarcode] = useState('');
 
   useEffect(() => {
@@ -351,9 +503,8 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
     try {
       await onSave(form);
       if (dispatchItems.length > 0 && form.assigned_to) {
-        try {
-          await api.outbreakDispatch({ outbreak_id: record.id, assigned_person: form.assigned_to, items: dispatchItems });
-        } catch (e: any) { alert('Outbreak saved but medicine dispatch failed: ' + e.message); }
+        try { await api.outbreakDispatch({ outbreak_id: record.id, assigned_person: form.assigned_to, items: dispatchItems }); }
+        catch (e: any) { alert('Outbreak saved but medicine dispatch failed: ' + e.message); }
       }
       onClose();
     } catch { alert('Failed to save update'); }
@@ -365,7 +516,6 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 600, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 30px 80px rgba(0,0,0,.25)' }}>
-        {/* Header */}
         <div style={{ background: 'linear-gradient(135deg,#1e4080,#2B5EA6)', padding: '20px 24px', borderRadius: '20px 20px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <p style={{ color: '#fff', fontWeight: 800, fontSize: 16, margin: 0 }}>Update Outbreak Record</p>
@@ -373,9 +523,7 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
           </div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: '50%', width: 32, height: 32, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={16} /></button>
         </div>
-
         <div style={{ padding: '22px 24px' }}>
-          {/* Status & Severity */}
           <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#dc2626', borderBottom: '1.5px solid #fee2e2', paddingBottom: 6, marginBottom: 14 }}>Status & Severity</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
@@ -396,7 +544,6 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
             </div>
           </div>
 
-          {/* Resolved + Close panel */}
           {isResolved && (
             <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -404,18 +551,18 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 13, fontWeight: 700, color: '#15803d', margin: '0 0 6px' }}>Marking as Resolved</p>
                   <p style={{ fontSize: 12, color: '#166534', margin: '0 0 10px', lineHeight: 1.5 }}>
-                    A resolved record stays visible with a green pin on the map. To fully close it, check the box below — it will be <strong>archived</strong> (no longer shown on the map, but still viewable in history).
+                    A resolved record stays visible with a green pin on the map. To fully close it, check below — it will be <strong>archived</strong>.
                   </p>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <input type="checkbox" checked={form.close_record} onChange={e => setForm(p => ({ ...p, close_record: e.target.checked }))}
                       style={{ width: 16, height: 16, accentColor: '#16a34a', cursor: 'pointer' }} />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Also close &amp; archive this record</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>Also close & archive this record</span>
                   </label>
                   {form.close_record && (
                     <div style={{ marginTop: 10 }}>
-                      <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Archive Reason / Closing Notes <span style={{ color: '#dc2626' }}>*</span></label>
+                      <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Archive Reason <span style={{ color: '#dc2626' }}>*</span></label>
                       <textarea value={form.archived_reason} onChange={e => setForm(p => ({ ...p, archived_reason: e.target.value }))} rows={2}
-                        placeholder="e.g., All containment measures completed. No new cases in 30 days. Officially closed."
+                        placeholder="e.g., All containment measures completed. No new cases in 30 days."
                         style={{ width: '100%', border: '1.5px solid #86efac', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff' }} />
                     </div>
                   )}
@@ -424,7 +571,6 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
             </div>
           )}
 
-          {/* Personnel & Timetable */}
           <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#2B5EA6', borderBottom: '1.5px solid #dbeafe', paddingBottom: 6, marginBottom: 14 }}>Personnel & Schedule</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
@@ -441,18 +587,16 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
             <div style={{ gridColumn: '1/-1' }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Timetable / Action Plan</label>
               <textarea value={form.timetable} onChange={e => setForm(p => ({ ...p, timetable: e.target.value }))} rows={2}
-                placeholder="e.g., Day 1: Quarantine, Day 3: Mass vaccination, Day 7: Re-evaluation…"
+                placeholder="e.g., Day 1: Quarantine, Day 3: Mass vaccination…"
                 style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 9, padding: '9px 10px', fontSize: 13.5, background: '#f9fafb', outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
             </div>
           </div>
 
-          {/* Update / Remarks */}
           <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#60A85C', borderBottom: '1.5px solid #dcfce7', paddingBottom: 6, marginBottom: 14 }}>Add Update / Remarks</p>
           <textarea value={form.newUpdate} onChange={e => setForm(p => ({ ...p, newUpdate: e.target.value }))} rows={3}
             placeholder="Enter update, field observations, interventions done, or any remarks…"
             style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 9, padding: '9px 10px', fontSize: 13.5, background: '#f9fafb', outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', marginBottom: 16 }} />
 
-          {/* Previous updates */}
           {record.updates.length > 0 && (
             <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>PREVIOUS UPDATES</p>
@@ -465,7 +609,6 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
             </div>
           )}
 
-          {/* Medicine Dispatch */}
           <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7c3aed', borderBottom: '1.5px solid #ede9fe', paddingBottom: 6, marginBottom: 14 }}>Dispatch Medicines / Supplies (Optional)</p>
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -527,16 +670,14 @@ function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdi
 
   return (
     <div style={{
-      background: isArchived ? '#f8fafc' : '#fff',
+      background:   isArchived ? '#f8fafc' : '#fff',
       borderRadius: 16,
-      border: isSelected ? '2px solid #2B5EA6' : isArchived ? '1.5px solid #e2e8f0' : '1.5px solid #e5e7eb',
-      boxShadow: isSelected ? '0 4px 20px rgba(43,94,166,.2)' : '0 2px 8px rgba(0,0,0,.05)',
+      border:       isSelected ? '2px solid #2B5EA6' : isArchived ? '1.5px solid #e2e8f0' : '1.5px solid #e5e7eb',
+      boxShadow:    isSelected ? '0 4px 20px rgba(43,94,166,.2)' : '0 2px 8px rgba(0,0,0,.05)',
       overflow: 'hidden', cursor: 'pointer', transition: 'all .2s',
       opacity: isArchived ? 0.75 : 1,
     }} onClick={onSelect}>
-      {/* Colored top stripe */}
       <div style={{ height: 4, background: isArchived ? '#e2e8f0' : record.status === 'Pending' ? 'linear-gradient(90deg,#f59e0b,#fbbf24)' : record.status === 'On-Going' ? 'linear-gradient(90deg,#3b82f6,#06b6d4)' : record.status === 'Resolved' ? 'linear-gradient(90deg,#22c55e,#86efac)' : record.status === 'Active' ? 'linear-gradient(90deg,#ef4444,#f97316)' : 'linear-gradient(90deg,#94a3b8,#cbd5e1)' }} />
-
       <div style={{ padding: '14px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -572,7 +713,6 @@ function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdi
           </div>
         </div>
 
-        {/* Quick info row */}
         <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
           {record.assigned_to && <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: '#6b7280' }}><User size={11} />{record.assigned_to}</span>}
           {record.resolve_date && <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: '#6b7280' }}><Calendar size={11} />Target: {new Date(record.resolve_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span>}
@@ -580,7 +720,6 @@ function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdi
           {record.updates.length > 0 && <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: '#2B5EA6' }}><Activity size={11} />{record.updates.length} update{record.updates.length !== 1 ? 's' : ''}</span>}
         </div>
 
-        {/* Archived reason */}
         {isArchived && record.archived_reason && (
           <div style={{ marginTop: 8, background: '#f1f5f9', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
             <Archive size={11} style={{ marginTop: 1, flexShrink: 0 }} />
@@ -588,7 +727,6 @@ function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdi
           </div>
         )}
 
-        {/* Expanded detail */}
         {expanded && (
           <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
             {record.timetable && (
@@ -624,21 +762,21 @@ interface Props {
 }
 
 export function OutbreakMonitoring({ userRole, currentUser }: Props) {
-  const canEdit = ['admin', 'superadmin', 'cityHealth'].includes(userRole);
+  const canEdit   = ['admin', 'superadmin', 'cityHealth'].includes(userRole);
   const canDelete = ['admin', 'superadmin'].includes(userRole);
 
-  const [outbreaks, setOutbreaks] = useState<OutbreakRecord[]>([]);
+  const [outbreaks,         setOutbreaks]         = useState<OutbreakRecord[]>([]);
   const [archivedOutbreaks, setArchivedOutbreaks] = useState<OutbreakRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingRecord, setEditingRecord] = useState<OutbreakRecord | null>(null);
-  const [deletingRecord, setDeletingRecord] = useState<OutbreakRecord | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterType, setFilterType] = useState<string>('all');
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState<'split' | 'map' | 'list'>('split');
-  const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
-  const [stats, setStats] = useState({ total: 0, pending: 0, onGoing: 0, resolved: 0, archived: 0 });
+  const [loading,           setLoading]           = useState(true);
+  const [selectedId,        setSelectedId]        = useState<string | null>(null);
+  const [editingRecord,     setEditingRecord]     = useState<OutbreakRecord | null>(null);
+  const [deletingRecord,    setDeletingRecord]    = useState<OutbreakRecord | null>(null);
+  const [filterStatus,      setFilterStatus]      = useState<string>('all');
+  const [filterType,        setFilterType]        = useState<string>('all');
+  const [search,            setSearch]            = useState('');
+  const [view,              setView]              = useState<'split' | 'map' | 'list'>('split');
+  const [activeTab,         setActiveTab]         = useState<'active' | 'history'>('active');
+  const [stats,             setStats]             = useState({ total: 0, pending: 0, onGoing: 0, resolved: 0, archived: 0 });
 
   useEffect(() => { load(); }, []);
 
@@ -646,43 +784,28 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
     setLoading(true);
     try {
       const token = sessionStorage.getItem('nasaalaga_token') || '';
-      // Fetch active records
       const r1 = await fetch('/api/outbreaks', { headers: { Authorization: `Bearer ${token}` } });
-      // Fetch archived records (include_archived=true returns only archived due to backend logic change below)
       const r2 = await fetch('/api/outbreaks?include_archived=true', { headers: { Authorization: `Bearer ${token}` } });
-
       let activeList: OutbreakRecord[] = [];
-      let allList: OutbreakRecord[] = [];
-
-      if (r1.ok) {
-        const d = await r1.json();
-        activeList = (d.outbreaks || []).filter((o: OutbreakRecord) => !o.is_archived);
-      } else {
-        activeList = getDemoData().filter(o => !o.is_archived);
-      }
-
-      if (r2.ok) {
-        const d2 = await r2.json();
-        allList = d2.outbreaks || [];
-      } else {
-        allList = getDemoData();
-      }
-
+      let allList:    OutbreakRecord[] = [];
+      if (r1.ok) { const d = await r1.json(); activeList = (d.outbreaks || []).filter((o: OutbreakRecord) => !o.is_archived); }
+      else        { activeList = getDemoData().filter(o => !o.is_archived); }
+      if (r2.ok) { const d2 = await r2.json(); allList = d2.outbreaks || []; }
+      else        { allList = getDemoData(); }
       const archived = allList.filter((o: OutbreakRecord) => o.is_archived);
-
       setOutbreaks(activeList);
       setArchivedOutbreaks(archived);
       setStats({
-        total: activeList.length,
+        total:    activeList.length,
         pending:  activeList.filter(o => o.status === 'Pending').length,
         onGoing:  activeList.filter(o => o.status === 'On-Going' || o.status === 'Active').length,
         resolved: activeList.filter(o => o.status === 'Resolved').length,
         archived: archived.length,
       });
     } catch {
-      const demo = getDemoData();
+      const demo   = getDemoData();
       const active = demo.filter(o => !o.is_archived);
-      const arch = demo.filter(o => o.is_archived);
+      const arch   = demo.filter(o => o.is_archived);
       setOutbreaks(active);
       setArchivedOutbreaks(arch);
       setStats({ total: active.length, pending: active.filter(o => o.status === 'Pending').length, onGoing: active.filter(o => o.status === 'On-Going').length, resolved: active.filter(o => o.status === 'Resolved').length, archived: arch.length });
@@ -694,47 +817,34 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
     if (!editingRecord) return;
     const token = sessionStorage.getItem('nasaalaga_token') || '';
     const newUpdate = data.newUpdate?.trim() ? {
-      id: `UPD-${Date.now()}`,
-      text: data.newUpdate.trim(),
-      author: currentUser?.username || 'System',
-      timestamp: new Date().toISOString(),
+      id: `UPD-${Date.now()}`, text: data.newUpdate.trim(),
+      author: currentUser?.username || 'System', timestamp: new Date().toISOString(),
     } : null;
-
     const payload = {
-      status: data.status,
-      severity: data.severity,
-      assigned_to: data.assigned_to,
-      resolve_date: data.resolve_date,
-      timetable: data.timetable,
-      new_update: newUpdate,
-      close_record: data.close_record || false,
-      archived_reason: data.archived_reason || '',
+      status: data.status, severity: data.severity, assigned_to: data.assigned_to,
+      resolve_date: data.resolve_date, timetable: data.timetable, new_update: newUpdate,
+      close_record: data.close_record || false, archived_reason: data.archived_reason || '',
     };
-
     try {
       const r = await fetch(`/api/outbreaks/${editingRecord.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
       if (r.ok) { await load(); return; }
-    } catch { /* fall through */ }
-
-    // Local update fallback
+    } catch {}
     setOutbreaks(prev => {
       const updated = prev.map(ob => {
         if (ob.id !== editingRecord.id) return ob;
         return {
-          ...ob,
-          ...payload,
-          updates: newUpdate ? [...ob.updates, newUpdate] : ob.updates,
-          date_updated: new Date().toISOString(),
-          is_archived: data.close_record && data.status === 'Resolved' ? true : ob.is_archived,
-          archived_at: data.close_record && data.status === 'Resolved' ? new Date().toISOString() : ob.archived_at,
+          ...ob, ...payload,
+          updates:        newUpdate ? [...ob.updates, newUpdate] : ob.updates,
+          date_updated:   new Date().toISOString(),
+          is_archived:    data.close_record && data.status === 'Resolved' ? true : ob.is_archived,
+          archived_at:    data.close_record && data.status === 'Resolved' ? new Date().toISOString() : ob.archived_at,
           archived_reason: data.close_record ? data.archived_reason : ob.archived_reason,
         };
       });
-      const still_active = updated.filter(o => !o.is_archived);
+      const still_active   = updated.filter(o => !o.is_archived);
       const newly_archived = updated.filter(o => o.is_archived);
       setArchivedOutbreaks(prev2 => [...prev2, ...newly_archived.filter(n => !prev2.find(p => p.id === n.id))]);
       return still_active;
@@ -745,23 +855,18 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
     if (!deletingRecord) return;
     const token = sessionStorage.getItem('nasaalaga_token') || '';
     const r = await fetch(`/api/outbreaks/${deletingRecord.id}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ justification }),
     });
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      throw new Error(err.error || 'Delete failed');
-    }
+    if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'Delete failed'); }
     setDeletingRecord(null);
     await load();
   };
 
   const displayList = activeTab === 'active' ? outbreaks : archivedOutbreaks;
-
-  const filtered = displayList.filter(o => {
+  const filtered    = displayList.filter(o => {
     if (filterStatus !== 'all' && o.status !== filterStatus) return false;
-    if (filterType !== 'all' && o.type !== filterType) return false;
+    if (filterType   !== 'all' && o.type   !== filterType)   return false;
     if (search && !`${o.disease} ${o.barangay} ${o.id}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -776,7 +881,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
           <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 22, fontWeight: 900, color: '#1f2937', margin: 0 }}>
             <Map className="w-6 h-6" style={{ color: '#2B5EA6' }} />Outbreak Monitoring
           </h2>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>Real-time disease surveillance · Calaca City, Batangas</p>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>Real-time disease surveillance · Calaca City, Batangas · 40 Barangays</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 38, padding: '0 14px', background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10, color: '#374151', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -798,7 +903,8 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
         <Info size={16} style={{ color: '#2563eb', flexShrink: 0, marginTop: 1 }} />
         <div style={{ fontSize: 12.5, color: '#1e40af', lineHeight: 1.6 }}>
           <strong>How Outbreaks Are Recorded:</strong> Outbreak records are automatically created when (1) a confirmed rabies case is marked in <em>Biting Incidents</em>, or (2) an Admin approves an outbreak recommendation from livestock disease thresholds. This module is for <strong>monitoring and updating</strong> only.
-          {canDelete && <span style={{ display: 'block', marginTop: 4, color: '#1d4ed8' }}>🛡️ <strong>Admin:</strong> You can update record status (Pending → On-Going → Resolved) and delete records with justification. Resolved + Closed records are archived and removed from the map.</span>}
+          {canDelete && <span style={{ display: 'block', marginTop: 4, color: '#1d4ed8' }}>🛡️ <strong>Admin:</strong> You can update record status (Pending → On-Going → Resolved) and delete records with justification.</span>}
+          <span style={{ display: 'block', marginTop: 4, color: '#1e40af' }}>🗺️ <strong>GeoMap:</strong> Barangay boundaries are now traced on the map. Colors show case density — hover a barangay to see details.</span>
         </div>
       </div>
 
@@ -818,7 +924,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
         ))}
       </div>
 
-      {/* ── TABS: Active | History ── */}
+      {/* ── TABS ── */}
       <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderRadius: 12, padding: 4, width: 'fit-content' }}>
         {[
           { key: 'active',  label: 'Active Records',  icon: <Activity size={14} /> },
@@ -858,7 +964,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
       {activeTab === 'history' && (
         <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#64748b' }}>
           <Archive size={15} style={{ flexShrink: 0, color: '#94a3b8' }} />
-          <span>Archived records are <strong>no longer shown on the map</strong>. They remain here for historical reference. Delete removes a record from the database entirely.</span>
+          <span>Archived records are <strong>no longer shown on the map</strong>. They remain here for historical reference.</span>
         </div>
       )}
 
@@ -870,22 +976,20 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: view === 'split' && activeTab === 'active' ? '1fr 360px' : '1fr', gap: 16 }}>
-          {/* MAP — only show for active tab */}
           {view !== 'list' && activeTab === 'active' && (
             <div style={{ background: '#fff', borderRadius: 18, padding: 16, boxShadow: '0 4px 16px rgba(0,0,0,.07)', border: '1.5px solid #e5e7eb' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: '#374151', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Layers size={15} style={{ color: '#2B5EA6' }} />Disease Map — Calaca City
+                  <Layers size={15} style={{ color: '#2B5EA6' }} />Disease Map — Calaca City (40 Barangays)
                 </h3>
-                <span style={{ fontSize: 11, color: '#9ca3af' }}>{outbreaks.filter(o => o.lat).length} active locations · archived not shown</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{outbreaks.filter(o => o.lat).length} outbreak location{outbreaks.filter(o => o.lat).length !== 1 ? 's' : ''}</span>
               </div>
               <OutbreakMap outbreaks={outbreaks} selectedId={selectedId} onSelect={setSelectedId} />
             </div>
           )}
 
-          {/* LIST */}
           {view !== 'map' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: view === 'split' && activeTab === 'active' ? 540 : 'auto', overflowY: view === 'split' && activeTab === 'active' ? 'auto' : 'visible' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: view === 'split' && activeTab === 'active' ? 560 : 'auto', overflowY: view === 'split' && activeTab === 'active' ? 'auto' : 'visible' }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 16, border: '1.5px dashed #e5e7eb' }}>
                   <Shield size={36} style={{ color: '#d1d5db', margin: '0 auto 10px' }} />
@@ -912,7 +1016,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
         </div>
       )}
 
-      {/* ── MONITORING TOOLS PANEL (active tab only) ── */}
+      {/* ── MONITORING TOOLS PANEL ── */}
       {activeTab === 'active' && (
         <div style={{ background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 4px 16px rgba(0,0,0,.07)', border: '1.5px solid #e5e7eb' }}>
           <h3 style={{ fontSize: 15, fontWeight: 800, color: '#374151', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -956,23 +1060,11 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
         </div>
       )}
 
-      {/* UPDATE MODAL */}
       {editingRecord && (
-        <UpdateModal
-          record={editingRecord}
-          onClose={() => setEditingRecord(null)}
-          onSave={handleSaveUpdate}
-          isAdmin={canDelete}
-        />
+        <UpdateModal record={editingRecord} onClose={() => setEditingRecord(null)} onSave={handleSaveUpdate} isAdmin={canDelete} />
       )}
-
-      {/* DELETE MODAL */}
       {deletingRecord && (
-        <DeleteModal
-          record={deletingRecord}
-          onClose={() => setDeletingRecord(null)}
-          onConfirm={handleDeleteRecord}
-        />
+        <DeleteModal record={deletingRecord} onClose={() => setDeletingRecord(null)} onConfirm={handleDeleteRecord} />
       )}
     </div>
   );
@@ -983,8 +1075,8 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
 function getDemoData(): OutbreakRecord[] {
   return [
     {
-      id: 'OB-RABIES-001', type: 'rabies', disease: 'Rabies', barangay: 'Poblacion 4',
-      source_id: 'BITE-001', cases: 1, lat: 13.9315, lng: 120.8165, radius_km: 10,
+      id: 'OB-RABIES-001', type: 'rabies', disease: 'Rabies', barangay: 'Barangay 4 (Pob.)',
+      source_id: 'BITE-001', cases: 1, lat: 13.9320, lng: 120.8165, radius_km: 10,
       status: 'On-Going', severity: 'High', assigned_to: 'BAHW Santos',
       resolve_date: '2026-06-15', timetable: 'Day 1: Quarantine. Day 3: Area vaccination drive. Day 7: Re-evaluation.',
       updates: [
@@ -995,7 +1087,7 @@ function getDemoData(): OutbreakRecord[] {
     },
     {
       id: 'OB-LIVE-001', type: 'livestock', disease: 'African Swine Fever (ASF)', barangay: 'Bagong Tubig',
-      source_id: 'DSE-012', cases: 4, lat: 13.9420, lng: 120.8090, radius_km: 10,
+      source_id: 'DSE-012', cases: 4, lat: 13.9445, lng: 120.7840, radius_km: 10,
       status: 'On-Going', severity: 'Critical', assigned_to: 'Dr. Cruz',
       resolve_date: '2026-06-30', timetable: 'Immediate depopulation. 500m quarantine fence. Culling teams deployed.',
       updates: [
@@ -1006,7 +1098,7 @@ function getDemoData(): OutbreakRecord[] {
     },
     {
       id: 'OB-LIVE-002', type: 'livestock', disease: 'Avian Influenza', barangay: 'Bambang',
-      source_id: 'DSE-008', cases: 2, lat: 13.9280, lng: 120.8220, radius_km: 10,
+      source_id: 'DSE-008', cases: 2, lat: 13.9065, lng: 120.8195, radius_km: 10,
       status: 'Pending', severity: 'Medium', assigned_to: 'BAHW Garcia',
       resolve_date: undefined, timetable: '',
       updates: [{ id: 'u1', text: 'Disease event triggered monitoring threshold. Pending review.', author: 'System', timestamp: '2026-05-19T10:00:00Z' }],
@@ -1014,7 +1106,7 @@ function getDemoData(): OutbreakRecord[] {
     },
     {
       id: 'OB-RABIES-002', type: 'rabies', disease: 'Rabies', barangay: 'Baclas',
-      source_id: 'BITE-005', cases: 1, lat: 13.9380, lng: 120.8040, radius_km: 10,
+      source_id: 'BITE-005', cases: 1, lat: 13.9100, lng: 120.8160, radius_km: 10,
       status: 'Resolved', severity: 'Medium', assigned_to: 'BAHW Reyes',
       resolve_date: '2026-04-28', timetable: 'Day 1-3: Containment. Day 5: Verification visit.',
       updates: [
@@ -1022,7 +1114,8 @@ function getDemoData(): OutbreakRecord[] {
         { id: 'u2', text: 'Follow-up vaccination drive completed. 89 dogs, 31 cats vaccinated.', author: 'BAHW Reyes', timestamp: '2026-04-15T15:00:00Z' },
       ],
       date_created: '2026-04-09T08:00:00Z', date_updated: '2026-04-15T15:00:00Z',
-      is_archived: true, archived_at: '2026-04-30T08:00:00Z', archived_reason: 'All containment measures completed. No new cases in 21 days. Officially closed by Dr. Reyes.',
+      is_archived: true, archived_at: '2026-04-30T08:00:00Z',
+      archived_reason: 'All containment measures completed. No new cases in 21 days. Officially closed by Dr. Reyes.',
     },
   ];
 }
