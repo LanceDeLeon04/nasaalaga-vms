@@ -151,13 +151,19 @@ router.get('/schedules', async (req, res) => {
 
 router.put('/schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, registered, notes } = req.body;
+    const { status, registered, notes, time_start, time_end, venue, capacity, barangay, date } = req.body;
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
-    if (status !== undefined)     { sets.push(`status=$${i++}`);     vals.push(status); }
+    if (status     !== undefined) { sets.push(`status=$${i++}`);     vals.push(status); }
     if (registered !== undefined) { sets.push(`registered=$${i++}`); vals.push(registered); }
-    if (notes !== undefined)      { sets.push(`notes=$${i++}`);      vals.push(notes); }
+    if (notes      !== undefined) { sets.push(`notes=$${i++}`);      vals.push(notes); }
+    if (time_start !== undefined) { sets.push(`time_start=$${i++}`); vals.push(time_start); }
+    if (time_end   !== undefined) { sets.push(`time_end=$${i++}`);   vals.push(time_end); }
+    if (venue      !== undefined) { sets.push(`venue=$${i++}`);      vals.push(venue); }
+    if (capacity   !== undefined) { sets.push(`capacity=$${i++}`);   vals.push(capacity); }
+    if (barangay   !== undefined) { sets.push(`barangay=$${i++}`);   vals.push(barangay); }
+    if (date       !== undefined) { sets.push(`date=$${i++}`);       vals.push(date); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     vals.push(req.params.id);
     const result = await query(`UPDATE vaccination_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
@@ -176,7 +182,7 @@ router.post('/schedules', authenticate, async (req: AuthRequest, res: Response) 
     const result = await query(
       `INSERT INTO vaccination_schedules (id, barangay, date, time_start, time_end, venue, capacity, registered, status, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,0,'Scheduled',$8) RETURNING *`,
-      [newId, d.barangay, d.date, d.timeStart, d.timeEnd, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
+      [newId, d.barangay, d.date, d.timeStart || d.time_start, d.timeEnd || d.time_end || null, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
     );
     return res.json({ schedule: result.rows[0] });
   } catch (err: any) {

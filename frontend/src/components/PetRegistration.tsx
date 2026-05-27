@@ -1663,7 +1663,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [lfPetSearch, setLfPetSearch] = useState("");
   const [lfPetSuggestions, setLfPetSuggestions] = useState<Pet[]>([]);
   const [showLfPetSugg, setShowLfPetSugg] = useState(false);
-  const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",location:"",capacity:"100" });
+  const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",timeEnd:"",location:"",capacity:"100" });
 
   useEffect(() => { loadAll(); }, []);
 
@@ -1843,10 +1843,10 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     try {
       const res = await api.createSchedule({
         barangay: schForm.barangay, date: schForm.date,
-        timeStart: schForm.time, venue: schForm.location, capacity: +schForm.capacity||100,
+        timeStart: schForm.time, timeEnd: schForm.timeEnd || '', venue: schForm.location, capacity: +schForm.capacity||100,
       });
       if (res.schedule) setSchedules(prev => [...prev, res.schedule]);
-      setSchForm({ barangay:"",date:"",time:"",location:"",capacity:"100" });
+      setSchForm({ barangay:"",date:"",time:"",timeEnd:"",location:"",capacity:"100" });
       setShowScheduleAdd(false);
     } catch(e:any) { alert("Error: " + e.message); }
     setSaving(false);
@@ -2503,7 +2503,8 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date *</label><input type="date" value={schForm.date} onChange={e=>setSchForm({...schForm,date:e.target.value})} className={INPUT}/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Capacity</label><input type="number" value={schForm.capacity} onChange={e=>setSchForm({...schForm,capacity:e.target.value})} className={INPUT}/></div>
               </div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time *</label><input value={schForm.time} onChange={e=>setSchForm({...schForm,time:e.target.value})} className={INPUT} placeholder="e.g. 8:00 AM – 12:00 PM"/></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time Start *</label><input value={schForm.time} onChange={e=>setSchForm({...schForm,time:e.target.value})} className={INPUT} placeholder="e.g. 8:00 AM"/></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time End</label><input value={schForm.timeEnd} onChange={e=>setSchForm({...schForm,timeEnd:e.target.value})} className={INPUT} placeholder="e.g. 12:00 PM"/></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Location / Venue *</label><input value={schForm.location} onChange={e=>setSchForm({...schForm,location:e.target.value})} className={INPUT} placeholder="Venue name"/></div>
               <div className="flex gap-2 pt-2">
                 <button onClick={()=>setShowScheduleAdd(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>

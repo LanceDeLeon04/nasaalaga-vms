@@ -4,7 +4,30 @@ import {
   Camera, Tag, Eye, ChevronRight, User, PawPrint,
   CalendarClock, BadgeCheck, ArrowRight, Shield
 } from 'lucide-react';
-import { MOCK_PETS, MOCK_USERS, type Pet } from '../types';
+import api from '../lib/api';
+import { toast } from 'sonner';
+
+/* ── DB-backed PreReg shape ───────────────────────────────────────────────── */
+interface PreReg {
+  pre_reg_number: string;
+  owner_id: string;
+  pet_name: string;
+  species: string;
+  breed: string;
+  age: string;
+  color: string;
+  gender: string;
+  owner_name: string;
+  contact_number: string;
+  owner_email: string;
+  barangay: string;
+  address: string;
+  photo: string;
+  status: 'Pending' | 'Approved' | 'Denied';
+  submitted_date: string;
+  expires_at?: string;
+  pet_tag_id?: string;
+}
 
 // ── Zone → color prefix (mirrors backend ZONE_PREFIX) ──────────────────────
 const BARANGAY_ZONE: Record<string, string> = {
@@ -49,29 +72,40 @@ type ValidationStep = 'list' | 'review' | 'photo' | 'tag' | 'done';
 
 export function AdminValidation({ adminUserId }: AdminValidationProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selected, setSelected] = useState<Pet | null>(null);
+  const [preRegs, setPreRegs] = useState<PreReg[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<PreReg | null>(null);
   const [valStep, setValStep] = useState<ValidationStep>('list');
   // tagNumber: only the numeric portion admin types (e.g. "0001")
   const [tagNumber, setTagNumber] = useState('');
   const [tagError, setTagError] = useState('');
   const [photoCaptured, setPhotoCaptured] = useState(false);
   const [notes, setNotes] = useState('');
-  const [registeredPets, setRegisteredPets] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  const admin = MOCK_USERS.find(u => u.id === adminUserId)!;
+  // Load pre-registrations from DB on mount
+  useEffect(() => { loadPreRegs(); }, []);
+
+  const loadPreRegs = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getPreRegistrations('Pending');
+      setPreRegs(data.preRegistrations || []);
+    } catch { toast.error('Failed to load pre-registrations'); }
+    finally { setLoading(false); }
+  };
 
   // Derived: full tag ID preview
   const prefix = selected ? getPrefix(selected.barangay) : 'BLU';
   const numPadded = tagNumber.replace(/\D/g, '').padStart(4, '0');
   const previewTagId = tagNumber ? `${prefix}-${numPadded}` : '';
 
-  const preRegistered = MOCK_PETS.filter(p =>
-    p.status === 'pre-registered' &&
-    !registeredPets.includes(p.id) &&
+  const preRegistered = preRegs.filter(p =>
+    p.status === 'Pending' &&
     (
-      p.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.preRegId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.name.toLowerCase().includes(searchTerm.toLowerCase())
+      p.owner_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.pre_reg_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.pet_name.toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
 
@@ -81,7 +115,7 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
-  const handleStartValidation = (pet: Pet) => {
+  const handleStartValidation = (pet: PreReg) => {
     setSelected(pet);
     setValStep('review');
     setPhotoCaptured(false);
@@ -90,28 +124,32 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
     setNotes('');
   };
 
-  const handleConfirmTag = () => {
+  const handleConfirmTag = async () => {
     const digits = tagNumber.replace(/\D/g, '');
-    if (!digits) {
-      setTagError('Tag number is required');
-      return;
-    }
-    if (digits.length > 6) {
-      setTagError('Number too long (max 6 digits)');
-      return;
-    }
+    if (!digits) { setTagError('Tag number is required'); return; }
+    if (digits.length > 6) { setTagError('Number too long (max 6 digits)'); return; }
+    if (!selected) return;
     setTagError('');
-    setValStep('done');
-    if (selected) setRegisteredPets(prev => [...prev, selected.id]);
+    setSubmitting(true);
+    try {
+      await api.validatePreRegistration(selected.pre_reg_number, {
+        action: 'approve',
+        tagNumber: digits,
+        notes,
+      });
+      toast.success(`${selected.pet_name} validated and registered!`);
+      setValStep('done');
+      loadPreRegs();
+    } catch (err: any) {
+      if (err.message?.includes('already exists') || err.message?.includes('tagConflict')) {
+        setTagError(err.message);
+      } else {
+        toast.error(err.message || 'Validation failed');
+      }
+    } finally { setSubmitting(false); }
   };
 
-  const getOwnerName = (pet: Pet) => {
-    if (pet.ownerId) {
-      const user = MOCK_USERS.find(u => u.id === pet.ownerId);
-      return user?.name || pet.ownerName;
-    }
-    return pet.ownerName;
-  };
+  const getOwnerName = (pet: PreReg) => pet.owner_name || '—';
 
   if (valStep === 'done' && selected) {
     const finalPrefix = getPrefix(selected.barangay);
@@ -125,7 +163,7 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
           </div>
           <h3 className="text-xl font-bold text-gray-800 mb-1">Validation Complete!</h3>
           <p className="text-gray-600 mb-4">
-            <strong>{selected.name}</strong> has been successfully registered and tagged.
+            <strong>{selected.pet_name}</strong> has been successfully registered and tagged.
           </p>
 
           <div className="bg-gray-50 rounded-xl p-4 text-left mb-4 space-y-2">
@@ -148,7 +186,7 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Validated by:</span>
-              <span className="font-medium">{admin.name}</span>
+              <span className="font-medium">Admin</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Date:</span>
@@ -187,7 +225,7 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
               ← Back to List
             </button>
             <span className="text-gray-400">|</span>
-            <span className="text-sm text-gray-600">Validating: <strong>{selected.name}</strong> ({selected.preRegId})</span>
+            <span className="text-sm text-gray-600">Validating: <strong>{selected.pet_name}</strong> ({selected.pre_reg_number})</span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -229,11 +267,11 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
               <div className="bg-blue-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Pet Details</p>
                 <div className="space-y-1.5 text-sm">
-                  <p><span className="text-gray-500">Name:</span> <strong>{selected.name}</strong></p>
+                  <p><span className="text-gray-500">Name:</span> <strong>{selected.pet_name}</strong></p>
                   <p><span className="text-gray-500">Species:</span> {selected.species}</p>
                   <p><span className="text-gray-500">Breed:</span> {selected.breed}</p>
                   <p><span className="text-gray-500">Color:</span> {selected.color}</p>
-                  <p><span className="text-gray-500">Sex:</span> {selected.sex}</p>
+                  <p><span className="text-gray-500">Sex:</span> {selected.gender}</p>
                   <p><span className="text-gray-500">Age:</span> {selected.age}</p>
                 </div>
               </div>
@@ -241,8 +279,8 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Owner Details</p>
                 <div className="space-y-1.5 text-sm">
                   <p><span className="text-gray-500">Name:</span> <strong>{getOwnerName(selected)}</strong></p>
-                  <p><span className="text-gray-500">Address:</span> {selected.ownerAddress}</p>
-                  <p><span className="text-gray-500">Contact:</span> {selected.ownerContact}</p>
+                  <p><span className="text-gray-500">Address:</span> {selected.address}</p>
+                  <p><span className="text-gray-500">Contact:</span> {selected.contact_number}</p>
                   <p><span className="text-gray-500">Barangay:</span> {selected.barangay}</p>
                 </div>
               </div>
@@ -388,10 +426,14 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
 
             <button
               onClick={handleConfirmTag}
-              className="w-full py-3 bg-[#60A85C] text-white rounded-xl font-semibold hover:bg-[#4a8a47] transition-colors flex items-center justify-center gap-2"
+              disabled={submitting}
+              className="w-full py-3 bg-[#60A85C] text-white rounded-xl font-semibold hover:bg-[#4a8a47] transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <CheckCircle className="w-5 h-5" />
-              Confirm & Save Registration
+              {submitting ? (
+                <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving…</>
+              ) : (
+                <><CheckCircle className="w-5 h-5" />Confirm &amp; Save Registration</>
+              )}
             </button>
           </div>
         )}
@@ -443,7 +485,12 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
 
       {/* Pre-registered list */}
       <div className="space-y-3">
-        {preRegistered.length === 0 ? (
+        {loading ? (
+          <div className="bg-white rounded-xl shadow p-10 text-center">
+            <div className="w-10 h-10 border-4 border-[#2B5EA6] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-gray-500 text-sm">Loading pre-registrations…</p>
+          </div>
+        ) : preRegistered.length === 0 ? (
           <div className="bg-white rounded-xl shadow p-10 text-center text-gray-500">
             <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
             <p className="font-medium">No pending pre-registrations</p>
@@ -451,31 +498,33 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
           </div>
         ) : (
           preRegistered.map(pet => {
-            const daysLeft = getDaysLeft(pet.preRegExpiry);
+            const daysLeft = getDaysLeft(pet.expires_at);
             const isUrgent = daysLeft <= 3;
             const pfx = getPrefix(pet.barangay);
             const pfxColor = ZONE_COLOR[pfx] || '#2B5EA6';
             return (
-              <div key={pet.id} className={`bg-white rounded-xl shadow p-5 border-l-4 ${isUrgent ? 'border-red-400' : 'border-amber-400'}`}>
+              <div key={pet.pre_reg_number} className={`bg-white rounded-xl shadow p-5 border-l-4 ${isUrgent ? 'border-red-400' : 'border-amber-400'}`}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isUrgent ? 'bg-red-100' : 'bg-amber-100'}`}>
                       <PawPrint className={`w-5 h-5 ${isUrgent ? 'text-red-600' : 'text-amber-600'}`} />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-800">{pet.name} <span className="text-gray-500 font-normal">({pet.species} • {pet.breed})</span></p>
+                      <p className="font-semibold text-gray-800">{pet.pet_name} <span className="text-gray-500 font-normal">({pet.species} • {pet.breed})</span></p>
                       <p className="text-sm text-gray-600 flex items-center gap-1 mt-0.5">
                         <User className="w-3.5 h-3.5" /> {getOwnerName(pet)} • {pet.barangay}
                       </p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{pet.preRegId}</span>
+                        <span className="text-xs font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded">{pet.pre_reg_number}</span>
                         {/* Zone prefix preview */}
                         <span className="text-xs font-mono font-bold text-white px-2 py-0.5 rounded"
                           style={{ background: pfxColor }}>{pfx}-????</span>
-                        <span className={`text-xs flex items-center gap-1 ${isUrgent ? 'text-red-600' : 'text-amber-600'}`}>
-                          <CalendarClock className="w-3.5 h-3.5" />
-                          {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
-                        </span>
+                        {daysLeft > 0 && (
+                          <span className={`text-xs flex items-center gap-1 ${isUrgent ? 'text-red-600' : 'text-amber-600'}`}>
+                            <CalendarClock className="w-3.5 h-3.5" />
+                            {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import api from '../lib/api';
 
 /* ─── types ─── */
 interface PreReg {
@@ -166,8 +167,7 @@ export function PreRegisteredPets() {
   const fetchList = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/pets/pre-registered');
-      const data = await res.json();
+      const data = await api.getPreRegistrations();
       setList(data.preRegistrations || []);
     } catch { toast.error('Failed to load pre-registrations'); }
     finally { setLoading(false); }
@@ -196,14 +196,10 @@ export function PreRegisteredPets() {
     if (!selected) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve', photo: valPhoto, petTagId }),
+      const data = await api.validatePreRegistration(selected.pre_reg_number, {
+        action: 'approve', photo: valPhoto, petTagId,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Validation failed');
-      toast.success(`${selected.pet_name} validated and registered! Tag: ${petTagId}`);
+      toast.success(`${selected.pet_name} validated and registered! Tag: ${data.petTagId || petTagId}`);
       setValDone(true);
       fetchList();
     } catch (err: any) {
@@ -215,12 +211,9 @@ export function PreRegisteredPets() {
     if (!selected || !denyReason.trim()) { toast.error('Please enter a reason'); return; }
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deny', denialReason: denyReason }),
+      await api.validatePreRegistration(selected.pre_reg_number, {
+        action: 'deny', denialReason: denyReason,
       });
-      if (!res.ok) throw new Error('Denial failed');
       toast.success('Pre-registration denied.');
       setShowValidate(false);
       fetchList();
