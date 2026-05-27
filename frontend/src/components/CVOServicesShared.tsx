@@ -19,7 +19,7 @@ export function CVOServicesShared({ userRole }: CVOServicesSharedProps) {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isAdmin = ['admin', 'superadmin'].includes(userRole || '');
+  const isAdmin = ['admin', 'superadmin', 'cvoStaff'].includes(userRole || '');
 
   const [formData, setFormData] = useState({
     title: '', description: '', category: 'Pet Services',

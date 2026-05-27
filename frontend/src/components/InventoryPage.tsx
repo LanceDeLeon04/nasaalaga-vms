@@ -1253,7 +1253,7 @@ function LogbookModal({ transactions, itemName, onClose }: { transactions: any[]
 
 // ── MAIN ─────────────────────────────────────────────────────────────────────
 export function InventoryPage({ userRole, currentUser }: Props) {
-  const canEdit = ['admin','superadmin'].includes(userRole);
+  const canEdit = ['admin','superadmin','cvoStaff'].includes(userRole);
   type TabId = 'overview'|'medicines'|'supplies'|'office'|'orders'|'logbook'|'suppliers';
   const [tab, setTab] = useState<TabId>('overview');
   const [medicines, setMedicines] = useState<any[]>([]);

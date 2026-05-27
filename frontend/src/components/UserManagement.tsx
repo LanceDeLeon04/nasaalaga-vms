@@ -7,7 +7,7 @@ import { CALACA_BARANGAYS } from '../utils/barangays';
 const ROLE_LABELS: Record<string, string> = {
   superadmin: 'Super Admin', admin: 'Administrator', bahw: 'BAHW',
   owner: 'Pet Owner', petOwner: 'Pet Owner', livestockManager: 'Livestock Manager',
-  cityHealth: 'City Health', guest: 'Guest',
+  cityHealth: 'City Health', guest: 'Guest', cvoStaff: 'CVO Staff',
 };
 
 const ROLE_COLORS: Record<string, string> = {
@@ -15,6 +15,7 @@ const ROLE_COLORS: Record<string, string> = {
   bahw: 'bg-cyan-100 text-cyan-800', owner: 'bg-green-100 text-green-800',
   petOwner: 'bg-green-100 text-green-800', livestockManager: 'bg-orange-100 text-orange-800',
   cityHealth: 'bg-pink-100 text-pink-800', guest: 'bg-gray-100 text-gray-700',
+  cvoStaff: 'bg-teal-100 text-teal-800',
 };
 
 interface CreateUserForm {
@@ -32,6 +33,7 @@ const BAHW_ROLES: { value: string; label: string; description: string }[] = [
   { value: 'livestockManager', label: 'Livestock Manager', description: '🐄 Can register and manage livestock and related records.' },
   { value: 'both', label: 'Both (Pet Owner & Livestock Manager)', description: '🐾🐄 Combined access for both pet and livestock management.' },
   { value: 'cityHealth', label: 'City Health Office', description: '🏥 City-level health monitoring and analytics access.' },
+  { value: 'cvoStaff', label: 'CVO Staff', description: '🏥 CVO office staff — access to Inventory, Pet & Livestock Management, Scheduling, Dashboard, Reports, CVO Services, and Pre-Registration.' },
 ];
 
 interface CreateModalProps {

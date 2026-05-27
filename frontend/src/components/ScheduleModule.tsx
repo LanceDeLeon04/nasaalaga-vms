@@ -579,7 +579,7 @@ interface ScheduleModuleProps {
 }
 
 export function ScheduleModule({ user }: ScheduleModuleProps) {
-  const isAdmin = ['admin','superadmin','bahw'].includes(user.role || '');
+  const isAdmin = ['admin','superadmin','bahw','cvoStaff'].includes(user.role || '');
   const isNonAdmin = !isAdmin;
 
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);

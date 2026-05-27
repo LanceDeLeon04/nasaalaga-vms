@@ -82,7 +82,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {(role === 'admin' || role === 'superadmin') ? (
+      {(role === 'admin' || role === 'superadmin' || role === 'cvoStaff') ? (
         <AdminDashboard user={user} onLogout={handleLogout} />
       ) : role === 'bahw' ? (
         <BAHWDashboard user={user} onLogout={handleLogout} />
