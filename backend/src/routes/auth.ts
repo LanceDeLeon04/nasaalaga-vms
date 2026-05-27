@@ -69,6 +69,8 @@ router.post('/login', async (req: Request, res: Response) => {
       ownerId: user.owner_id,
       email: user.email,
       barangay: user.barangay || null,
+      address: user.address || null,
+      phone: user.phone || null,
     };
 
     // Log successful login

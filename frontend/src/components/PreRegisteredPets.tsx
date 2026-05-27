@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
+function authHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem('nasaalaga_token');
+  return token
+    ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    : { 'Content-Type': 'application/json' };
+}
+
 /* ─── types ─── */
 interface PreReg {
   pre_reg_number: string;
@@ -166,7 +173,7 @@ export function PreRegisteredPets() {
   const fetchList = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/pets/pre-registered');
+      const res = await fetch('/api/pets/pre-registered', { headers: authHeaders() });
       const data = await res.json();
       setList(data.preRegistrations || []);
     } catch { toast.error('Failed to load pre-registrations'); }
@@ -198,8 +205,8 @@ export function PreRegisteredPets() {
     try {
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve', photo: valPhoto, petTagId }),
+        headers: authHeaders(),
+        body: JSON.stringify({ action: 'approve', photo: valPhoto || selected.photo, petTagId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Validation failed');
@@ -217,7 +224,7 @@ export function PreRegisteredPets() {
     try {
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ action: 'deny', denialReason: denyReason }),
       });
       if (!res.ok) throw new Error('Denial failed');
