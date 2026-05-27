@@ -255,12 +255,11 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'vaccination':
         return <VaccinationModule user={user} />;
       case 'preregistered':
-        // BAHW sees combined pre-registration module
-        return <PreRegistrationModule user={user} />;
+        return <PreRegisteredPets />;
       case 'livestock-prereg':
-        return <PreRegistrationModule user={user} />;
+        return <LivestockPreRegistration userRole={user.role} />;
       case 'pre-registration':
-        return <PreRegistrationModule user={user} />;
+        return <PreRegisteredPets />;
       case 'schedule':
         return <ScheduleModule user={user} />;
       case 'outbreak':
