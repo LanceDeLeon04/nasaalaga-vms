@@ -1,14 +1,11 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import {
+  PawPrint, Search, Eye, CheckCircle, XCircle, RefreshCw,
+  X, Camera, Tag, AlertTriangle, Clock
+} from 'lucide-react';
 
-function authHeaders(): Record<string, string> {
-  const token = sessionStorage.getItem('nasaalaga_token');
-  return token
-    ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
-    : { 'Content-Type': 'application/json' };
-}
-
-/* ─── types ─── */
+/* ─── Types ─────────────────────────────────────────────────────────────── */
 interface PreReg {
   pre_reg_number: string;
   owner_id: string;
@@ -34,193 +31,176 @@ interface PreReg {
   expires_at?: string;
 }
 
-type ValStep = 'details' | 'photo' | 'tag' | 'confirm';
+/* ─── Auth helper ────────────────────────────────────────────────────────── */
+function authHeaders(): Record<string, string> {
+  const token = sessionStorage.getItem('nasaalaga_token');
+  return token
+    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    : { 'Content-Type': 'application/json' };
+}
 
-const STYLES = `
-  @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes spin   { to{transform:rotate(360deg)} }
-  @keyframes popIn  { 0%{transform:scale(.7);opacity:0} 70%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+/* ─── Zone colours (mirrors backend) ───────────────────────────────────── */
+const ZONE_COLOR: Record<string, string> = {
+  BLU: '#2B5EA6', PRP: '#8B5CF6', GRY: '#6B7280', RED: '#E85D3B',
+};
+const ZONE_LABEL: Record<string, string> = {
+  BLU: 'East Zone', PRP: 'West Zone', GRY: 'North Zone', RED: 'Baybay-Highway Zone',
+};
 
-  .prl-wrap { padding: 0; }
-  .prl-topbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
-  .prl-title  { font-size:24px; font-weight:900; color:#1f2937; margin:0; display:flex; align-items:center; gap:10px; }
-  .prl-subtitle { color:#6b7280; font-size:14px; margin:4px 0 0; }
-  .prl-stats  { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
-  .prl-stat   { background:#fff; border-radius:14px; padding:18px 20px; box-shadow:0 2px 8px rgba(0,0,0,.06); display:flex; align-items:center; gap:14px; }
-  .prl-stat-ico { width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:20px; }
-  .prl-stat-val { font-size:26px; font-weight:900; }
-  .prl-stat-lbl { font-size:12px; color:#6b7280; font-weight:600; }
-  .prl-toolbar  { background:#fff; border-radius:14px; padding:16px 20px; margin-bottom:16px; display:flex; gap:10px; flex-wrap:wrap; box-shadow:0 2px 8px rgba(0,0,0,.06); }
-  .prl-search   { flex:1; min-width:200px; height:40px; border:1.5px solid #e5e7eb; border-radius:10px; padding:0 12px; font-size:14px; outline:none; }
-  .prl-search:focus { border-color:#2B5EA6; }
-  .prl-tabs     { display:flex; gap:6px; }
-  .prl-tab      { height:40px; padding:0 16px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; color:#6b7280; font-size:13px; font-weight:700; cursor:pointer; transition:all .18s; }
-  .prl-tab.active-all      { background:#2B5EA6; border-color:#2B5EA6; color:#fff; }
-  .prl-tab.active-Pending  { background:#f59e0b; border-color:#f59e0b; color:#fff; }
-  .prl-tab.active-Approved { background:#16a34a; border-color:#16a34a; color:#fff; }
-  .prl-tab.active-Denied   { background:#dc2626; border-color:#dc2626; color:#fff; }
-  .prl-table-wrap { background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.06); overflow:hidden; }
-  .prl-table    { width:100%; border-collapse:collapse; }
-  .prl-table th { background:#f8fafc; padding:12px 16px; text-align:left; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:#64748b; border-bottom:1.5px solid #e2e8f0; }
-  .prl-table td { padding:14px 16px; border-bottom:1px solid #f1f5f9; font-size:14px; color:#374151; vertical-align:middle; }
-  .prl-table tr:last-child td { border-bottom:none; }
-  .prl-table tr:hover td { background:#f8fafc; }
-  .prl-badge    { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:700; }
-  .prl-badge.Pending  { background:#fef9c3; color:#92400e; border:1px solid #fde047; }
-  .prl-badge.Approved { background:#dcfce7; color:#14532d; border:1px solid #86efac; }
-  .prl-badge.Denied   { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
-  .prl-btn      { height:34px; padding:0 14px; border-radius:8px; border:none; font-size:13px; font-weight:700; cursor:pointer; transition:all .18s; }
-  .prl-btn-blue { background:#eff6ff; color:#2B5EA6; }
-  .prl-btn-blue:hover { background:#2B5EA6; color:#fff; }
-  .prl-btn-green { background:#f0fdf4; color:#16a34a; }
-  .prl-btn-green:hover { background:#16a34a; color:#fff; }
-  .prl-empty    { text-align:center; padding:60px 20px; color:#9ca3af; }
-  .prl-empty-ico{ font-size:48px; margin-bottom:12px; }
+/* ─── Helpers ───────────────────────────────────────────────────────────── */
+function statusBadge(s: string) {
+  if (s === 'Approved') return { bg: '#dcfce7', color: '#166534', label: '✅ Approved' };
+  if (s === 'Denied')   return { bg: '#fee2e2', color: '#991b1b', label: '❌ Denied' };
+  return { bg: '#fef3c7', color: '#92400e', label: '⏳ Pending' };
+}
 
-  /* ─── modal ─── */
-  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .modal-box     { background:#fff; border-radius:20px; width:100%; max-width:640px; max-height:90vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,.25); animation:fadeUp .3s cubic-bezier(.22,1,.36,1) both; }
-  .modal-header  { display:flex; align-items:center; justify-content:space-between; padding:22px 28px 0; }
-  .modal-title   { font-size:18px; font-weight:900; color:#1f2937; margin:0; }
-  .modal-close   { width:34px; height:34px; border-radius:50%; border:none; background:#f1f5f9; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#64748b; }
-  .modal-close:hover { background:#e2e8f0; }
-  .modal-body    { padding:24px 28px; }
-  .modal-steps   { display:flex; gap:0; border-bottom:1px solid #e8edf4; margin-bottom:24px; }
-  .modal-step    { flex:1; display:flex; align-items:center; justify-content:center; gap:7px; padding:12px 6px; font-size:12px; font-weight:700; color:#9ca3af; border-bottom:3px solid transparent; }
-  .modal-step.active { color:#2B5EA6; border-bottom-color:#2B5EA6; }
-  .modal-step.done   { color:#16a34a; border-bottom-color:#16a34a; }
-  .modal-step-num { width:20px; height:20px; border-radius:50%; background:#e5e7eb; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; }
-  .modal-step.active .modal-step-num { background:#2B5EA6; color:#fff; }
-  .modal-step.done   .modal-step-num { background:#16a34a; color:#fff; }
-  .modal-section { font-size:10.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:#2B5EA6; margin:0 0 14px; padding-bottom:5px; border-bottom:1.5px solid #e8f0fb; }
-  .modal-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
-  .modal-detail  { background:#f8fafc; border-radius:10px; padding:12px 14px; }
-  .modal-detail-lbl { font-size:11px; color:#9ca3af; font-weight:600; margin-bottom:3px; }
-  .modal-detail-val { font-size:14px; color:#1f2937; font-weight:700; }
-  .modal-field   { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
-  .modal-label   { font-size:12.5px; font-weight:700; color:#374151; }
-  .modal-input   { height:44px; padding:0 12px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; font-size:14px; outline:none; font-family:inherit; transition:border-color .18s; }
-  .modal-input:focus { border-color:#2B5EA6; background:#fff; }
-  .modal-textarea { padding:10px 12px; border:1.5px solid #e5e7eb; border-radius:10px; background:#f9fafb; font-size:14px; outline:none; font-family:inherit; resize:none; line-height:1.6; }
-  .modal-textarea:focus { border-color:#2B5EA6; background:#fff; }
-  .modal-actions { display:flex; gap:10px; margin-top:20px; }
-  .modal-btn-primary { flex:1; height:46px; border:none; border-radius:11px; cursor:pointer; background:linear-gradient(135deg,#2B5EA6,#3d7ac7); color:#fff; font-size:14px; font-weight:800; box-shadow:0 6px 20px rgba(43,94,166,.28); transition:transform .18s; }
-  .modal-btn-primary:hover:not(:disabled) { transform:translateY(-2px); }
-  .modal-btn-primary:disabled { background:#d1d5db; color:#9ca3af; box-shadow:none; cursor:not-allowed; }
-  .modal-btn-secondary { height:46px; padding:0 18px; border:1.5px solid #e5e7eb; border-radius:11px; background:#fff; color:#374151; font-size:14px; font-weight:700; cursor:pointer; transition:all .18s; }
-  .modal-btn-secondary:hover { border-color:#2B5EA6; color:#2B5EA6; }
-  .modal-btn-deny { flex:1; height:46px; border:none; border-radius:11px; cursor:pointer; background:#fee2e2; color:#dc2626; font-size:14px; font-weight:800; transition:all .18s; }
-  .modal-btn-deny:hover { background:#dc2626; color:#fff; }
-  .modal-spinner { display:inline-block; width:15px; height:15px; border-radius:50%; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; animation:spin .6s linear infinite; vertical-align:middle; margin-right:6px; }
-  .modal-photo-upload { border:2px dashed #d1d5db; border-radius:12px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; }
-  .modal-photo-upload:hover { border-color:#2B5EA6; background:#f0f7ff; }
-  .modal-photo-preview { width:100%; max-height:200px; object-fit:cover; border-radius:10px; margin-top:10px; }
-  .modal-alert  { border-radius:10px; padding:12px 16px; font-size:13px; line-height:1.6; margin-bottom:14px; }
-  .modal-alert.warn { background:#fff8ed; border:1.5px solid #fbbf24; color:#92400e; }
-  .modal-alert.info { background:#eff6ff; border:1.5px solid #bfdbfe; color:#1e40af; }
-  .modal-confirm-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f1f5f9; font-size:14px; }
-  .modal-confirm-row:last-child { border-bottom:none; }
-  .modal-confirm-key { color:#6b7280; font-weight:600; }
-  .modal-confirm-val { color:#1f2937; font-weight:700; }
-  .modal-success-icon { width:72px; height:72px; border-radius:50%; background:#f0fdf4; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; animation:popIn .4s cubic-bezier(.22,1,.36,1) both; }
-  .modal-tag-box { background:#f0f7ff; border:2px solid #2B5EA6; border-radius:12px; padding:18px; text-align:center; margin-bottom:16px; }
-  .modal-tag-val { font-size:24px; font-weight:900; font-family:monospace; color:#2B5EA6; }
+function daysLeft(exp?: string) {
+  if (!exp) return null;
+  const diff = new Date(exp).getTime() - Date.now();
+  return Math.ceil(diff / 86_400_000);
+}
 
-  @media(max-width:600px){
-    .prl-stats { grid-template-columns:1fr; }
-    .modal-detail-grid { grid-template-columns:1fr; }
-    .modal-steps { flex-wrap:wrap; }
-  }
-`;
-
-function formatDate(d?: string) {
+function fmtDate(d?: string) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT
+═══════════════════════════════════════════════════════════════════════════ */
 export function PreRegisteredPets() {
-  const [list, setList]       = useState<PreReg[]>([]);
-  const [filtered, setFiltered] = useState<PreReg[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState<'all'|'Pending'|'Approved'|'Denied'>('Pending');
-  const [search, setSearch]   = useState('');
+  const [list, setList]         = useState<PreReg[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [filter, setFilter]     = useState<'all' | 'Pending' | 'Approved' | 'Denied'>('all');
+  const [search, setSearch]     = useState('');
 
-  const [selected, setSelected]     = useState<PreReg | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [showValidate, setShowValidate] = useState(false);
-  const [valStep, setValStep]       = useState<ValStep>('details');
-  const [submitting, setSubmitting] = useState(false);
+  /* detail / approve modal */
+  const [selected, setSelected] = useState<PreReg | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
 
-  const [valPhoto, setValPhoto]     = useState('');
-  const [petTagId, setPetTagId]     = useState('');
-  const [denyReason, setDenyReason] = useState('');
-  const [denyMode, setDenyMode]     = useState(false);
-  const [valDone, setValDone]       = useState(false);
+  /* approve flow */
+  const [approveStep, setApproveStep] = useState<'review' | 'photo' | 'tag' | 'confirm'>('review');
+  const [livePhoto, setLivePhoto]     = useState('');
+  const [tagNumber, setTagNumber]     = useState('');
+  const [tagPrefix, setTagPrefix]     = useState('BLU');
+  const [tagError, setTagError]       = useState('');
+  const [processing, setProcessing]   = useState(false);
+  const [approvedResult, setApprovedResult] = useState<{ petTagId: string } | null>(null);
 
-  /* ─ load ─ */
-  useEffect(() => { fetchList(); }, []);
+  /* deny flow */
+  const [denyMode, setDenyMode]       = useState(false);
+  const [denyReason, setDenyReason]   = useState('');
 
-  useEffect(() => {
-    let r = list;
-    if (filter !== 'all') r = r.filter(p => p.status === filter);
-    if (search) r = r.filter(p =>
-      [p.pet_name, p.owner_name, p.pre_reg_number, p.species]
-        .some(f => f?.toLowerCase().includes(search.toLowerCase()))
-    );
-    setFiltered(r);
-  }, [list, filter, search]);
-
-  const fetchList = async () => {
+  /* ── fetch ─────────────────────────────────────────────────────────────── */
+  const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/pets/pre-registered', { headers: authHeaders() });
+      const res  = await fetch('/api/pets/pre-registered', { headers: authHeaders() });
       const data = await res.json();
       setList(data.preRegistrations || []);
     } catch { toast.error('Failed to load pre-registrations'); }
-    finally { setLoading(false); }
+    finally  { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  /* ── derived ────────────────────────────────────────────────────────────── */
+  const filtered = list.filter(p => {
+    if (filter !== 'all' && p.status !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return [p.pet_name, p.owner_name, p.pre_reg_number, p.species, p.barangay]
+        .some(f => f?.toLowerCase().includes(q));
+    }
+    return true;
+  });
+
+  const stats = {
+    total:    list.length,
+    pending:  list.filter(p => p.status === 'Pending').length,
+    approved: list.filter(p => p.status === 'Approved').length,
+    denied:   list.filter(p => p.status === 'Denied').length,
   };
 
-  const openValidate = (p: PreReg) => {
+  /* ── open detail ────────────────────────────────────────────────────────── */
+  const openDetail = async (p: PreReg) => {
     setSelected(p);
-    setValStep('details');
-    setValPhoto('');
-    setPetTagId('');
-    setDenyReason('');
+    setShowDetail(true);
+    setApproveStep('review');
+    setLivePhoto('');
+    setTagNumber('');
+    setTagError('');
     setDenyMode(false);
-    setValDone(false);
-    setShowValidate(true);
+    setDenyReason('');
+    setApprovedResult(null);
+
+    // fetch zone-based tag prefix for this barangay
+    try {
+      const r = await fetch(`/api/pets/barangay-prefix?barangay=${encodeURIComponent(p.barangay)}`,
+        { headers: authHeaders() });
+      if (r.ok) {
+        const d = await r.json();
+        setTagPrefix(d.prefix || 'BLU');
+      }
+    } catch { /* use default BLU */ }
   };
 
+  const closeDetail = () => {
+    if (processing) return;
+    setShowDetail(false);
+    setSelected(null);
+    setApprovedResult(null);
+  };
+
+  /* ── photo ──────────────────────────────────────────────────────────────── */
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setValPhoto(ev.target?.result as string);
+    reader.onload = ev => setLivePhoto(ev.target?.result as string);
     reader.readAsDataURL(file);
   };
 
+  /* ── approve ────────────────────────────────────────────────────────────── */
   const handleApprove = async () => {
     if (!selected) return;
-    setSubmitting(true);
+    const digits = tagNumber.replace(/\D/g, '');
+    if (!digits) { setTagError('Tag number is required'); return; }
+    if (digits.length > 6) { setTagError('Max 6 digits'); return; }
+    setTagError('');
+    setProcessing(true);
     try {
+      const petTagId = `${tagPrefix}-${digits.padStart(4, '0')}`;
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ action: 'approve', photo: valPhoto || selected.photo, petTagId }),
+        body: JSON.stringify({
+          action: 'approve',
+          photo:    livePhoto || selected.photo || null,
+          petTagId,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Validation failed');
-      toast.success(`${selected.pet_name} validated and registered! Tag: ${petTagId}`);
-      setValDone(true);
-      fetchList();
+      if (!res.ok) {
+        if (data.tagConflict) {
+          setTagError(`Tag ${petTagId} already exists — choose a different number.`);
+          setApproveStep('tag');
+          return;
+        }
+        throw new Error(data.error || 'Approval failed');
+      }
+      setApprovedResult({ petTagId: data.petTagId || petTagId });
+      toast.success(`${selected.pet_name} registered! Tag: ${data.petTagId || petTagId}`);
+      load();
     } catch (err: any) {
-      toast.error(err.message);
-    } finally { setSubmitting(false); }
+      toast.error(err.message || 'Approval failed');
+    } finally { setProcessing(false); }
   };
 
+  /* ── deny ───────────────────────────────────────────────────────────────── */
   const handleDeny = async () => {
-    if (!selected || !denyReason.trim()) { toast.error('Please enter a reason'); return; }
-    setSubmitting(true);
+    if (!selected) return;
+    if (!denyReason.trim()) { toast.error('Please provide a denial reason'); return; }
+    setProcessing(true);
     try {
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
@@ -228,341 +208,474 @@ export function PreRegisteredPets() {
         body: JSON.stringify({ action: 'deny', denialReason: denyReason }),
       });
       if (!res.ok) throw new Error('Denial failed');
-      toast.success('Pre-registration denied.');
-      setShowValidate(false);
-      fetchList();
+      toast.success('Pre-registration denied');
+      closeDetail();
+      load();
     } catch (err: any) {
-      toast.error(err.message);
-    } finally { setSubmitting(false); }
+      toast.error(err.message || 'Denial failed');
+    } finally { setProcessing(false); }
   };
 
-  const pending  = list.filter(p => p.status === 'Pending').length;
-  const approved = list.filter(p => p.status === 'Approved').length;
-  const denied   = list.filter(p => p.status === 'Denied').length;
+  const previewTag = tagNumber.replace(/\D/g, '')
+    ? `${tagPrefix}-${tagNumber.replace(/\D/g, '').padStart(4, '0')}`
+    : '';
 
-  const valSteps: { key: ValStep; label: string }[] = [
-    { key: 'details', label: 'Review' },
-    { key: 'photo',   label: 'Photo' },
-    { key: 'tag',     label: 'Pet Tag' },
-    { key: 'confirm', label: 'Confirm' },
-  ];
-  const valStepIdx = valSteps.findIndex(s => s.key === valStep);
-
-  const isExpired = (p: PreReg) => p.expires_at && new Date(p.expires_at) < new Date();
-
+  /* ═══════════════════════════════════════════════════════════════════════ */
   return (
-    <>
-      <style>{STYLES}</style>
-      <div className="prl-wrap">
+    <div style={{ fontFamily: 'inherit' }}>
 
-        {/* top bar */}
-        <div className="prl-topbar">
-          <div>
-            <h1 className="prl-title">Pre-Registered Pets</h1>
-            <p className="prl-subtitle">Review and validate pet pre-registrations submitted by owners</p>
-          </div>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1f2937', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <PawPrint style={{ width: 24, height: 24, color: '#2B5EA6' }} />
+            Pet Pre-Registrations
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 0' }}>
+            Review, validate and register pets submitted by owners
+          </p>
         </div>
+        <button onClick={load}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13 }}>
+          <RefreshCw style={{ width: 14, height: 14, ...(loading ? { animation: 'spin 1s linear infinite' } : {}) }} /> Refresh
+        </button>
+      </div>
 
-        {/* stats */}
-        <div className="prl-stats">
-          <div className="prl-stat">
-            <div className="prl-stat-ico" style={{ background: '#fff8ed' }}>⏳</div>
-            <div><div className="prl-stat-val" style={{ color: '#f59e0b' }}>{pending}</div><div className="prl-stat-lbl">Pending</div></div>
+      {/* ── Stats ──────────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 18 }}>
+        {[
+          { label: 'Total',    value: stats.total,    color: '#2B5EA6', bg: '#eff6ff' },
+          { label: 'Pending',  value: stats.pending,  color: '#d97706', bg: '#fef3c7' },
+          { label: 'Approved', value: stats.approved, color: '#16a34a', bg: '#dcfce7' },
+          { label: 'Denied',   value: stats.denied,   color: '#dc2626', bg: '#fee2e2' },
+        ].map(s => (
+          <div key={s.label} style={{ background: s.bg, borderRadius: 12, padding: '14px 16px', textAlign: 'center' }}>
+            <p style={{ fontSize: 24, fontWeight: 900, color: s.color, margin: 0 }}>{s.value}</p>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: 0, fontWeight: 600 }}>{s.label}</p>
           </div>
-          <div className="prl-stat">
-            <div className="prl-stat-ico" style={{ background: '#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center' }}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <div><div className="prl-stat-val" style={{ color: '#16a34a' }}>{approved}</div><div className="prl-stat-lbl">Approved</div></div>
-          </div>
-          <div className="prl-stat">
-            <div className="prl-stat-ico" style={{ background: '#fee2e2', display:'flex', alignItems:'center', justifyContent:'center' }}><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
-            <div><div className="prl-stat-val" style={{ color: '#dc2626' }}>{denied}</div><div className="prl-stat-lbl">Denied</div></div>
-          </div>
+        ))}
+      </div>
+
+      {/* ── Toolbar ────────────────────────────────────────────────────── */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', gap: 10, flexWrap: 'wrap', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <Search style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, color: '#9ca3af' }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search owner, pet name, species, barangay…"
+            style={{ width: '100%', height: 38, border: '1.5px solid #e5e7eb', borderRadius: 9, paddingLeft: 34, paddingRight: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+          />
         </div>
-
-        {/* toolbar */}
-        <div className="prl-toolbar">
-          <input className="prl-search" placeholder="Search by name, species, ID…" value={search} onChange={e => setSearch(e.target.value)} />
-          <div className="prl-tabs">
-            {(['all','Pending','Approved','Denied'] as const).map(f => (
-              <button key={f} className={`prl-tab ${filter === f ? `active-${f}` : ''}`} onClick={() => setFilter(f)}>
-                {f === 'all' ? 'All' : f}
-                {f === 'Pending' && pending > 0 && <span style={{ marginLeft: 6, background: '#f59e0b', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{pending}</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* table */}
-        <div className="prl-table-wrap">
-          {loading ? (
-            <div className="prl-empty"><div className="prl-empty-ico">⏳</div><p>Loading…</p></div>
-          ) : filtered.length === 0 ? (
-            <div className="prl-empty"><div className="prl-empty-ico"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>No pre-registrations found.</p></div>
-          ) : (
-            <table className="prl-table">
-              <thead>
-                <tr>
-                  <th>Pre-Reg ID</th>
-                  <th>Pet</th>
-                  <th>Owner</th>
-                  <th>Submitted</th>
-                  <th>Expires</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(p => (
-                  <tr key={p.pre_reg_number}>
-                    <td><code style={{ fontSize: 12, background: '#f1f5f9', padding: '2px 6px', borderRadius: 6 }}>{p.pre_reg_number}</code></td>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>{p.pet_name}</div>
-                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{p.species}{p.breed ? ` · ${p.breed}` : ''}</div>
-                    </td>
-                    <td>
-                      <div>{p.owner_name}</div>
-                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{p.contact_number}</div>
-                    </td>
-                    <td style={{ fontSize: 13 }}>{formatDate(p.submitted_date)}</td>
-                    <td style={{ fontSize: 13, color: isExpired(p) ? '#dc2626' : '#374151', fontWeight: isExpired(p) ? 700 : 400 }}>
-                      {p.expires_at ? formatDate(p.expires_at) : '—'}
-                      {isExpired(p) && <div style={{ fontSize: 11, color: '#dc2626' }}>EXPIRED</div>}
-                    </td>
-                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Pending' ? p.status : p.status === 'Approved' ? '✅' : '❌'} {p.status}</span></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="prl-btn prl-btn-blue" onClick={() => { setSelected(p); setShowDetails(true); }}>View</button>
-                        {p.status === 'Pending' && (
-                          <button className="prl-btn prl-btn-green" onClick={() => openValidate(p)}>Validate</button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['all', 'Pending', 'Approved', 'Denied'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid', fontSize: 12, fontWeight: 700, cursor: 'pointer', transition: 'all .18s',
+                borderColor: filter === f ? '#2B5EA6' : '#e5e7eb',
+                background:  filter === f ? '#2B5EA6' : '#f9fafb',
+                color:       filter === f ? '#fff'    : '#6b7280' }}>
+              {f === 'all' ? 'All' : f}
+              {f === 'Pending' && stats.pending > 0 && (
+                <span style={{ marginLeft: 5, background: filter === 'Pending' ? 'rgba(255,255,255,.3)' : '#f59e0b', color: filter === 'Pending' ? '#fff' : '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>
+                  {stats.pending}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ─── DETAILS MODAL ─── */}
-      {showDetails && selected && (
-        <div className="modal-overlay" onClick={() => setShowDetails(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{selected.pet_name} — Details</h3>
-              <button className="modal-close" onClick={() => setShowDetails(false)}>×</button>
+      {/* ── Table ──────────────────────────────────────────────────────── */}
+      <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 2px 8px rgba(0,0,0,.06)', overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: 48, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
+            <PawPrint style={{ width: 40, height: 40, margin: '0 auto 12px', display: 'block', opacity: 0.25 }} />
+            No pre-registrations found
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #f1f5f9' }}>
+                {['Pre-Reg ID', 'Pet', 'Owner', 'Barangay', 'Submitted', 'Expires', 'Status', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.05em', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => {
+                const badge = statusBadge(p.status);
+                const dl    = daysLeft(p.expires_at);
+                const expired = dl !== null && dl <= 0;
+                return (
+                  <tr key={p.pre_reg_number} style={{ borderBottom: '1px solid #f9fafb', cursor: 'pointer' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}>
+                    <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: 11, color: '#6b7280' }}>{p.pre_reg_number}</td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {p.photo
+                          ? <img src={p.photo} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                          : <div style={{ width: 34, height: 34, borderRadius: 8, background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <PawPrint style={{ width: 16, height: 16, color: '#6366f1' }} />
+                            </div>
+                        }
+                        <div>
+                          <p style={{ fontWeight: 700, color: '#1f2937', margin: 0 }}>{p.pet_name}</p>
+                          <p style={{ color: '#9ca3af', fontSize: 11, margin: 0 }}>{p.species}{p.breed ? ` · ${p.breed}` : ''}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <p style={{ fontWeight: 600, color: '#374151', margin: 0 }}>{p.owner_name}</p>
+                      <p style={{ color: '#9ca3af', fontSize: 11, margin: 0 }}>{p.contact_number || p.owner_email || '—'}</p>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.barangay}</td>
+                    <td style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 11, whiteSpace: 'nowrap' }}>{fmtDate(p.submitted_date)}</td>
+                    <td style={{ padding: '12px 14px', fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {p.expires_at ? (
+                        <span style={{ color: expired ? '#dc2626' : dl! <= 3 ? '#d97706' : '#6b7280', fontWeight: expired || dl! <= 3 ? 700 : 400 }}>
+                          {expired ? '⚠ EXPIRED' : `${dl} day${dl !== 1 ? 's' : ''} left`}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{ background: badge.bg, color: badge.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{badge.label}</span>
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <button onClick={() => openDetail(p)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', border: '1.5px solid #e5e7eb', borderRadius: 7, background: '#fff', cursor: 'pointer', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>
+                        <Eye style={{ width: 13, height: 13 }} /> View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          DETAIL / VALIDATE MODAL
+      ══════════════════════════════════════════════════════════════════════ */}
+      {showDetail && selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 30px 80px rgba(0,0,0,.25)' }}>
+
+            {/* Modal header */}
+            <div style={{ background: 'linear-gradient(135deg,#2B5EA6,#3d7ac7)', padding: '18px 22px', borderRadius: '20px 20px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
+              <div style={{ color: '#fff' }}>
+                <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>
+                  {approvedResult ? '✅ Pet Registered!' :
+                   denyMode ? '❌ Deny Pre-Registration' :
+                   selected.status === 'Pending' ? `Validate: ${selected.pet_name}` :
+                   `Pre-Registration — ${selected.pet_name}`}
+                </p>
+                <p style={{ fontSize: 12, opacity: .75, margin: '2px 0 0' }}>{selected.pre_reg_number}</p>
+              </div>
+              <button onClick={closeDetail} disabled={processing}
+                style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: '50%', width: 30, height: 30, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X style={{ width: 15, height: 15 }} />
+              </button>
             </div>
-            <div className="modal-body">
-              <p className="modal-section">Pet Information</p>
-              <div className="modal-detail-grid">
-                {[
-                  ['Pre-Reg ID', selected.pre_reg_number],
-                  ['Status', selected.status],
-                  ['Pet Name', selected.pet_name],
-                  ['Species', selected.species],
-                  ['Breed', selected.breed || '—'],
-                  ['Age', selected.age || '—'],
-                  ['Color', selected.color || '—'],
-                  ['Gender', selected.gender],
-                  ['Pet Tag ID', selected.pet_tag_id || '—'],
-                ].map(([l,v]) => (
-                  <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
-                ))}
-              </div>
-              <p className="modal-section">Owner Information</p>
-              <div className="modal-detail-grid">
-                {[
-                  ['Owner Name', selected.owner_name],
-                  ['Contact No.', selected.contact_number],
-                  ['Email', selected.owner_email || '—'],
-                  ['Barangay', selected.barangay],
-                  ['Address', selected.address],
-                ].map(([l,v]) => (
-                  <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
-                ))}
-              </div>
-              {selected.photo && (
-                <>
-                  <p className="modal-section">Pet Photo</p>
-                  <img src={selected.photo} style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 12 }} alt="Pet" />
-                </>
-              )}
-              {selected.status === 'Pending' && (
-                <div style={{ marginTop: 16 }}>
-                  <button className="modal-btn-primary" style={{ width: '100%' }} onClick={() => { setShowDetails(false); openValidate(selected); }}>
-                    Proceed to Validate
+
+            <div style={{ padding: '20px 24px' }}>
+
+              {/* ── SUCCESS SCREEN ──────────────────────────────────────── */}
+              {approvedResult && (
+                <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+                  <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                    <CheckCircle style={{ width: 40, height: 40, color: '#16a34a' }} />
+                  </div>
+                  <h3 style={{ fontSize: 20, fontWeight: 900, color: '#1f2937', margin: '0 0 8px' }}>Pet Validated & Registered!</h3>
+                  <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 20px' }}>
+                    {selected.pet_name} has been saved to the pets database and tagged to the owner's account.
+                  </p>
+                  <div style={{ background: '#f0f7ff', border: '2px solid #2B5EA6', borderRadius: 12, padding: '16px 20px', marginBottom: 20 }}>
+                    <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', margin: '0 0 6px' }}>Assigned Pet Tag ID</p>
+                    <p style={{ fontSize: 26, fontWeight: 900, fontFamily: 'monospace', color: ZONE_COLOR[tagPrefix] || '#2B5EA6', margin: 0 }}>{approvedResult.petTagId}</p>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: '6px 0 0' }}>{ZONE_LABEL[tagPrefix] || 'Tagged'}</p>
+                  </div>
+                  <button onClick={closeDetail}
+                    style={{ width: '100%', height: 44, background: '#2B5EA6', color: '#fff', border: 'none', borderRadius: 11, fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+                    Done
                   </button>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ─── VALIDATION MODAL ─── */}
-      {showValidate && selected && (
-        <div className="modal-overlay" onClick={() => !submitting && setShowValidate(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">
-                {denyMode ? 'Deny Pre-Registration' : `Validate: ${selected.pet_name}`}
-              </h3>
-              <button className="modal-close" onClick={() => !submitting && setShowValidate(false)}>×</button>
-            </div>
-
-            <div className="modal-body">
-              {/* success screen */}
-              {valDone ? (
-                <div style={{ textAlign: 'center' }}>
-                  <div className="modal-success-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth={2.5} style={{ width: 40, height: 40 }}>
-                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 900, color: '#1f2937' }}>Pet Validated & Registered!</h3>
-                  <p style={{ color: '#6b7280', fontSize: 14, margin: '0 0 20px' }}>{selected.pet_name} has been moved to the registered pets database and tagged to the owner's account.</p>
-                  <div className="modal-tag-box">
-                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 6 }}>Pet Tag ID Assigned</div>
-                    <div className="modal-tag-val">{petTagId || '(Auto-assigned)'}</div>
-                  </div>
-                  <button className="modal-btn-primary" style={{ width: '100%' }} onClick={() => setShowValidate(false)}>Done</button>
-                </div>
-              ) : denyMode ? (
+              {/* ── DENY FORM ───────────────────────────────────────────── */}
+              {!approvedResult && denyMode && (
                 <>
-                  <div className="modal-alert warn">You are about to deny this pre-registration. Please provide a clear reason.</div>
-                  <div className="modal-field">
-                    <label className="modal-label">Reason for Denial *</label>
-                    <textarea className="modal-textarea" rows={4} placeholder="e.g. Incomplete details, invalid information…" value={denyReason} onChange={e => setDenyReason(e.target.value)} />
+                  <div style={{ background: '#fff8ed', border: '1.5px solid #fbbf24', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0, marginTop: 1 }} />
+                    You are about to deny <strong>{selected.pet_name}</strong>'s pre-registration. This will notify the owner.
                   </div>
-                  <div className="modal-actions">
-                    <button className="modal-btn-secondary" onClick={() => setDenyMode(false)}>← Cancel</button>
-                    <button className="modal-btn-deny" onClick={handleDeny} disabled={submitting}>
-                      {submitting ? <><span className="modal-spinner" />Denying…</> : 'Confirm Denial'}
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>Reason for Denial *</label>
+                  <textarea
+                    value={denyReason}
+                    onChange={e => setDenyReason(e.target.value)}
+                    rows={4}
+                    placeholder="e.g. Incomplete details, invalid information, owner not present…"
+                    style={{ width: '100%', border: '1.5px solid #fca5a5', borderRadius: 9, padding: '8px 12px', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button onClick={() => setDenyMode(false)}
+                      style={{ flex: 1, height: 42, border: '1.5px solid #e5e7eb', borderRadius: 9, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>← Cancel</button>
+                    <button onClick={handleDeny} disabled={processing || !denyReason.trim()}
+                      style={{ flex: 1, height: 42, background: processing ? '#d1d5db' : '#dc2626', color: '#fff', border: 'none', borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: processing ? 'not-allowed' : 'pointer' }}>
+                      {processing ? 'Processing…' : 'Confirm Denial'}
                     </button>
                   </div>
                 </>
-              ) : (
-                <>
-                  {/* step indicator */}
-                  <div className="modal-steps">
-                    {valSteps.map((s, i) => (
-                      <div key={s.key} className={`modal-step ${valStep === s.key ? 'active' : i < valStepIdx ? 'done' : ''}`}>
-                        <span className="modal-step-num">{i < valStepIdx ? '✓' : i + 1}</span>
-                        {s.label}
-                      </div>
-                    ))}
-                  </div>
+              )}
 
-                  {/* STEP 1: Review Details */}
-                  {valStep === 'details' && (
+              {/* ── MAIN VIEW / APPROVAL FLOW ───────────────────────────── */}
+              {!approvedResult && !denyMode && (
+                <>
+                  {/* Step tabs — only show when Pending */}
+                  {selected.status === 'Pending' && (
+                    <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e8edf4', marginBottom: 20 }}>
+                      {(['review','photo','tag','confirm'] as const).map((s, i) => {
+                        const labels = ['1. Review', '2. Photo', '3. Tag', '4. Confirm'];
+                        const idx = ['review','photo','tag','confirm'].indexOf(approveStep);
+                        return (
+                          <div key={s} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '10px 4px', fontSize: 11, fontWeight: 700,
+                            color: approveStep === s ? '#2B5EA6' : i < idx ? '#16a34a' : '#9ca3af',
+                            borderBottom: `3px solid ${approveStep === s ? '#2B5EA6' : i < idx ? '#16a34a' : 'transparent'}` }}>
+                            <span style={{ width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800,
+                              background: approveStep === s ? '#2B5EA6' : i < idx ? '#16a34a' : '#e5e7eb',
+                              color: approveStep === s || i < idx ? '#fff' : '#9ca3af' }}>
+                              {i < idx ? '✓' : i + 1}
+                            </span>
+                            {labels[i]}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* ── STEP 1 / INFO VIEW: Pet + Owner details ──────── */}
+                  {(approveStep === 'review' || selected.status !== 'Pending') && (
                     <>
-                      <p className="modal-section">Verify Submitted Information</p>
-                      <div className="modal-detail-grid">
+                      {/* Pet photo */}
+                      {selected.photo && (
+                        <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden' }}>
+                          <img src={selected.photo} alt="Pet" style={{ width: '100%', maxHeight: 180, objectFit: 'cover' }} />
+                        </div>
+                      )}
+
+                      <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#2B5EA6', margin: '0 0 10px', paddingBottom: 5, borderBottom: '1.5px solid #e8f0fb' }}>Pet Information</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 16 }}>
                         {[
-                          ['Pet Name', selected.pet_name],
-                          ['Species', selected.species],
-                          ['Breed', selected.breed || '—'],
-                          ['Age', selected.age || '—'],
-                          ['Color', selected.color || '—'],
-                          ['Gender', selected.gender],
-                          ['Owner', selected.owner_name],
-                          ['Contact', selected.contact_number],
-                          ['Email', selected.owner_email || '—'],
-                          ['Barangay', selected.barangay],
-                        ].map(([l,v]) => (
-                          <div key={l} className="modal-detail"><div className="modal-detail-lbl">{l}</div><div className="modal-detail-val">{v}</div></div>
+                          ['Pet Name',   selected.pet_name],
+                          ['Species',    selected.species],
+                          ['Breed',      selected.breed   || '—'],
+                          ['Age',        selected.age     || '—'],
+                          ['Color',      selected.color   || '—'],
+                          ['Gender',     selected.gender],
+                        ].map(([k, v]) => (
+                          <div key={k} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px' }}>
+                            <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '.05em' }}>{k}</p>
+                            <p style={{ fontSize: 13, color: '#1f2937', fontWeight: 700, margin: 0 }}>{v}</p>
+                          </div>
                         ))}
                       </div>
-                      <div className="modal-detail" style={{ marginBottom: 16 }}>
-                        <div className="modal-detail-lbl">Address</div>
-                        <div className="modal-detail-val">{selected.address}</div>
+
+                      <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.1em', textTransform: 'uppercase', color: '#2B5EA6', margin: '0 0 10px', paddingBottom: 5, borderBottom: '1.5px solid #e8f0fb' }}>Owner Information</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 16 }}>
+                        {[
+                          ['Owner Name', selected.owner_name],
+                          ['Contact',    selected.contact_number || '—'],
+                          ['Email',      selected.owner_email    || '—'],
+                          ['Barangay',   selected.barangay],
+                          ['Address',    selected.address        || '—'],
+                        ].map(([k, v]) => (
+                          <div key={k} style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 12px', ...(k === 'Address' ? { gridColumn: 'span 2' } : {}) }}>
+                            <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '.05em' }}>{k}</p>
+                            <p style={{ fontSize: 13, color: '#1f2937', fontWeight: 700, margin: 0 }}>{v}</p>
+                          </div>
+                        ))}
                       </div>
-                      {isExpired(selected) && (
-                        <div className="modal-alert warn">This pre-registration has <strong>expired</strong> (14-day window passed). You may still validate, but advise the owner accordingly.</div>
+
+                      {/* Approved record */}
+                      {selected.status === 'Approved' && (
+                        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
+                          <p style={{ fontWeight: 700, color: '#166534', fontSize: 13, margin: '0 0 6px' }}>✅ Registered</p>
+                          <p style={{ fontSize: 12, color: '#374151', margin: 0 }}>Pet Tag: <strong style={{ fontFamily: 'monospace' }}>{selected.pet_tag_id || '—'}</strong></p>
+                          <p style={{ fontSize: 12, color: '#374151', margin: '4px 0 0' }}>Approved: {fmtDate(selected.approved_date)}</p>
+                        </div>
                       )}
-                      <div className="modal-actions">
-                        <button className="modal-btn-deny" onClick={() => setDenyMode(true)}>Deny</button>
-                        <button className="modal-btn-primary" onClick={() => setValStep('photo')}>Next: Take Photo →</button>
-                      </div>
+
+                      {/* Denied record */}
+                      {selected.status === 'Denied' && selected.denial_reason && (
+                        <div style={{ background: '#fee2e2', border: '1.5px solid #fca5a5', borderRadius: 10, padding: '12px 16px', marginBottom: 14 }}>
+                          <p style={{ fontWeight: 700, color: '#991b1b', fontSize: 13, margin: '0 0 4px' }}>❌ Denied</p>
+                          <p style={{ fontSize: 12, color: '#7f1d1d', margin: 0 }}>{selected.denial_reason}</p>
+                        </div>
+                      )}
+
+                      {/* Expiry warning */}
+                      {selected.status === 'Pending' && selected.expires_at && daysLeft(selected.expires_at)! <= 3 && (
+                        <div style={{ background: '#fff8ed', border: '1.5px solid #fbbf24', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92400e', display: 'flex', gap: 8 }}>
+                          <Clock style={{ width: 14, height: 14, flexShrink: 0, marginTop: 1 }} />
+                          {daysLeft(selected.expires_at)! <= 0 ? 'This pre-registration has EXPIRED.' : `Expires in ${daysLeft(selected.expires_at)} day(s). Validate soon.`}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      {selected.status === 'Pending' && (
+                        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                          <button onClick={() => setDenyMode(true)}
+                            style={{ flex: 1, height: 42, background: '#fff', color: '#dc2626', border: '1.5px solid #fca5a5', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <XCircle style={{ width: 15, height: 15 }} /> Deny
+                          </button>
+                          <button onClick={() => setApproveStep('photo')}
+                            style={{ flex: 2, height: 42, background: '#2B5EA6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                            <CheckCircle style={{ width: 15, height: 15 }} /> Proceed to Validate →
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
 
-                  {/* STEP 2: Photo */}
-                  {valStep === 'photo' && (
+                  {/* ── STEP 2: Live Photo ──────────────────────────── */}
+                  {approveStep === 'photo' && (
                     <>
-                      <p className="modal-section">Take / Upload Pet Photo</p>
-                      <div className="modal-alert info">Please take a current photo of the pet during the CVO visit. This will be the official photo on record.</div>
-                      <div className="modal-photo-upload" onClick={() => document.getElementById('val-photo-input')?.click()}>
-                        <input id="val-photo-input" type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
-                        {valPhoto ? (
-                          <img src={valPhoto} className="modal-photo-preview" alt="Pet" />
+                      <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>Take a live photo of the pet during the CVO visit. This becomes the official photo on record.</p>
+
+                      <div
+                        onClick={() => document.getElementById('live-photo-input')?.click()}
+                        style={{ border: `2px dashed ${livePhoto ? '#2B5EA6' : '#d1d5db'}`, borderRadius: 12, padding: '20px', textAlign: 'center', cursor: 'pointer', background: livePhoto ? '#f0f7ff' : '#fafafa', marginBottom: 16, transition: 'all .2s' }}>
+                        <input id="live-photo-input" type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />
+                        {livePhoto ? (
+                          <img src={livePhoto} alt="Live" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 10 }} />
                         ) : (
                           <div style={{ color: '#9ca3af' }}>
-                            <div style={{ fontSize: 36, marginBottom: 8, display:"flex", justifyContent:"center" }}><svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
-                            <p style={{ margin: 0, fontSize: 13 }}>Click to capture or upload photo</p>
+                            <Camera style={{ width: 36, height: 36, margin: '0 auto 8px', display: 'block' }} />
+                            <p style={{ fontSize: 13, margin: 0, fontWeight: 600 }}>Click to capture or upload photo</p>
+                            <p style={{ fontSize: 11, margin: '4px 0 0' }}>Camera will open on mobile devices</p>
                           </div>
                         )}
                       </div>
-                      {!valPhoto && selected.photo && (
-                        <div style={{ marginTop: 10 }}>
-                          <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 6px' }}>Or use submitted photo:</p>
-                          <img src={selected.photo} style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, cursor: 'pointer', opacity: .85 }} alt="Submitted" onClick={() => setValPhoto(selected.photo)} />
+
+                      {!livePhoto && selected.photo && (
+                        <div style={{ marginBottom: 12 }}>
+                          <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 6px' }}>Or use the submitted photo:</p>
+                          <img src={selected.photo} alt="Submitted" onClick={() => setLivePhoto(selected.photo)}
+                            style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, cursor: 'pointer', opacity: 0.85 }} />
                         </div>
                       )}
-                      <div className="modal-actions">
-                        <button className="modal-btn-secondary" onClick={() => setValStep('details')}>← Back</button>
-                        <button className="modal-btn-primary" onClick={() => setValStep('tag')}>Next: Assign Tag →</button>
+
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button onClick={() => setApproveStep('review')}
+                          style={{ flex: 1, height: 42, border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>← Back</button>
+                        <button onClick={() => setApproveStep('tag')}
+                          style={{ flex: 2, height: 42, background: '#2B5EA6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                          {livePhoto ? 'Next: Assign Tag →' : 'Skip Photo & Continue →'}
+                        </button>
                       </div>
                     </>
                   )}
 
-                  {/* STEP 3: Pet Tag ID */}
-                  {valStep === 'tag' && (
+                  {/* ── STEP 3: Tag Assignment ──────────────────────── */}
+                  {approveStep === 'tag' && (
                     <>
-                      <p className="modal-section">Assign Pet Tag ID</p>
-                      <div className="modal-alert info">Enter the official Pet Tag ID from the physical tag that will be attached to the animal.</div>
-                      <div className="modal-field">
-                        <label className="modal-label">Pet Tag ID *</label>
-                        <input className="modal-input" placeholder="e.g. TAG-2024-00123" value={petTagId} onChange={e => setPetTagId(e.target.value)} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: `${ZONE_COLOR[tagPrefix]}15`, border: `1.5px solid ${ZONE_COLOR[tagPrefix]}50`, borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 8, background: ZONE_COLOR[tagPrefix] || '#2B5EA6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: 12, flexShrink: 0 }}>
+                          {tagPrefix}
+                        </div>
+                        <div>
+                          <p style={{ fontWeight: 700, color: ZONE_COLOR[tagPrefix] || '#2B5EA6', fontSize: 13, margin: 0 }}>{ZONE_LABEL[tagPrefix] || 'Zone'}</p>
+                          <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>Pets from <strong>{selected.barangay}</strong> use the <strong>{tagPrefix}-</strong> prefix</p>
+                        </div>
                       </div>
-                      <div className="modal-actions">
-                        <button className="modal-btn-secondary" onClick={() => setValStep('photo')}>← Back</button>
-                        <button className="modal-btn-primary" onClick={() => { if (!petTagId.trim()) { toast.error('Please enter a Pet Tag ID'); return; } setValStep('confirm'); }}>
+
+                      <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>
+                        Tag Number * <span style={{ color: '#9ca3af', fontWeight: 500 }}>(numeric part only, e.g. 0001)</span>
+                      </label>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                        <span style={{ background: ZONE_COLOR[tagPrefix] || '#2B5EA6', color: '#fff', padding: '10px 14px', borderRadius: 9, fontWeight: 900, fontFamily: 'monospace', fontSize: 16, flexShrink: 0 }}>
+                          {tagPrefix}-
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={tagNumber}
+                          onChange={e => { setTagNumber(e.target.value.replace(/\D/g,'').slice(0,6)); setTagError(''); }}
+                          placeholder="0001"
+                          style={{ flex: 1, height: 44, border: `1.5px solid ${tagError ? '#ef4444' : '#e5e7eb'}`, borderRadius: 9, padding: '0 12px', fontSize: 20, fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      {tagError && <p style={{ color: '#ef4444', fontSize: 12, margin: '4px 0 0' }}>{tagError}</p>}
+                      {previewTag && !tagError && (
+                        <p style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 0' }}>
+                          Preview: <strong style={{ fontFamily: 'monospace', color: ZONE_COLOR[tagPrefix], fontSize: 14 }}>{previewTag}</strong>
+                        </p>
+                      )}
+
+                      <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginTop: 14, fontSize: 12, color: '#166534' }}>
+                        <p style={{ fontWeight: 700, margin: '0 0 4px' }}>Upon confirming:</p>
+                        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
+                          <li>Pet is inserted into the registered pets database</li>
+                          <li>Tag <strong>{previewTag || `${tagPrefix}-XXXX`}</strong> is permanently assigned</li>
+                          <li>Pet is linked to the owner's account via owner ID</li>
+                        </ul>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                        <button onClick={() => setApproveStep('photo')}
+                          style={{ flex: 1, height: 42, border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>← Back</button>
+                        <button onClick={() => {
+                          if (!tagNumber.replace(/\D/g,'')) { setTagError('Tag number is required'); return; }
+                          setApproveStep('confirm');
+                        }}
+                          style={{ flex: 2, height: 42, background: '#2B5EA6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
                           Next: Confirm →
                         </button>
                       </div>
                     </>
                   )}
 
-                  {/* STEP 4: Confirm */}
-                  {valStep === 'confirm' && (
+                  {/* ── STEP 4: Confirm ─────────────────────────────── */}
+                  {approveStep === 'confirm' && (
                     <>
-                      <p className="modal-section">Confirm Validation</p>
-                      <div style={{ background: '#f8fafc', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                      <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 14px' }}>Review all details before finalising.</p>
+
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
                         {[
-                          ['Pet Name', selected.pet_name],
-                          ['Species', selected.species],
-                          ['Owner', selected.owner_name],
-                          ['Pet Tag ID', petTagId],
-                          ['Photo', valPhoto ? 'Photo uploaded' : '(Using submitted photo)'],
-                        ].map(([k,v]) => (
-                          <div key={k} className="modal-confirm-row">
-                            <span className="modal-confirm-key">{k}</span>
-                            <span className="modal-confirm-val">{v}</span>
+                          ['Pet Name',   selected.pet_name],
+                          ['Species',    selected.species],
+                          ['Breed',      selected.breed || '—'],
+                          ['Owner',      selected.owner_name],
+                          ['Contact',    selected.contact_number || '—'],
+                          ['Barangay',   selected.barangay],
+                          ['Pet Tag ID', previewTag || '—'],
+                          ['Photo',      livePhoto ? '📸 Live photo captured' : selected.photo ? '📷 Submitted photo used' : '(no photo)'],
+                        ].map(([k, v]) => (
+                          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                            <span style={{ color: '#6b7280', fontWeight: 600 }}>{k}</span>
+                            <span style={{ color: '#1f2937', fontWeight: 700, textAlign: 'right', maxWidth: '55%' }}>{v}</span>
                           </div>
                         ))}
                       </div>
-                      {valPhoto && (
-                        <img src={valPhoto} style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, marginBottom: 16 }} alt="Pet" />
+
+                      {livePhoto && (
+                        <img src={livePhoto} alt="Live" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 10, marginBottom: 14 }} />
                       )}
-                      <div className="modal-alert warn">
-                        By confirming, this pet will be <strong>officially registered</strong> and moved from the pre-registration list to the active pets database. This action cannot be undone.
+
+                      <div style={{ background: '#fff8ed', border: '1.5px solid #fbbf24', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#92400e', marginBottom: 16 }}>
+                        <strong>This action cannot be undone.</strong> The pet will be permanently moved from pre-registration to the active pets registry.
                       </div>
-                      <div className="modal-actions">
-                        <button className="modal-btn-secondary" onClick={() => setValStep('tag')}>← Back</button>
-                        <button className="modal-btn-primary" onClick={handleApprove} disabled={submitting}>
-                          {submitting ? <><span className="modal-spinner" />Saving…</> : '✅ Confirm & Register Pet'}
+
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button onClick={() => setApproveStep('tag')}
+                          style={{ flex: 1, height: 44, border: '1.5px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>← Back</button>
+                        <button onClick={handleApprove} disabled={processing}
+                          style={{ flex: 2, height: 44, background: processing ? '#d1d5db' : '#16a34a', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: processing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <Tag style={{ width: 16, height: 16 }} />
+                          {processing ? 'Registering…' : '✅ Confirm & Register Pet'}
                         </button>
                       </div>
                     </>
@@ -573,7 +686,9 @@ export function PreRegisteredPets() {
           </div>
         </div>
       )}
-    </>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
 }
 
