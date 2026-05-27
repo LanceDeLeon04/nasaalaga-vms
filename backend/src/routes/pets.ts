@@ -417,4 +417,85 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── Pet Old / Pre-existing Records (no inventory deduction) ───────────────────
+router.get('/:id/old-records', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM pet_old_records WHERE pet_id=$1 ORDER BY record_date DESC`,
+      [req.params.id]
+    );
+    return res.json({ records: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/old-records', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const d = req.body;
+    const petId = req.params.id;
+    const id = `OLR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // Ensure the table exists (idempotent — safe to call on every insert)
+    await query(`
+      CREATE TABLE IF NOT EXISTS pet_old_records (
+        id TEXT PRIMARY KEY,
+        pet_id TEXT NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+        record_type TEXT NOT NULL DEFAULT 'Vaccination',
+        record_date DATE NOT NULL,
+        vaccine_name TEXT,
+        veterinarian TEXT,
+        lot_number TEXT,
+        next_due_date DATE,
+        notes TEXT,
+        created_by TEXT DEFAULT 'Admin',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(
+      `INSERT INTO pet_old_records
+         (id, pet_id, record_type, record_date, vaccine_name, veterinarian, lot_number, next_due_date, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [id, petId, d.recordType || 'Vaccination',
+       d.recordDate || new Date().toISOString().split('T')[0],
+       d.vaccineName || null, d.veterinarian || null,
+       d.lotNumber || null, d.nextDueDate || null,
+       d.notes || null, d.createdBy || 'Admin']
+    );
+
+    // If it's a vaccination old record, also insert into vaccination_history
+    // but do NOT deduct from inventory
+    if ((d.recordType || 'Vaccination') === 'Vaccination') {
+      const vaxId = `VAX-OLD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await query(
+        `INSERT INTO vaccination_history
+           (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number,
+            veterinarian, notes, administered_by)
+         VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8)`,
+        [vaxId, petId, d.recordDate || new Date().toISOString().split('T')[0],
+         d.vaccineName || '', d.lotNumber || null,
+         d.veterinarian || 'Pre-existing Record',
+         (d.notes ? '[Old Record] ' + d.notes : '[Old Record - Pre-existing]'),
+         d.veterinarian || 'Admin']
+      );
+
+      // Update pet vaccination status if not already vaccinated
+      await query(
+        `UPDATE pets SET
+           vaccination_status = CASE WHEN vaccination_status != 'Vaccinated' THEN 'Vaccinated' ELSE vaccination_status END,
+           last_vaccination_date = COALESCE(last_vaccination_date, $1),
+           updated_at = NOW()
+         WHERE id = $2`,
+        [d.recordDate || new Date().toISOString().split('T')[0], petId]
+      );
+    }
+
+    const record = (await query(`SELECT * FROM pet_old_records WHERE id=$1`, [id])).rows[0];
+    return res.json({ success: true, record });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

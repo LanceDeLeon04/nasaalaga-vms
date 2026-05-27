@@ -198,6 +198,8 @@ export const api = {
   getPetById: (id: string) => request('/pets/lookup/' + id),
   getVaccinationHistory: (petId: string) => request('/vaccination-history/' + petId),
   recordVaccination: (data: any) => request('/vaccination-history', { method: 'POST', body: JSON.stringify(data) }),
+  getPetOldRecords: (petId: string) => request('/pets/' + petId + '/old-records'),
+  addPetOldRecord: (petId: string, data: any) => request('/pets/' + petId + '/old-records', { method: 'POST', body: JSON.stringify(data) }),
   getAuditLogs: (params?: { action?: string; search?: string; limit?: number }) => {
     const p = new URLSearchParams();
     if (params?.action) p.set('action', params.action);

@@ -736,13 +736,55 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
 
 // ─── PET DETAIL MODAL ────────────────────────────────────────────────────────
 
-function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>void; onVaccinate:(p:Pet)=>void }) {
+function PetDetailModal({ pet, onClose, onVaccinate, onUpdate }: { pet:Pet; onClose:()=>void; onVaccinate:(p:Pet)=>void; onUpdate?:()=>void }) {
   const vacStatus = vs(pet);
   const isImpounded = impound(pet);
+  const [tab, setTab] = useState<'info'|'old-records'>('info');
+  const [oldRecords, setOldRecords] = useState<any[]>([]);
+  const [loadingOld, setLoadingOld] = useState(false);
+  const [showAddOld, setShowAddOld] = useState(false);
+  const [savingOld, setSavingOld] = useState(false);
+  const [or, setOr] = useState({
+    recordType: 'Vaccination',
+    recordDate: '',
+    vaccineName: '',
+    veterinarian: '',
+    lotNumber: '',
+    nextDueDate: '',
+    notes: '',
+  });
+
+  useEffect(() => {
+    if (tab === 'old-records') {
+      setLoadingOld(true);
+      api.getPetOldRecords(pet.id)
+        .then((r: any) => { setOldRecords(r.records || []); setLoadingOld(false); })
+        .catch(() => setLoadingOld(false));
+    }
+  }, [tab, pet.id]);
+
+  const saveOldRecord = async () => {
+    if (!or.recordDate) { alert('Please enter the record date.'); return; }
+    setSavingOld(true);
+    try {
+      await api.addPetOldRecord(pet.id, or);
+      const r = await api.getPetOldRecords(pet.id);
+      setOldRecords(r.records || []);
+      setShowAddOld(false);
+      setOr({ recordType:'Vaccination', recordDate:'', vaccineName:'', veterinarian:'', lotNumber:'', nextDueDate:'', notes:'' });
+      if (onUpdate) onUpdate();
+    } catch(e:any) { alert('Error: ' + e.message); }
+    setSavingOld(false);
+  };
+
+  const OLD_RECORD_TYPES = ['Vaccination','Checkup','Treatment','Deworming','Other'];
+  const INPUT_SM = 'w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] focus:border-transparent bg-white';
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className={`px-6 py-5 flex items-center justify-between ${vacStatus==="Vaccinated"?"bg-gradient-to-r from-green-600 to-green-500":vacStatus==="Due Soon"?"bg-gradient-to-r from-yellow-500 to-orange-500":"bg-gradient-to-r from-red-600 to-red-500"}`}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden max-h-[92vh]">
+        {/* Header */}
+        <div className={`px-6 py-5 flex items-center justify-between shrink-0 ${vacStatus==="Vaccinated"?"bg-gradient-to-r from-green-600 to-green-500":vacStatus==="Due Soon"?"bg-gradient-to-r from-yellow-500 to-orange-500":"bg-gradient-to-r from-red-600 to-red-500"}`}>
           <div className="flex items-center gap-4">
             {petPhoto(pet)
               ? <img src={petPhoto(pet)} alt={pn(pet)} className="w-16 h-16 rounded-xl object-cover border-2 border-white/40"/>
@@ -761,44 +803,168 @@ function PetDetailModal({ pet, onClose, onVaccinate }: { pet:Pet; onClose:()=>vo
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
         </div>
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              ["Age", pet.age||"—"], ["Color", pet.color||"—"], ["Gender", pet.gender||"—"],
-              ["Registered", fmtDate(pet.registration_date||pet.registrationDate)],
-              ["Barangay", brgy(pet)], ["Status", pet.status],
-            ].map(([k,v])=>(
-              <div key={k} className="bg-gray-50 rounded-xl p-3">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{k}</p>
-                <p className="text-sm font-semibold text-gray-800">{v}</p>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 shrink-0">
+          {([
+            ['info', 'Details', <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>],
+            ['old-records', 'Old Records', <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>],
+          ] as any[]).map(([id, label, icon]) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-semibold transition-all ${tab===id?'border-b-2 border-[#2B5EA6] text-[#2B5EA6] bg-blue-50/50':'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
+              {icon}{label}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-6">
+          {/* ── INFO TAB ── */}
+          {tab === 'info' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ["Age", pet.age||"—"], ["Color", pet.color||"—"], ["Gender", pet.gender||"—"],
+                  ["Registered", fmtDate(pet.registration_date||pet.registrationDate)],
+                  ["Barangay", brgy(pet)], ["Status", pet.status],
+                ].map(([k,v])=>(
+                  <div key={k} className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{k}</p>
+                    <p className="text-sm font-semibold text-gray-800">{v}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="border-t pt-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-3 font-semibold">Owner Information</p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><IUsers className="w-4 h-4 text-blue-600"/></div><div><p className="text-xs text-gray-400">Owner</p><p className="text-sm font-semibold text-gray-800">{on(pet)}</p></div></div>
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><IPhone className="w-4 h-4 text-green-600"/></div><div><p className="text-xs text-gray-400">Contact</p><p className="text-sm font-semibold text-gray-800">{pet.contact_number||pet.ownerContact||"—"}</p></div></div>
-              <div className="flex items-center gap-3"><div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><IMapPin className="w-4 h-4 text-purple-600"/></div><div><p className="text-xs text-gray-400">Address</p><p className="text-sm font-semibold text-gray-800">{pet.address||pet.ownerAddress||"—"}, {brgy(pet)}</p></div></div>
-            </div>
-          </div>
-          {isImpounded && (
-            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-              <p className="text-xs font-bold text-orange-700 uppercase mb-2 flex items-center gap-1"><IShield className="w-3 h-3"/>Impound Record</p>
-              <p className="text-sm text-orange-800">{pet.impound_reason||"—"}</p>
-              {pet.impound_date && <p className="text-xs text-orange-600 mt-1">Date: {fmtDate(pet.impound_date)}</p>}
+              <div className="border-t pt-4">
+                <p className="text-xs text-gray-400 uppercase tracking-wide mb-3 font-semibold">Owner Information</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><IUsers className="w-4 h-4 text-blue-600"/></div><div><p className="text-xs text-gray-400">Owner</p><p className="text-sm font-semibold text-gray-800">{on(pet)}</p></div></div>
+                  <div className="flex items-center gap-3"><div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><IPhone className="w-4 h-4 text-green-600"/></div><div><p className="text-xs text-gray-400">Contact</p><p className="text-sm font-semibold text-gray-800">{pet.contact_number||pet.ownerContact||"—"}</p></div></div>
+                  <div className="flex items-center gap-3"><div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><IMapPin className="w-4 h-4 text-purple-600"/></div><div><p className="text-xs text-gray-400">Address</p><p className="text-sm font-semibold text-gray-800">{pet.address||pet.ownerAddress||"—"}, {brgy(pet)}</p></div></div>
+                </div>
+              </div>
+              {isImpounded && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                  <p className="text-xs font-bold text-orange-700 uppercase mb-2 flex items-center gap-1"><IShield className="w-3 h-3"/>Impound Record</p>
+                  <p className="text-sm text-orange-800">{pet.impound_reason||"—"}</p>
+                  {pet.impound_date && <p className="text-xs text-orange-600 mt-1">Date: {fmtDate(pet.impound_date)}</p>}
+                </div>
+              )}
+              <div className={`rounded-xl p-4 ${vacStatus==="Vaccinated"?"bg-green-50 border border-green-200":vacStatus==="Due Soon"?"bg-yellow-50 border border-yellow-200":"bg-red-50 border border-red-200"}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`font-bold text-sm ${vacStatus==="Vaccinated"?"text-green-700":vacStatus==="Due Soon"?"text-yellow-700":"text-red-700"}`}>{vacStatus}</p>
+                    {(pet.last_vaccination_date||pet.lastVaccinationDate)&&<p className="text-xs text-gray-500 mt-0.5">Last: {fmtDate(pet.last_vaccination_date||pet.lastVaccinationDate)}</p>}
+                    {(pet.next_vaccination_date||pet.nextVaccinationDate)&&<p className="text-xs text-gray-500">Next: {fmtDate(pet.next_vaccination_date||pet.nextVaccinationDate)}</p>}
+                  </div>
+                  {vacStatus!=="Vaccinated"&&<button onClick={()=>{onVaccinate(pet);onClose();}} className="px-3 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><ISyringe className="w-3 h-3"/>Vaccinate</button>}
+                </div>
+              </div>
             </div>
           )}
-          <div className={`rounded-xl p-4 ${vacStatus==="Vaccinated"?"bg-green-50 border border-green-200":vacStatus==="Due Soon"?"bg-yellow-50 border border-yellow-200":"bg-red-50 border border-red-200"}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`font-bold text-sm ${vacStatus==="Vaccinated"?"text-green-700":vacStatus==="Due Soon"?"text-yellow-700":"text-red-700"}`}>{vacStatus}</p>
-                {(pet.last_vaccination_date||pet.lastVaccinationDate)&&<p className="text-xs text-gray-500 mt-0.5">Last: {fmtDate(pet.last_vaccination_date||pet.lastVaccinationDate)}</p>}
-                {(pet.next_vaccination_date||pet.nextVaccinationDate)&&<p className="text-xs text-gray-500">Next: {fmtDate(pet.next_vaccination_date||pet.nextVaccinationDate)}</p>}
+
+          {/* ── OLD RECORDS TAB ── */}
+          {tab === 'old-records' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-gray-800 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Pre-existing Records
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">Records from before system implementation. Does not deduct from inventory.</p>
+                </div>
+                <button onClick={() => setShowAddOld(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600">
+                  <Plus className="w-3.5 h-3.5"/>Add Old Record
+                </button>
               </div>
-              {vacStatus!=="Vaccinated"&&<button onClick={()=>{onVaccinate(pet);onClose();}} className="px-3 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] flex items-center gap-1"><ISyringe className="w-3 h-3"/>Vaccinate</button>}
+
+              {showAddOld && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Add Pre-existing Record — No inventory deduction
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Record Type</label>
+                      <select value={or.recordType} onChange={e=>setOr(p=>({...p,recordType:e.target.value}))} className={INPUT_SM}>
+                        {OLD_RECORD_TYPES.map(t=><option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date of Record <span className="text-red-500">*</span></label>
+                      <input type="date" value={or.recordDate} onChange={e=>setOr(p=>({...p,recordDate:e.target.value}))} className={INPUT_SM} max={new Date().toISOString().split('T')[0]}/>
+                    </div>
+                    {or.recordType === 'Vaccination' && <>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Vaccine Name</label>
+                        <input value={or.vaccineName} onChange={e=>setOr(p=>({...p,vaccineName:e.target.value}))} className={INPUT_SM} placeholder="e.g. Anti-Rabies"/>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Lot Number</label>
+                        <input value={or.lotNumber} onChange={e=>setOr(p=>({...p,lotNumber:e.target.value}))} className={INPUT_SM} placeholder="Optional"/>
+                      </div>
+                    </>}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Veterinarian</label>
+                      <input value={or.veterinarian} onChange={e=>setOr(p=>({...p,veterinarian:e.target.value}))} className={INPUT_SM} placeholder="Dr. Name"/>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Next Due Date</label>
+                      <input type="date" value={or.nextDueDate} onChange={e=>setOr(p=>({...p,nextDueDate:e.target.value}))} className={INPUT_SM}/>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label>
+                      <textarea value={or.notes} onChange={e=>setOr(p=>({...p,notes:e.target.value}))} rows={2} className={INPUT_SM + ' resize-none'} placeholder="Optional notes"/>
+                    </div>
+                  </div>
+                  <div className="bg-amber-100 rounded-lg px-3 py-2 text-xs text-amber-800 flex items-start gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    This record will be saved as a historical entry. Inventory will <strong>not</strong> be deducted.
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={()=>setShowAddOld(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+                    <button onClick={saveOldRecord} disabled={savingOld||!or.recordDate}
+                      className="flex-1 py-2 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 disabled:opacity-50 flex items-center justify-center gap-2">
+                      {savingOld?<><RefreshCw className="w-3.5 h-3.5 animate-spin"/>Saving…</>:'Save Old Record'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loadingOld
+                ? <div className="flex items-center justify-center py-8"><div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"/></div>
+                : oldRecords.length === 0
+                  ? <div className="text-center py-10 text-gray-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 mx-auto mb-2 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      <p className="text-sm">No pre-existing records added yet</p>
+                      <p className="text-xs mt-1">Use "Add Old Record" to log records from before the system.</p>
+                    </div>
+                  : <div className="space-y-3">
+                      {oldRecords.map((r: any) => (
+                        <div key={r.id} className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${r.record_type==='Vaccination'?'bg-green-100 text-green-700':r.record_type==='Treatment'?'bg-red-100 text-red-700':'bg-blue-100 text-blue-700'}`}>
+                              {r.record_type}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 bg-amber-200 text-amber-800 text-[10px] font-bold rounded-full">Old Record</span>
+                              <p className="text-xs text-gray-400">{fmtDate(r.record_date)}</p>
+                            </div>
+                          </div>
+                          {r.vaccine_name && <p className="text-sm text-gray-700 mb-1"><span className="font-semibold">Vaccine:</span> {r.vaccine_name}</p>}
+                          {r.lot_number && <p className="text-xs text-gray-500 mb-1"><span className="font-semibold">Lot:</span> {r.lot_number}</p>}
+                          {r.notes && <p className="text-xs text-gray-500 italic mt-1">{r.notes}</p>}
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-xs text-gray-400">By: {r.veterinarian || r.created_by}</p>
+                            {r.next_due_date && <p className="text-xs text-blue-600 font-semibold">Next: {fmtDate(r.next_due_date)}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+              }
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -1547,17 +1713,32 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
 
   const handleVaccinate = async (pet: Pet) => {
     const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
     const next = new Date(today); next.setFullYear(next.getFullYear()+1);
+    const nextStr = next.toISOString().split("T")[0];
     try {
+      // 1. Update pet vaccination status fields
       await api.updatePet(pet.id, {
         vaccinationStatus: "Vaccinated",
-        lastVaccinationDate: today.toISOString().split("T")[0],
-        nextVaccinationDate: next.toISOString().split("T")[0],
+        lastVaccinationDate: todayStr,
+        nextVaccinationDate: nextStr,
       });
+      // 2. Also write a vaccination_history record so the Vaccination Card shows it
+      try {
+        await api.recordVaccination({
+          petId: pet.id,
+          dateOfVaccination: todayStr,
+          vaccineName: "Anti-Rabies Vaccine",
+          notes: "Recorded via Pet Registration",
+        });
+      } catch(vaxErr) {
+        // Non-fatal: status already updated above, history write is best-effort
+        console.warn("Could not write vaccination_history entry:", vaxErr);
+      }
       setPets(prev => prev.map(p => p.id === pet.id ? {
         ...p, vaccination_status:"Vaccinated",
-        last_vaccination_date: today.toISOString().split("T")[0],
-        next_vaccination_date: next.toISOString().split("T")[0],
+        last_vaccination_date: todayStr,
+        next_vaccination_date: nextStr,
       } : p));
     } catch(e:any) { alert("Error: " + e.message); }
     setShowVaccinate(false); setVaccinatePet(null);
@@ -2337,7 +2518,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
 
       {/* Sub-modals */}
       {showPhoto && <PetPhotoCapture petName={np.petName} onCapture={url=>{setNp(p=>({...p,photoUrl:url}));setShowPhoto(false);}} onClose={()=>setShowPhoto(false)}/>}
-      {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}}/>}
+      {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}} onUpdate={loadAll}/>}
       {viewReport && <LostFoundModal report={viewReport} all={reports} pets={pets} onClose={()=>setViewReport(null)} onResolve={handleResolve}/>}
       {vaxCardPet && (
         <VaccinationCard
