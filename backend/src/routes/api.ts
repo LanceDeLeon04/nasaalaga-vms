@@ -2424,14 +2424,26 @@ router.get('/budget/context', authenticate, async (req: AuthRequest, res: Respon
 // GET /budget/programs
 router.get('/budget/programs', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const fy = req.query.fiscal_year || 2025;
-    const programs = await query(`SELECT * FROM budget_programs WHERE fiscal_year=$1 AND is_active=true ORDER BY name`, [fy]);
-    const lineItems = await query(`SELECT * FROM budget_line_items WHERE fiscal_year=$1 ORDER BY program_id, name`, [fy]);
+    const fyParam = req.query.fiscal_year;
+    let programs: any, lineItems: any;
+    if (fyParam) {
+      // Specific year requested — try it first, fall back to all if empty
+      programs = await query(`SELECT * FROM budget_programs WHERE fiscal_year=$1 AND is_active=true ORDER BY name`, [fyParam]);
+      lineItems = await query(`SELECT * FROM budget_line_items WHERE fiscal_year=$1 ORDER BY program_id, name`, [fyParam]);
+      if (programs.rows.length === 0) {
+        programs = await query(`SELECT * FROM budget_programs WHERE is_active=true ORDER BY fiscal_year DESC, name`);
+        lineItems = await query(`SELECT * FROM budget_line_items ORDER BY program_id, name`);
+      }
+    } else {
+      // No year filter — return all active programs
+      programs = await query(`SELECT * FROM budget_programs WHERE is_active=true ORDER BY fiscal_year DESC, name`);
+      lineItems = await query(`SELECT * FROM budget_line_items ORDER BY program_id, name`);
+    }
     const result = programs.rows.map((p: any) => ({
       ...p,
       line_items: lineItems.rows.filter((li: any) => li.program_id === p.id),
     }));
-    return res.json({ programs: result, fiscal_year: Number(fy) });
+    return res.json({ programs: result, fiscal_year: fyParam ? Number(fyParam) : null });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 

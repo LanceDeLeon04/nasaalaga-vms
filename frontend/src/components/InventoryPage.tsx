@@ -94,8 +94,8 @@ function MedicineModal({ item, programs, suppliers, onClose, onSave }: {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Line Item (charge to)</label>
-                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" disabled={!lineItems.length}>
-                  <option value="">— Select Line Item —</option>
+                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className={`w-full border rounded-lg px-3 py-2 text-sm outline-none ${!form.programId ? 'border-gray-100 text-gray-400' : lineItems.length ? 'border-gray-200' : 'border-yellow-200'}`} disabled={!form.programId || !lineItems.length}>
+                  <option value="">{!form.programId ? '— Select a program first —' : lineItems.length === 0 ? '— No line items —' : '— Select Line Item —'}</option>
                   {lineItems.map((li: any) => <option key={li.id} value={li.id}>{li.name} (₱{Number(li.allotment||0).toLocaleString()})</option>)}
                 </select>
               </div>
@@ -210,8 +210,8 @@ function SupplyModal({ item, programs, suppliers, onClose, onSave }: {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Line Item</label>
-                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" disabled={!lineItems.length}>
-                  <option value="">— Select Line Item —</option>
+                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className={`w-full border rounded-lg px-3 py-2 text-sm outline-none ${!form.programId ? 'border-gray-100 text-gray-400' : lineItems.length ? 'border-gray-200' : 'border-yellow-200'}`} disabled={!form.programId || !lineItems.length}>
+                  <option value="">{!form.programId ? '— Select a program first —' : lineItems.length === 0 ? '— No line items —' : '— Select Line Item —'}</option>
                   {lineItems.map((li: any) => <option key={li.id} value={li.id}>{li.name}</option>)}
                 </select>
               </div>
@@ -517,9 +517,9 @@ function AddOrderModal({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Line Item</label>
-                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white" disabled={!lineItems.length}>
-                  <option value="">— Select —</option>
-                  {lineItems.map((li: any) => <option key={li.id} value={li.id}>{li.name}</option>)}
+                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className={`w-full border rounded-lg px-3 py-2 text-sm outline-none bg-white ${!form.programId ? 'border-gray-100 text-gray-400' : lineItems.length ? 'border-gray-200' : 'border-yellow-200 text-yellow-700'}`} disabled={!form.programId || !lineItems.length}>
+                  <option value="">{!form.programId ? '— Select a program first —' : lineItems.length === 0 ? '— No line items for this program —' : '— Select Line Item —'}</option>
+                  {lineItems.map((li: any) => <option key={li.id} value={li.id}>{li.name} {li.allotment ? `(₱${Number(li.allotment).toLocaleString()})` : ''}</option>)}
                 </select>
               </div>
             </div>
@@ -1292,7 +1292,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         api.getSuppliers().catch(() => ({ suppliers: [] })),
         api.getPendingOrders().catch(() => ({ orders: [] })),
         api.getInventoryTransactions({ limit: 500 }),
-        api.getBudgetPrograms(new Date().getFullYear()),
+        api.getBudgetPrograms(),
       ]);
       setMedicines(meds.medicines || []);
       setSupplies(sups.supplies || []);

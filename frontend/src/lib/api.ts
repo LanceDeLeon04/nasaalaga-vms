@@ -234,7 +234,7 @@ export const api = {
   getDashboardAnimalPopulation: () => request('/dashboard/animal-population'),
   getDashboardDiseaseIntel: () => request('/dashboard/disease-intel'),
   // ── Budget Utilization Module ──────────────────────────────────────────
-  getBudgetPrograms: (fy = 2025) => request(`/budget/programs?fiscal_year=${fy}`),
+  getBudgetPrograms: (fy?: number) => request(fy ? `/budget/programs?fiscal_year=${fy}` : '/budget/programs'),
   getBudgetContext: (fy = 2025) => request(`/budget/context?fiscal_year=${fy}`),
   createBudgetProgram: (data: any) => request('/budget/programs', { method: 'POST', body: JSON.stringify(data) }),
   updateBudgetProgram: (id: string, data: any) => request(`/budget/programs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
