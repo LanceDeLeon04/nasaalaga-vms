@@ -1619,7 +1619,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
   const [survey, setSurvey] = useState<SurveyData|null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"impounded"|"schedule"|"biting">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"impounded"|"biting">("overview");
   const [showImpoundForm, setShowImpoundForm] = useState(false);
   const [impoundForm, setImpoundForm] = useState({ petName:'', species:'Dog', breed:'', color:'', barangay:'', lastSeenLocation:'', description:'', impoundLocation:'', impoundOfficer:'', impoundDate:new Date().toISOString().split('T')[0] });
   const [savingImpound, setSavingImpound] = useState(false);
@@ -1663,7 +1663,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
   const [lfPetSearch, setLfPetSearch] = useState("");
   const [lfPetSuggestions, setLfPetSuggestions] = useState<Pet[]>([]);
   const [showLfPetSugg, setShowLfPetSugg] = useState(false);
-  const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",timeEnd:"",location:"",capacity:"100" });
+  const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",location:"",capacity:"100" });
 
   useEffect(() => { loadAll(); }, []);
 
@@ -1843,10 +1843,10 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
     try {
       const res = await api.createSchedule({
         barangay: schForm.barangay, date: schForm.date,
-        timeStart: schForm.time, timeEnd: schForm.timeEnd || '', venue: schForm.location, capacity: +schForm.capacity||100,
+        timeStart: schForm.time, venue: schForm.location, capacity: +schForm.capacity||100,
       });
       if (res.schedule) setSchedules(prev => [...prev, res.schedule]);
-      setSchForm({ barangay:"",date:"",time:"",timeEnd:"",location:"",capacity:"100" });
+      setSchForm({ barangay:"",date:"",time:"",location:"",capacity:"100" });
       setShowScheduleAdd(false);
     } catch(e:any) { alert("Error: " + e.message); }
     setSaving(false);
@@ -1911,7 +1911,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
           <button onClick={loadAll} className="p-2 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500"><IRefreshCw className="w-4 h-4"/></button>
           <button onClick={()=>setShowNewPet(true)} className="flex items-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl font-semibold text-sm hover:bg-[#234a85] shadow-sm transition-all hover:shadow-md"><IPlus className="w-4 h-4"/>Register Pet</button>
           <button onClick={()=>setShowLFDialog(true)} className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl font-semibold text-sm hover:bg-amber-600 shadow-sm"><IAlertCircle className="w-4 h-4"/>Report Lost/Found</button>
-          <button onClick={()=>{setActiveTab("schedule");setShowScheduleAdd(true);}} className="flex items-center gap-2 px-4 py-2 bg-[#60A85C] text-white rounded-xl font-semibold text-sm hover:bg-[#4a8a47] shadow-sm"><ICalendar className="w-4 h-4"/>Add Schedule</button>
+
         </div>
       </div>
 
@@ -1923,7 +1923,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
           ["biting","Biting Incidents",<IAlertCircle className="w-4 h-4"/>],
           ["lost-found",`Lost & Found (${openReports.length})`,<IHeart className="w-4 h-4"/>],
           ["impounded",`Impounded (${impoundedReports.length})`,<IShield className="w-4 h-4"/>],
-          ["schedule","Schedules",<ICalendar className="w-4 h-4"/>],
+
         ] as [string,string,any][]).map(([key,label,icon])=>(
           <button key={key} onClick={()=>setActiveTab(key as any)} className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${activeTab===key?"bg-[#2B5EA6] text-white shadow-sm":"text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}>
             {icon}{label}
@@ -2228,10 +2228,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
         </div>
       )}
 
-      {/* ══ SCHEDULE */}
-      {activeTab==="schedule" && (
-        <ScheduleCalendar schedules={schedules} onAdd={()=>setShowScheduleAdd(true)} onManage={s=>setManageSchedule(s)} onStatusChange={handleStatusChange}/>
-      )}
+
 
       {/* ══ BITING INCIDENTS */}
       {activeTab==="biting" && (
@@ -2503,8 +2500,7 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date *</label><input type="date" value={schForm.date} onChange={e=>setSchForm({...schForm,date:e.target.value})} className={INPUT}/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Capacity</label><input type="number" value={schForm.capacity} onChange={e=>setSchForm({...schForm,capacity:e.target.value})} className={INPUT}/></div>
               </div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time Start *</label><input value={schForm.time} onChange={e=>setSchForm({...schForm,time:e.target.value})} className={INPUT} placeholder="e.g. 8:00 AM"/></div>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time End</label><input value={schForm.timeEnd} onChange={e=>setSchForm({...schForm,timeEnd:e.target.value})} className={INPUT} placeholder="e.g. 12:00 PM"/></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Time *</label><input value={schForm.time} onChange={e=>setSchForm({...schForm,time:e.target.value})} className={INPUT} placeholder="e.g. 8:00 AM – 12:00 PM"/></div>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Location / Venue *</label><input value={schForm.location} onChange={e=>setSchForm({...schForm,location:e.target.value})} className={INPUT} placeholder="Venue name"/></div>
               <div className="flex gap-2 pt-2">
                 <button onClick={()=>setShowScheduleAdd(false)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>

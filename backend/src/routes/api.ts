@@ -151,19 +151,13 @@ router.get('/schedules', async (req, res) => {
 
 router.put('/schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, registered, notes, time_start, time_end, venue, capacity, barangay, date } = req.body;
+    const { status, registered, notes } = req.body;
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
-    if (status     !== undefined) { sets.push(`status=$${i++}`);     vals.push(status); }
+    if (status !== undefined)     { sets.push(`status=$${i++}`);     vals.push(status); }
     if (registered !== undefined) { sets.push(`registered=$${i++}`); vals.push(registered); }
-    if (notes      !== undefined) { sets.push(`notes=$${i++}`);      vals.push(notes); }
-    if (time_start !== undefined) { sets.push(`time_start=$${i++}`); vals.push(time_start); }
-    if (time_end   !== undefined) { sets.push(`time_end=$${i++}`);   vals.push(time_end); }
-    if (venue      !== undefined) { sets.push(`venue=$${i++}`);      vals.push(venue); }
-    if (capacity   !== undefined) { sets.push(`capacity=$${i++}`);   vals.push(capacity); }
-    if (barangay   !== undefined) { sets.push(`barangay=$${i++}`);   vals.push(barangay); }
-    if (date       !== undefined) { sets.push(`date=$${i++}`);       vals.push(date); }
+    if (notes !== undefined)      { sets.push(`notes=$${i++}`);      vals.push(notes); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     vals.push(req.params.id);
     const result = await query(`UPDATE vaccination_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
@@ -182,7 +176,7 @@ router.post('/schedules', authenticate, async (req: AuthRequest, res: Response) 
     const result = await query(
       `INSERT INTO vaccination_schedules (id, barangay, date, time_start, time_end, venue, capacity, registered, status, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,0,'Scheduled',$8) RETURNING *`,
-      [newId, d.barangay, d.date, d.timeStart || d.time_start, d.timeEnd || d.time_end || null, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
+      [newId, d.barangay, d.date, d.timeStart, d.timeEnd, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
     );
     return res.json({ schedule: result.rows[0] });
   } catch (err: any) {
@@ -2999,3 +2993,131 @@ router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: 
   }
 });
 
+
+// ── Appointment Schedules ──────────────────────────────────────────────────────
+router.get('/appointment-schedules', async (req, res) => {
+  try {
+    const { requestedBy, status, type } = req.query;
+    let sql = 'SELECT * FROM appointment_schedules';
+    const vals: any[] = [];
+    const conds: string[] = [];
+    if (requestedBy) { conds.push(`requested_by=$${vals.length + 1}`); vals.push(requestedBy); }
+    if (status)      { conds.push(`status=$${vals.length + 1}`);       vals.push(status); }
+    if (type)        { conds.push(`schedule_type=$${vals.length + 1}`); vals.push(type); }
+    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+    sql += ' ORDER BY date ASC, time_slot ASC';
+    const result = await query(sql, vals);
+    return res.json({ schedules: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const d = req.body;
+    const countResult = await query('SELECT COUNT(*) FROM appointment_schedules');
+    const count = parseInt(countResult.rows[0].count || '0');
+    const newId = `APPT-${String(count + 1).padStart(4, '0')}`;
+    const result = await query(
+      `INSERT INTO appointment_schedules
+        (id, schedule_type, title, date, time_slot, status, requested_by, requested_by_name,
+         notes, pet_name, pet_id, barangay, venue, capacity, is_admin_created, linked_record_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      [
+        newId,
+        d.scheduleType || d.type || 'Vaccination',
+        d.title || `${d.scheduleType || 'Appointment'} — ${d.barangay || 'CVO'}`,
+        d.date,
+        d.timeSlot || d.time_slot || '08:00',
+        d.status || 'Pending',
+        d.requestedBy || d.requested_by || null,
+        d.requestedByName || d.requested_by_name || req.user?.username || null,
+        d.notes || null,
+        d.petName || d.pet_name || null,
+        d.petId || d.pet_id || null,
+        d.barangay || null,
+        d.venue || null,
+        d.capacity || null,
+        d.isAdminCreated ?? d.is_admin_created ?? false,
+        d.linkedRecordId || d.linked_record_id || null,
+        req.user?.username || null,
+      ]
+    );
+    return res.json({ schedule: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const d = req.body;
+    const sets: string[] = [];
+    const vals: any[] = [];
+    let i = 1;
+    const allowed = ['status','title','date','time_slot','notes','barangay','venue','capacity','schedule_type'];
+    const map: Record<string, string> = {
+      status: 'status', title: 'title', date: 'date',
+      timeSlot: 'time_slot', time_slot: 'time_slot', notes: 'notes',
+      barangay: 'barangay', venue: 'venue', capacity: 'capacity',
+      scheduleType: 'schedule_type', schedule_type: 'schedule_type',
+    };
+    for (const [key, col] of Object.entries(map)) {
+      if (d[key] !== undefined && allowed.includes(col)) {
+        sets.push(`${col}=$${i++}`); vals.push(d[key]);
+      }
+    }
+    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    vals.push(req.params.id);
+    const result = await query(
+      `UPDATE appointment_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    return res.json({ schedule: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/appointment-schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Unavailable Blocks ─────────────────────────────────────────────────────────
+router.get('/unavailable-blocks', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query('SELECT * FROM unavailable_blocks ORDER BY date ASC, time_start ASC');
+    return res.json({ blocks: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/unavailable-blocks', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId, userName, date, timeStart, timeEnd, reason } = req.body;
+    const result = await query(
+      `INSERT INTO unavailable_blocks (user_id, user_name, date, time_start, time_end, reason)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [userId || req.user?.id, userName || req.user?.username, date, timeStart, timeEnd, reason || null]
+    );
+    return res.json({ block: result.rows[0] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/unavailable-blocks/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM unavailable_blocks WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});

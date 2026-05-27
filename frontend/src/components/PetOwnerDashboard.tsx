@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
-import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList, MessageSquare } from 'lucide-react';
+import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList, MessageSquare, CalendarClock } from 'lucide-react';
 import { toast } from 'sonner';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
 import { CVOServicesShared } from './CVOServicesShared';
 import { UserFeedback } from './UserFeedback';
 import { PetPreRegistration } from './PetPreRegistration';
 import { VaccinationCard } from './VaccinationCard';
+import { ScheduleModule } from './ScheduleModule';
+import { PreRegistrationModule } from './PreRegistrationModule';
 import { api } from '../lib/api';
 import type { User as UserType } from '../App';
 
@@ -71,7 +73,7 @@ interface Notification {
 }
 
 export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'feedback'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'feedback' | 'schedule'>('dashboard');
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [showPetDetails, setShowPetDetails] = useState(false);
   const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
@@ -968,6 +970,17 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               </button>
               <button
                 onClick={() => {
+                  setActiveSection('schedule');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
+                  activeSection === 'schedule' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                My Schedule
+              </button>
+              <button
+                onClick={() => {
                   setActiveSection('feedback');
                   setIsMobileMenuOpen(false);
                 }}
@@ -1058,6 +1071,17 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               CVO Services
             </button>
             <button
+              onClick={() => setActiveSection('schedule')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
+                activeSection === 'schedule'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <CalendarClock className="w-3.5 h-3.5" />
+              Schedule
+            </button>
+            <button
               onClick={() => setActiveSection('feedback')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
                 activeSection === 'feedback'
@@ -1091,6 +1115,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         {activeSection === 'cvoservices' && renderCVOServices()}
         {activeSection === 'feedback' && (
           <UserFeedback user={user} />
+        )}
+        {activeSection === 'schedule' && (
+          <ScheduleModule user={user} />
         )}
         {activeSection === 'profile' && (
           <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />

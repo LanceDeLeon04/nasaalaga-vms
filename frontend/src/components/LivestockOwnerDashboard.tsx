@@ -4,7 +4,8 @@ import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { UserFeedback } from './UserFeedback';
-import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare } from 'lucide-react';
+import { ScheduleModule } from './ScheduleModule';
+import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare, CalendarClock } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
 
@@ -35,7 +36,7 @@ interface Notification {
 }
 
 export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback' | 'schedule'>('dashboard');
   const [selectedLivestock, setSelectedLivestock] = useState<Livestock | null>(null);
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -646,6 +647,17 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
               Profile
             </button>
             <button
+              onClick={() => setActiveSection('schedule')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
+                activeSection === 'schedule'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <CalendarClock className="w-3.5 h-3.5" />
+              Schedule
+            </button>
+            <button
               onClick={() => setActiveSection('feedback')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-1.5 ${
                 activeSection === 'feedback'
@@ -674,6 +686,9 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
           <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
         )}
         {activeSection === 'notifications' && renderNotifications()}
+        {activeSection === 'schedule' && (
+          <ScheduleModule user={user} />
+        )}
         {activeSection === 'feedback' && (
           <UserFeedback user={user} />
         )}

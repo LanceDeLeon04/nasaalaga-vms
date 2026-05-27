@@ -282,6 +282,29 @@ export const api = {
   // AI proxy — routes through backend to avoid CORS
   aiAnalyze: (prompt: string) =>
     request('/ai/analyze', { method: 'POST', body: JSON.stringify({ prompt }) }),
+
+  // Appointment Schedules (new full-featured scheduling system)
+  getAppointmentSchedules: (params?: { requestedBy?: string; status?: string; type?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.requestedBy) p.set('requestedBy', params.requestedBy);
+    if (params?.status)      p.set('status',      params.status);
+    if (params?.type)        p.set('type',         params.type);
+    const qs = p.toString();
+    return request('/appointment-schedules' + (qs ? '?' + qs : ''));
+  },
+  createAppointmentSchedule: (data: any) =>
+    request('/appointment-schedules', { method: 'POST', body: JSON.stringify(data) }),
+  updateAppointmentSchedule: (id: string, data: any) =>
+    request('/appointment-schedules/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAppointmentSchedule: (id: string) =>
+    request('/appointment-schedules/' + id, { method: 'DELETE' }),
+
+  // Unavailable blocks
+  getUnavailableBlocks: () => request('/unavailable-blocks'),
+  createUnavailableBlock: (data: any) =>
+    request('/unavailable-blocks', { method: 'POST', body: JSON.stringify(data) }),
+  deleteUnavailableBlock: (id: string) =>
+    request('/unavailable-blocks/' + id, { method: 'DELETE' }),
 };
 
 export default api;

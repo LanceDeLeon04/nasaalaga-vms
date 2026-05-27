@@ -861,6 +861,45 @@ export async function migrateBudget() {
       );
     `);
 
+    // Appointment schedules (full-featured scheduling — individual appointments + admin events)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS appointment_schedules (
+        id VARCHAR(50) PRIMARY KEY,
+        schedule_type VARCHAR(50) NOT NULL DEFAULT 'Vaccination',
+        title VARCHAR(255) NOT NULL,
+        date DATE NOT NULL,
+        time_slot VARCHAR(10) NOT NULL DEFAULT '08:00',
+        status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+        requested_by VARCHAR(255),
+        requested_by_name VARCHAR(255),
+        notes TEXT,
+        pet_name VARCHAR(255),
+        pet_id VARCHAR(50),
+        barangay VARCHAR(255),
+        venue VARCHAR(255),
+        capacity INTEGER,
+        is_admin_created BOOLEAN DEFAULT FALSE,
+        linked_record_id VARCHAR(50),
+        created_by VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Unavailable blocks — admin/staff mark when they can't take appointments
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS unavailable_blocks (
+        id SERIAL PRIMARY KEY,
+        user_id VARCHAR(255),
+        user_name VARCHAR(255),
+        date DATE NOT NULL,
+        time_start VARCHAR(10) NOT NULL,
+        time_end VARCHAR(10) NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS budget_ai_recommendations (
         id VARCHAR(50) PRIMARY KEY,

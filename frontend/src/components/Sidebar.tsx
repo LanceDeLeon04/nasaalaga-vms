@@ -1,7 +1,8 @@
 import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
-  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign, UserCircle
+  ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign, UserCircle,
+  CalendarClock
 } from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 import { useState, useEffect } from 'react';
@@ -27,8 +28,8 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'rabies'      as ActiveView, label: 'Pets Management',  icon: PawPrint,    roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'vaccination' as ActiveView, label: 'Vaccination',       icon: Syringe,     roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'preregistered' as ActiveView, label: 'Pre-Registered Pets', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'livestock-prereg' as ActiveView, label: 'Livestock Pre-Reg', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'pre-registration' as ActiveView, label: 'Pre-Registration', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'schedule' as ActiveView, label: 'Schedule',           icon: CalendarClock, roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin'] },

@@ -290,21 +290,21 @@ const seed = async () => {
 
     // ── Vaccination Schedules ──────────────────────────────────────────────
     const schedules = [
-      { id: 'SCH-001', barangay: 'Poblacion 1',       date: '2026-06-10', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 50, registered: 12, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-002', barangay: 'Poblacion 3',       date: '2026-06-15', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Community Center',           capacity: 40, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-003', barangay: 'Balimbing',         date: '2026-06-18', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Sitio Covered Court',        capacity: 30, registered:  5, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-004', barangay: 'Bambang',           date: '2026-06-20', time_start: '01:00 PM', time_end: '05:00 PM', venue: 'Multi-Purpose Hall',         capacity: 35, registered:  7, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-005', barangay: 'Poblacion 5',       date: '2026-07-02', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Health Center Compound',    capacity: 60, registered: 22, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-006', barangay: 'Quisumbing',        date: '2026-04-10', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Plaza',             capacity: 25, registered: 25, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-007', barangay: 'Salong',            date: '2026-04-12', time_start: '09:00 AM', time_end: '12:00 PM', venue: 'Elementary School Grounds', capacity: 30, registered: 28, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-008', barangay: 'Dacanlao',          date: '2026-06-25', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  4, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-009', barangay: 'Bisaya',            date: '2026-06-28', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Covered Court',             capacity: 25, registered:  6, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-010', barangay: 'Cahil',             date: '2026-07-05', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Multi-Purpose Hall',        capacity: 20, registered:  3, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-011', barangay: 'Talisay',           date: '2026-07-08', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Plaza',            capacity: 40, registered: 11, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-012', barangay: 'San Rafael',        date: '2026-07-12', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
-      { id: 'SCH-013', barangay: 'Sinisian',          date: '2026-07-15', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Purok 2 Covered Court',    capacity: 25, registered:  2, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-014', barangay: 'Poblacion 2',       date: '2026-04-05', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Covered Basketball Court', capacity: 45, registered: 45, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
-      { id: 'SCH-015', barangay: 'Puting Bato East',  date: '2026-05-10', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Hall',             capacity: 20, registered: 17, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-001', barangay: 'Poblacion 1',      date: '2025-05-15', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 50, registered: 12, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-002', barangay: 'Poblacion 3',      date: '2025-05-20', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Community Center',           capacity: 40, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-003', barangay: 'Balimbing',        date: '2025-05-22', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Sitio Covered Court',        capacity: 30, registered:  5, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-004', barangay: 'Bambang',          date: '2025-05-25', time_start: '01:00 PM', time_end: '05:00 PM', venue: 'Multi-Purpose Hall',         capacity: 35, registered:  7, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-005', barangay: 'Poblacion 5',      date: '2025-06-05', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Health Center Compound',    capacity: 60, registered: 22, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-006', barangay: 'Quisumbing',       date: '2025-04-10', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Plaza',             capacity: 25, registered: 25, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-007', barangay: 'Salong',           date: '2025-04-12', time_start: '09:00 AM', time_end: '12:00 PM', venue: 'Elementary School Grounds', capacity: 30, registered: 28, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-008', barangay: 'Dacanlao',         date: '2025-05-28', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  4, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-009', barangay: 'Bisaya',           date: '2025-05-29', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Covered Court',             capacity: 25, registered:  6, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-010', barangay: 'Cahil',            date: '2025-06-02', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Multi-Purpose Hall',        capacity: 20, registered:  3, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-011', barangay: 'Talisay',          date: '2025-06-07', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Barangay Plaza',            capacity: 40, registered: 11, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-012', barangay: 'San Rafael',       date: '2025-06-10', time_start: '09:00 AM', time_end: '01:00 PM', venue: 'Barangay Hall',             capacity: 30, registered:  8, status: 'Scheduled', created_by: 'BAHW Miguel Sanchez' },
+      { id: 'SCH-013', barangay: 'Sinisian',         date: '2025-06-12', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Purok 2 Covered Court',    capacity: 25, registered:  2, status: 'Scheduled', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-014', barangay: 'Poblacion 2',      date: '2025-04-05', time_start: '08:00 AM', time_end: '12:00 PM', venue: 'Covered Basketball Court', capacity: 45, registered: 45, status: 'Completed', created_by: 'Dr. Amalia Vergara' },
+      { id: 'SCH-015', barangay: 'Puting Bato East',date: '2025-04-18', time_start: '08:00 AM', time_end: '11:00 AM', venue: 'Barangay Hall',             capacity: 20, registered: 17, status: 'Completed', created_by: 'BAHW Miguel Sanchez' },
     ];
 
     for (const s of schedules) {
@@ -316,6 +316,53 @@ const seed = async () => {
       );
     }
     console.log(`  ✓ Vaccination schedules seeded (${schedules.length})`);
+
+    // ── Appointment Schedules (individual + admin events) ─────────────────
+    const today = new Date();
+    const addDays = (n: number) => {
+      const d = new Date(today); d.setDate(d.getDate() + n);
+      return d.toISOString().split('T')[0];
+    };
+
+    const appointmentSchedules = [
+      // Admin-created community vaccination drives (upcoming)
+      { id: 'APPT-001', schedule_type: 'Vaccination', title: 'Rabies Vaccination Drive — Poblacion 1',       date: addDays(3),  time_slot: '08:00', status: 'Confirmed', is_admin_created: true, barangay: 'Poblacion 1',   venue: 'Barangay Hall', capacity: 30, requested_by_name: 'Admin' },
+      { id: 'APPT-002', schedule_type: 'Vaccination', title: 'Anti-Rabies Drive — Bambang',                  date: addDays(5),  time_slot: '09:00', status: 'Confirmed', is_admin_created: true, barangay: 'Bambang',       venue: 'Covered Court', capacity: 25, requested_by_name: 'Admin' },
+      { id: 'APPT-003', schedule_type: 'Vaccination', title: 'Vaccination Drive — Balimbing',                date: addDays(7),  time_slot: '08:00', status: 'Confirmed', is_admin_created: true, barangay: 'Balimbing',     venue: 'Sitio Covered Court', capacity: 20, requested_by_name: 'Dr. Amalia Vergara' },
+      { id: 'APPT-004', schedule_type: 'Intervention', title: 'North Zone Intervention Response',            date: addDays(4),  time_slot: '07:00', status: 'Confirmed', is_admin_created: true, barangay: 'Niyugan',       venue: 'Barangay Plaza', capacity: null, requested_by_name: 'Admin' },
+      { id: 'APPT-005', schedule_type: 'Outbreak',    title: 'Rabies Outbreak Response — Dacanlao',          date: addDays(1),  time_slot: '08:00', status: 'Confirmed', is_admin_created: true, barangay: 'Dacanlao',      venue: 'Barangay Hall', capacity: null, notes: 'Rapid response team deployed', requested_by_name: 'Admin' },
+      // Pet owner appointment requests
+      { id: 'APPT-006', schedule_type: 'Vaccination', title: 'Anti-Rabies Vaccine — Brownie',                date: addDays(2),  time_slot: '10:00', status: 'Pending',   is_admin_created: false, pet_name: 'Brownie', requested_by_name: 'Maria Santos' },
+      { id: 'APPT-007', schedule_type: 'Checkup',     title: 'Regular Checkup — Buddy',                      date: addDays(3),  time_slot: '08:00', status: 'Confirmed', is_admin_created: false, pet_name: 'Buddy',   requested_by_name: 'Juan dela Cruz' },
+      { id: 'APPT-008', schedule_type: 'Spay/Neuter', title: 'Spay Operation — Kitty',                       date: addDays(6),  time_slot: '09:15', status: 'Pending',   is_admin_created: false, pet_name: 'Kitty',   requested_by_name: 'Maria Santos' },
+      { id: 'APPT-009', schedule_type: 'Vaccination', title: 'Anti-Rabies Vaccine — Puffy',                  date: addDays(2),  time_slot: '09:15', status: 'Pending',   is_admin_created: false, pet_name: 'Puffy',   requested_by_name: 'Ana Reyes' },
+      { id: 'APPT-010', schedule_type: 'Checkup',     title: 'Wellness Check — Max',                         date: addDays(5),  time_slot: '14:00', status: 'Pending',   is_admin_created: false, pet_name: 'Max',     requested_by_name: 'Pedro Garcia' },
+      { id: 'APPT-011', schedule_type: 'Vaccination', title: 'Annual Vaccine — Choco',                       date: addDays(8),  time_slot: '11:00', status: 'Pending',   is_admin_created: false, pet_name: 'Choco',   requested_by_name: 'Rosa Dela Cruz' },
+      // Completed
+      { id: 'APPT-012', schedule_type: 'Vaccination', title: 'Rabies Vaccine — Lucky',                       date: addDays(-5), time_slot: '09:00', status: 'Completed', is_admin_created: false, pet_name: 'Lucky',   requested_by_name: 'Carlos Mendoza' },
+      { id: 'APPT-013', schedule_type: 'Checkup',     title: 'Annual Checkup — Snowy',                       date: addDays(-3), time_slot: '08:00', status: 'Completed', is_admin_created: false, pet_name: 'Snowy',   requested_by_name: 'Elena Santos' },
+      // Admin vaccination drive — today
+      { id: 'APPT-014', schedule_type: 'Vaccination', title: 'Today Vaccination Drive — Poblacion 3',        date: addDays(0),  time_slot: '08:00', status: 'Confirmed', is_admin_created: true, barangay: 'Poblacion 3', venue: 'Community Center', capacity: 40, requested_by_name: 'BAHW Miguel Sanchez' },
+    ];
+
+    for (const s of appointmentSchedules) {
+      await client.query(
+        `INSERT INTO appointment_schedules
+          (id, schedule_type, title, date, time_slot, status, requested_by, requested_by_name,
+           notes, pet_name, pet_id, barangay, venue, capacity, is_admin_created, linked_record_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          s.id, s.schedule_type, s.title, s.date, s.time_slot, s.status,
+          (s as any).requested_by || null, (s as any).requested_by_name || null,
+          (s as any).notes || null, (s as any).pet_name || null, (s as any).pet_id || null,
+          (s as any).barangay || null, (s as any).venue || null,
+          (s as any).capacity || null, s.is_admin_created, null, (s as any).requested_by_name || null
+        ]
+      );
+    }
+    console.log(`  ✓ Appointment schedules seeded (${appointmentSchedules.length})`);
+
 
     // ── Livestock Stats by Barangay ────────────────────────────────────────
     const livestockStats = [
@@ -808,174 +855,6 @@ const seed = async () => {
       );
     }
     console.log(`  ✓ Feedback seeded (${feedbacks.length})`);
-
-    // ── Seed pet pre-registrations (linked to real owner accounts) ──────────
-    const petPreRegs = [
-      {
-        pre_reg_number: 'PRE-2026-0001',
-        owner_id:       'OWNER-001',
-        pet_name:       'Nemo',
-        species:        'Dog',
-        breed:          'Aspin',
-        age:            '1',
-        color:          'Brown/White',
-        gender:         'Male',
-        owner_name:     'Cyrus Cruz',
-        contact_number: '09171234567',
-        owner_email:    'cyrus.cruz@gmail.com',
-        barangay:       'Poblacion 1',
-        address:        '123 Main Street, Poblacion 1',
-        photo:          null,
-        status:         'Pending',
-        submitted_date: new Date(Date.now() - 2 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 12 * 24*60*60*1000).toISOString(),
-      },
-      {
-        pre_reg_number: 'PRE-2026-0002',
-        owner_id:       'OWNER-001',
-        pet_name:       'Kitkat',
-        species:        'Cat',
-        breed:          'Puspin',
-        age:            '2',
-        color:          'Orange',
-        gender:         'Female',
-        owner_name:     'Cyrus Cruz',
-        contact_number: '09171234567',
-        owner_email:    'cyrus.cruz@gmail.com',
-        barangay:       'Poblacion 1',
-        address:        '123 Main Street, Poblacion 1',
-        photo:          null,
-        status:         'Pending',
-        submitted_date: new Date(Date.now() - 5 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 9 * 24*60*60*1000).toISOString(),
-      },
-      {
-        pre_reg_number: 'PRE-2026-0003',
-        owner_id:       'OWNER-002',
-        pet_name:       'Bantay',
-        species:        'Dog',
-        breed:          'German Shepherd Mix',
-        age:            '3',
-        color:          'Black/Tan',
-        gender:         'Male',
-        owner_name:     'Aeden Aranez',
-        contact_number: '09182345678',
-        owner_email:    'aeden.aranez@gmail.com',
-        barangay:       'Poblacion 5',
-        address:        'Farm Road, Barangay 5',
-        photo:          null,
-        status:         'Pending',
-        submitted_date: new Date(Date.now() - 1 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 13 * 24*60*60*1000).toISOString(),
-      },
-      {
-        pre_reg_number: 'PRE-2026-0004',
-        owner_id:       null,
-        pet_name:       'Tisoy',
-        species:        'Dog',
-        breed:          'Shih Tzu',
-        age:            '1',
-        color:          'White/Gray',
-        gender:         'Male',
-        owner_name:     'Maria Lourdes Santos',
-        contact_number: '09209876543',
-        owner_email:    'ml.santos@gmail.com',
-        barangay:       'Bambang',
-        address:        'Purok 3, Bambang',
-        photo:          null,
-        status:         'Pending',
-        submitted_date: new Date(Date.now() - 3 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 11 * 24*60*60*1000).toISOString(),
-      },
-      {
-        pre_reg_number: 'PRE-2026-0005',
-        owner_id:       null,
-        pet_name:       'Princess',
-        species:        'Cat',
-        breed:          'Persian Mix',
-        age:            '4',
-        color:          'White',
-        gender:         'Female',
-        owner_name:     'Roberto Dela Cruz',
-        contact_number: '09351234567',
-        owner_email:    null,
-        barangay:       'Cahil',
-        address:        'Zone 4, Cahil',
-        photo:          null,
-        status:         'Pending',
-        submitted_date: new Date(Date.now() - 10 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 4 * 24*60*60*1000).toISOString(),
-      },
-      {
-        pre_reg_number: 'PRE-2026-0006',
-        owner_id:       null,
-        pet_name:       'Thunder',
-        species:        'Dog',
-        breed:          'Labrador Retriever',
-        age:            '2',
-        color:          'Black',
-        gender:         'Male',
-        owner_name:     'Elena Macaraeg',
-        contact_number: '09278765432',
-        owner_email:    'elena.m@gmail.com',
-        barangay:       'Balimbing',
-        address:        'Sitio 2, Balimbing',
-        photo:          null,
-        status:         'Approved',
-        submitted_date: new Date(Date.now() - 20 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() + 0).toISOString(),
-        approved_date:  new Date(Date.now() - 8 * 24*60*60*1000).toISOString(),
-        pet_id:         'GRY-000-00010',
-        pet_tag_id:     'GRY-0010',
-      },
-      {
-        pre_reg_number: 'PRE-2026-0007',
-        owner_id:       null,
-        pet_name:       'Pogi',
-        species:        'Dog',
-        breed:          'Aspin',
-        age:            '5',
-        color:          'Brown',
-        gender:         'Male',
-        owner_name:     'Jayson Reyes',
-        contact_number: '09123456789',
-        owner_email:    null,
-        barangay:       'Bisaya',
-        address:        'Sitio Bayanan',
-        photo:          null,
-        status:         'Denied',
-        submitted_date: new Date(Date.now() - 15 * 24*60*60*1000).toISOString(),
-        expires_at:     new Date(Date.now() - 1 * 24*60*60*1000).toISOString(),
-        denied_date:    new Date(Date.now() - 5 * 24*60*60*1000).toISOString(),
-        denial_reason:  'Incomplete information submitted. Please provide a valid contact number and complete address.',
-      },
-    ];
-
-    for (const pr of petPreRegs) {
-      await client.query(
-        `INSERT INTO pet_pre_registrations
-           (pre_reg_number, owner_id, pet_name, species, breed, age, color, gender,
-            owner_name, contact_number, owner_email, barangay, address, photo,
-            status, submitted_date, expires_at, approved_date, denied_date,
-            denial_reason, pet_id, pet_tag_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-         ON CONFLICT (pre_reg_number) DO NOTHING`,
-        [
-          pr.pre_reg_number, pr.owner_id, pr.pet_name, pr.species, pr.breed,
-          pr.age, pr.color, pr.gender, pr.owner_name, pr.contact_number,
-          pr.owner_email || null, pr.barangay, pr.address, pr.photo || null,
-          pr.status,
-          pr.submitted_date,
-          pr.expires_at,
-          (pr as any).approved_date || null,
-          (pr as any).denied_date   || null,
-          (pr as any).denial_reason || null,
-          (pr as any).pet_id        || null,
-          (pr as any).pet_tag_id    || null,
-        ]
-      );
-    }
-    console.log(`  ✓ Pet pre-registrations seeded (${petPreRegs.length})`);
 
     await client.query('COMMIT');
     console.log('\n✅ Seed complete!');

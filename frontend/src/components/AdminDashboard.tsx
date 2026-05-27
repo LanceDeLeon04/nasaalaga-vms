@@ -19,6 +19,8 @@ import { SuperAdminSettings } from './SuperAdminSettings';
 import { InventoryPage } from './InventoryPage';
 import { VaccinationModule } from './VaccinationModule';
 import { BudgetUtilization } from './BudgetUtilization';
+import { PreRegistrationModule } from './PreRegistrationModule';
+import { ScheduleModule } from './ScheduleModule';
 import { Footer } from './Footer';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { User } from '../App';
@@ -32,7 +34,8 @@ export type ActiveView =
   | 'dashboard' | 'livestock' | 'rabies' | 'preregistered'
   | 'outbreak'  | 'services'  | 'reports'| 'users'
   | 'audit'     | 'feedback'  | 'wildlife'| 'inventory'
-  | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg' | 'my-profile';
+  | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg' | 'my-profile'
+  | 'pre-registration' | 'schedule';
 
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -49,6 +52,8 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'budget':        return <BudgetUtilization userRole={user.role} />;
       case 'preregistered': return <PreRegisteredPets />;
       case 'livestock-prereg': return <LivestockPreRegistration userRole={user.role} />;
+      case 'pre-registration': return <PreRegistrationModule user={user} />;
+      case 'schedule':   return <ScheduleModule user={user} />;
       case 'my-profile': return <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />;
       case 'outbreak':     return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':     return <CVOServicesShared userRole={user.role} />;

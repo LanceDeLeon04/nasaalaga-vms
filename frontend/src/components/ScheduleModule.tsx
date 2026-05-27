@@ -93,22 +93,32 @@ function getTodayStr() {
   return new Date().toISOString().split('T')[0];
 }
 
-// ─── MOCK DATA (replace with API when backend ready) ─────────────────────────
+// ─── DB → frontend mapper ─────────────────────────────────────────────────────
 
-function buildMockSchedules(): ScheduleEntry[] {
-  const today = new Date();
-  const toStr = (d: Date) => d.toISOString().split('T')[0];
-  const addDays = (n: number) => { const d = new Date(today); d.setDate(d.getDate() + n); return d; };
-  return [
-    { id:'SCH-001', type:'Vaccination',   title:'Rabies Vaccination Drive',       date:toStr(addDays(2)),  timeSlot:'09:00', status:'Confirmed',  isAdminCreated:true,  barangay:'Poblacion 1', venue:'Brgy Hall', capacity:20, requestedByName:'Admin' },
-    { id:'SCH-002', type:'Vaccination',   title:'Anti-Rabies Vaccine',            date:toStr(addDays(1)),  timeSlot:'10:00', status:'Pending',    requestedBy:'u2',     requestedByName:'Maria Santos', petName:'Brownie', petId:'BLU-0001' },
-    { id:'SCH-003', type:'Checkup',       title:'Regular Checkup — Buddy',        date:toStr(addDays(3)),  timeSlot:'08:00', status:'Confirmed',  requestedBy:'u3',     requestedByName:'Juan dela Cruz', petName:'Buddy' },
-    { id:'SCH-004', type:'Spay/Neuter',   title:'Spay — Kitty',                   date:toStr(addDays(4)),  timeSlot:'09:15', status:'Pending',    requestedBy:'u2',     requestedByName:'Maria Santos', petName:'Kitty' },
-    { id:'SCH-005', type:'Intervention',  title:'Calaca North Zone Intervention', date:toStr(addDays(5)),  timeSlot:'07:00', status:'Confirmed',  isAdminCreated:true,  barangay:'Bambang', venue:'Bambang Covered Court' },
-    { id:'SCH-006', type:'Outbreak',      title:'Rabies Outbreak Response',       date:toStr(today),       timeSlot:'08:00', status:'Confirmed',  isAdminCreated:true,  barangay:'Dacanlao', notes:'Completion deadline: next week' },
-    { id:'SCH-007', type:'Vaccination',   title:'Pet Vaccine — Puffy',            date:toStr(addDays(2)),  timeSlot:'09:15', status:'Pending',    requestedBy:'u4',     requestedByName:'Ana Reyes',  petName:'Puffy' },
-    { id:'SCH-008', type:'Checkup',       title:'Wellness Check — Max',           date:toStr(addDays(6)),  timeSlot:'14:00', status:'Pending',    requestedBy:'u5',     requestedByName:'Pedro Garcia', petName:'Max' },
-  ];
+function mapDbSchedule(row: any): ScheduleEntry {
+  // Normalize date to YYYY-MM-DD
+  const rawDate = row.date ? String(row.date).split('T')[0] : '';
+  // Normalize time_slot — strip AM/PM suffixes that may come from old vaccination_schedules rows
+  const rawTime = row.time_slot || row.time_start || '08:00';
+  const normalizedTime = rawTime.replace(/\s*(AM|PM)$/i, '').trim();
+  return {
+    id: row.id,
+    type: (row.schedule_type || row.type || 'Vaccination') as ScheduleType,
+    title: row.title || `${row.schedule_type || 'Vaccination'} — ${row.barangay || 'CVO'}`,
+    date: rawDate,
+    timeSlot: normalizedTime,
+    status: (row.status === 'Scheduled' ? 'Confirmed' : row.status) as ScheduleEntry['status'],
+    requestedBy: row.requested_by || row.owner_id || undefined,
+    requestedByName: row.requested_by_name || row.created_by || undefined,
+    notes: row.notes || undefined,
+    petName: row.pet_name || undefined,
+    petId: row.pet_id || undefined,
+    barangay: row.barangay || undefined,
+    venue: row.venue || undefined,
+    capacity: row.capacity ? Number(row.capacity) : undefined,
+    isAdminCreated: row.is_admin_created ?? (!row.requested_by),
+    linkedRecordId: row.linked_record_id || undefined,
+  };
 }
 
 // ─── REQUEST FORM MODAL ───────────────────────────────────────────────────────
@@ -572,8 +582,9 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const isAdmin = ['admin','superadmin','bahw'].includes(user.role || '');
   const isNonAdmin = !isAdmin;
 
-  const [schedules, setSchedules] = useState<ScheduleEntry[]>(buildMockSchedules());
+  const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
   const [unavailableBlocks, setUnavailableBlocks] = useState<UnavailableBlock[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
   const [activeView, setActiveView] = useState<'calendar' | 'list'>('calendar');
   const [filterType, setFilterType] = useState<'all' | ScheduleType>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | string>('all');
@@ -581,6 +592,44 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const [showUnavailableModal, setShowUnavailableModal] = useState(false);
   const [showAdminAddModal, setShowAdminAddModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // ── Fetch from DB ─────────────────────────────────────────────────────────
+  useEffect(() => { fetchSchedules(); fetchUnavailableBlocks(); }, []);
+
+  const fetchSchedules = async () => {
+    setLoadingSchedules(true);
+    try {
+      // Fetch both appointment_schedules and vaccination_schedules (community drives)
+      const [apptData, vaccData] = await Promise.all([
+        api.getAppointmentSchedules().catch(() => ({ schedules: [] })),
+        api.getSchedules().catch(() => ({ schedules: [] })),
+      ]);
+      const apptRows: ScheduleEntry[] = (apptData.schedules || []).map(mapDbSchedule);
+      const vaccRows: ScheduleEntry[] = (vaccData.schedules || []).map((row: any) => ({
+        ...mapDbSchedule(row),
+        type: 'Vaccination' as ScheduleType,
+        isAdminCreated: true,
+      }));
+      // Merge, de-duplicate by id
+      const seen = new Set<string>();
+      const merged: ScheduleEntry[] = [];
+      for (const s of [...apptRows, ...vaccRows]) {
+        if (!seen.has(s.id)) { seen.add(s.id); merged.push(s); }
+      }
+      setSchedules(merged);
+    } catch {
+      // silent — show empty state
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  const fetchUnavailableBlocks = async () => {
+    try {
+      const data = await api.getUnavailableBlocks();
+      setUnavailableBlocks(data.blocks || []);
+    } catch { /* silent */ }
+  };
 
   // Non-admins only see their own schedules
   const visibleSchedules = isAdmin
@@ -603,20 +652,55 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
     s.date >= today && s.date <= nextWeek && s.status !== 'Cancelled'
   ).sort((a,b) => a.date.localeCompare(b.date) || a.timeSlot.localeCompare(b.timeSlot));
 
-  const handleAddSchedule = (entry: Omit<ScheduleEntry, 'id'>) => {
-    const id = `SCH-${String(schedules.length + 1).padStart(3,'0')}`;
-    setSchedules(prev => [...prev, { ...entry, id }]);
+  const handleAddSchedule = async (entry: Omit<ScheduleEntry, 'id'>) => {
+    try {
+      const payload = {
+        scheduleType: entry.type,
+        title: entry.title,
+        date: entry.date,
+        timeSlot: entry.timeSlot,
+        status: entry.status,
+        requestedBy: entry.requestedBy,
+        requestedByName: entry.requestedByName,
+        notes: entry.notes,
+        petName: entry.petName,
+        petId: entry.petId,
+        barangay: entry.barangay,
+        venue: entry.venue,
+        capacity: entry.capacity,
+        isAdminCreated: entry.isAdminCreated ?? true,
+        linkedRecordId: entry.linkedRecordId,
+      };
+      const data = await api.createAppointmentSchedule(payload);
+      const saved = mapDbSchedule(data.schedule || data);
+      setSchedules(prev => [...prev, saved]);
+    } catch {
+      // Optimistic fallback
+      const id = `SCH-${String(schedules.length + 1).padStart(3,'0')}`;
+      setSchedules(prev => [...prev, { ...entry, id }]);
+    }
   };
 
-  const handleStatusChange = (id: string, status: ScheduleEntry['status']) => {
+  const handleStatusChange = async (id: string, status: ScheduleEntry['status']) => {
+    // Optimistic update
     setSchedules(prev => prev.map(s => s.id === id ? { ...s, status } : s));
     toast.success(`Schedule marked as ${status}`);
+    try {
+      // Try appointment_schedules first, fallback to vaccination_schedules
+      await api.updateAppointmentSchedule(id, { status }).catch(() =>
+        api.updateSchedule(id, { status })
+      );
+    } catch { /* already updated optimistically */ }
   };
 
-  const handleDeleteUnavail = (id: string) => {
+  const handleDeleteUnavail = async (id: string) => {
     setUnavailableBlocks(prev => prev.filter(b => b.id !== id));
     toast.success('Unavailability removed');
+    try { await api.deleteUnavailableBlock(id); } catch { /* silent */ }
   };
+
+  // Loading state used in header badge
+  const isLoading = loadingSchedules;
 
   // Stats
   const totalUpcoming = upcomingSchedules.length;
