@@ -770,6 +770,21 @@ export const createTables = async () => {
       ON CONFLICT (id) DO NOTHING;
     `);
 
+    // ── User ID sequence (prevents duplicate key on signup) ──────────────────
+    // Using a sequence instead of COUNT(*) ensures atomic, gap-safe ID generation
+    // even when users are deleted or concurrent signups occur.
+    await client.query(`CREATE SEQUENCE IF NOT EXISTS users_id_seq START 1;`);
+    // Sync sequence to the current max numeric ID so we never re-use existing IDs
+    await client.query(`
+      SELECT setval(
+        'users_id_seq',
+        COALESCE(
+          (SELECT MAX(CAST(NULLIF(regexp_replace(id, '[^0-9]', '', 'g'), '') AS INTEGER)) FROM users),
+          0
+        )
+      );
+    `);
+
     await client.query('COMMIT');
     console.log('✅ All tables created successfully');
   } catch (err) {

@@ -28,7 +28,9 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'rabies'      as ActiveView, label: 'Pets Management',  icon: PawPrint,    roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'vaccination' as ActiveView, label: 'Vaccination',       icon: Syringe,     roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'pre-registration' as ActiveView, label: 'Pre-Registration', icon: ClipboardList, roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
+    { id: 'preregistered' as ActiveView, label: 'Pet Pre-Reg Review', icon: ClipboardList, roles: ['admin', 'superadmin', 'cvoStaff'] },
+    { id: 'livestock-prereg' as ActiveView, label: 'Livestock Pre-Reg Review', icon: ClipboardList, roles: ['admin', 'superadmin', 'cvoStaff'] },
+    { id: 'pre-registration' as ActiveView, label: 'Pre-Registration', icon: ClipboardList, roles: ['bahw'] },
     { id: 'schedule' as ActiveView, label: 'Schedule',           icon: CalendarClock, roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
@@ -70,7 +72,10 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
         )}
         <nav className="p-4">
           <ul className="space-y-1.5">
-            {menuItems.map((item) => {
+            {[
+              ...menuItems.filter(item => item.roles.includes(userRole!)),
+              ...menuItems.filter(item => !item.roles.includes(userRole!)),
+            ].map((item) => {
               const isAllowed = item.roles.includes(userRole!);
               const isActive = activeView === item.id;
               const Icon = item.icon;

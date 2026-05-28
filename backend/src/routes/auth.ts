@@ -239,9 +239,9 @@ router.post('/signup', async (req: Request, res: Response) => {
     const allowedSignupRoles = ['petOwner', 'livestockManager', 'both', 'owner'];
     const assignedRole = role && allowedSignupRoles.includes(role) ? role : 'petOwner';
 
-    const countResult = await query('SELECT COUNT(*) FROM users');
-    const count = parseInt(countResult.rows[0].count);
-    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const seqResult = await query(`SELECT nextval('users_id_seq') AS next_id`);
+    const nextId = parseInt(seqResult.rows[0].next_id);
+    const userId = `USER-${String(nextId).padStart(3, '0')}`;
     const ownerId = temporaryId || `OWNER-${uuidv4().slice(0, 8).toUpperCase()}`;
     const hash = await bcrypt.hash(password, 10);
 

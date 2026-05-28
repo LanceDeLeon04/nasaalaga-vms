@@ -346,9 +346,8 @@ router.post('/users/create-admin', authenticate, async (req: AuthRequest, res: R
     if (!username || !email || !password) return res.status(400).json({ error: 'username, email, and password are required' });
     const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
     if (existing.rows.length > 0) return res.status(400).json({ error: 'Email already in use' });
-    const countResult = await query('SELECT COUNT(*) FROM users');
-    const count = parseInt(countResult.rows[0].count);
-    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const seqResult = await query(`SELECT nextval('users_id_seq') AS next_id`);
+    const userId = `USER-${String(parseInt(seqResult.rows[0].next_id)).padStart(3, '0')}`;
     const hash = await bcrypt.hash(password, 10);
     const ownerId = `ADMIN-${uuidv4().slice(0,8).toUpperCase()}`;
     const result = await query(
@@ -375,9 +374,8 @@ router.post('/users/create-bahw', authenticate, async (req: AuthRequest, res: Re
     if (assignedRole === 'bahw' && !barangay) return res.status(400).json({ error: 'Barangay is required for BAHW accounts' });
     const existing = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
     if (existing.rows.length > 0) return res.status(400).json({ error: 'Email already in use' });
-    const countResult = await query('SELECT COUNT(*) FROM users');
-    const count = parseInt(countResult.rows[0].count);
-    const userId = `USER-${String(count + 1).padStart(3, '0')}`;
+    const seqResult = await query(`SELECT nextval('users_id_seq') AS next_id`);
+    const userId = `USER-${String(parseInt(seqResult.rows[0].next_id)).padStart(3, '0')}`;
     const hash = await bcrypt.hash(password, 10);
     const ownerId = `${assignedRole.toUpperCase().slice(0,4)}-${uuidv4().slice(0,8).toUpperCase()}`;
     const result = await query(

@@ -16,7 +16,6 @@ import { CVOServicesShared } from './CVOServicesShared';
 import { PreRegisteredPets } from './PreRegisteredPets';
 import { Footer } from './Footer';
 import { ScheduleModule } from './ScheduleModule';
-import { PreRegistrationModule } from './PreRegistrationModule';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import type { User } from '../App';
@@ -255,12 +254,12 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'vaccination':
         return <VaccinationModule user={user} />;
       case 'preregistered':
-        // BAHW sees combined pre-registration module
-        return <PreRegistrationModule user={user} />;
+        // BAHW submits pet pre-registration form
+        return <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email || ''} />;
       case 'livestock-prereg':
-        return <PreRegistrationModule user={user} />;
+        return <LivestockPreRegistration ownerId={user.ownerId} ownerEmail={user.email || ''} userRole={user.role} barangay={user.barangay || ''} />;
       case 'pre-registration':
-        return <PreRegistrationModule user={user} />;
+        return <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email || ''} />;
       case 'schedule':
         return <ScheduleModule user={user} />;
       case 'outbreak':
