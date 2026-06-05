@@ -1613,13 +1613,13 @@ function VaccinateModal({ pet, onConfirm, onClose }: { pet:Pet; onConfirm:(p:Pet
 import { BitingIncidents } from './BitingIncidents';
 import { VaccinationCard } from './VaccinationCard';
 
-export function PetRegistration({ userRole }: { userRole?: string } = {}) {
+export function PetRegistration({ userRole, initialTab }: { userRole?: string; initialTab?: "overview"|"pets"|"lost-found"|"impounded"|"biting" } = {}) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [reports, setReports] = useState<LFReport[]>([]);
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
   const [survey, setSurvey] = useState<SurveyData|null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"impounded"|"biting">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"pets"|"lost-found"|"impounded"|"biting">(initialTab ?? "overview");
   const [showImpoundForm, setShowImpoundForm] = useState(false);
   const [impoundForm, setImpoundForm] = useState({ petName:'', species:'Dog', breed:'', color:'', barangay:'', lastSeenLocation:'', description:'', impoundLocation:'', impoundOfficer:'', impoundDate:new Date().toISOString().split('T')[0] });
   const [savingImpound, setSavingImpound] = useState(false);
@@ -2410,10 +2410,11 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
             </div>
             <div className="p-6 space-y-4">
               <div className="flex gap-2">
-                {(["Lost","Found"] as const).map(t=><button key={t} onClick={()=>setLfForm({...lfForm,type:t})} className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-all ${lfForm.type===t?t==="Lost"?"border-red-500 bg-red-50 text-red-700":"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>{t==="Lost"?"Lost Pet":"Found Pet"}</button>)}
+                {(["Lost","Found"] as const).map(t=><button key={t} onClick={()=>{ setLfForm({...lfForm,type:t,petId:""}); setLfPetSearch(""); setLfPetSuggestions([]); setShowLfPetSugg(false); }} className={`flex-1 py-3 rounded-xl text-sm font-bold border-2 transition-all ${lfForm.type===t?t==="Lost"?"border-red-500 bg-red-50 text-red-700":"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:border-gray-300"}`}>{t==="Lost"?"Lost Pet":"Found Pet"}</button>)}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Linked Pet from Registry (if known)</label>
+                {lfForm.type === "Lost" ? (
+                  <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Linked Pet from Registry (if known)</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -2466,6 +2467,26 @@ export function PetRegistration({ userRole }: { userRole?: string } = {}) {
                     )}
                   </div>
                 </div>
+                ) : (
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Pet ID Number <span className="font-normal text-gray-400">(enter if tag/collar has an ID)</span></label>
+                    <input
+                      type="text"
+                      value={lfForm.petId}
+                      onChange={e => setLfForm({...lfForm, petId: e.target.value})}
+                      className={INPUT}
+                      placeholder="e.g., PET-0023 — leave blank if unknown"
+                    />
+                    {lfForm.petId && pets.find(p => p.id === lfForm.petId) && (
+                      <p className="text-xs text-green-600 font-semibold mt-1">
+                        ✓ Matched: {pn(pets.find(p => p.id === lfForm.petId)!)} · {pets.find(p => p.id === lfForm.petId)!.species}
+                      </p>
+                    )}
+                    {lfForm.petId && !pets.find(p => p.id === lfForm.petId) && lfForm.petId.length > 2 && (
+                      <p className="text-xs text-amber-600 mt-1">ID not found in registry — will be recorded as provided</p>
+                    )}
+                  </div>
+                )}
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Species</label><select value={lfForm.species} onChange={e=>setLfForm({...lfForm,species:e.target.value})} className={INPUT}><option value="">Select…</option><option value="Dog">Dog</option><option value="Cat">Cat</option><option value="Other">Other</option></select></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Breed</label><input value={lfForm.breed} onChange={e=>setLfForm({...lfForm,breed:e.target.value})} className={INPUT} placeholder="e.g., Aspin"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Color</label><input value={lfForm.color} onChange={e=>setLfForm({...lfForm,color:e.target.value})} className={INPUT} placeholder="e.g., Brown, White"/></div>

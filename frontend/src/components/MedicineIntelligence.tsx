@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 import {
-  Pill, TrendingUp, AlertTriangle, Activity, Package,
+  Pill, TrendingUp, TrendingDown, AlertTriangle, Activity, Package,
   ArrowUpRight, BarChart3, RefreshCw, Download, Bell,
   CheckCircle, X, Truck, Eye, ChevronRight, Zap, ShieldAlert,
-  MapPin, Clock, Layers, Filter, Info,
+  MapPin, Clock, Layers, Filter, Info, Shield, Syringe,
 } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -52,6 +52,109 @@ function getRatioStatus(ratio: number) {
   if (ratio >= 2) return "high";
   if (ratio >= 1.8) return "medium";
   return "normal";
+}
+
+// ─── MEDICINE SENTIMENT ───────────────────────────────────────────────────────
+// Vaccines/preventives → POSITIVE (proactive public health coverage)
+// Treatment medicines  → SOMEWHAT NEGATIVE (reactive; indicates disease burden)
+const VACCINE_KEYWORDS = [
+  "vaccine","vaccination","vacc","rabies","anti-rabies","parvovirus","distemper",
+  "hepatitis","leptospira","bordetella","fvrcp","dhpp","dapp","dhlpp","fvrcp",
+  "pcv","newcastle","bursal","marek","fowl pox","avian","anthrax","brucella",
+  "hemorrhagic septicemia","foot and mouth","fmd","aftosa","immunization",
+  "immunogen","biologics","toxoid","booster","preventive","prevention",
+];
+const TREATMENT_KEYWORDS = [
+  "antibiotic","amoxicillin","enrofloxacin","oxytetracycline","doxycycline",
+  "penicillin","ampicillin","trimethoprim","sulfadiazine","metronidazole",
+  "antifungal","antiviral","antiparasitic","dewormer","deworm","ivermectin",
+  "albendazole","fenbendazole","mebendazole","praziquantel","pyrantel",
+  "anti-inflammatory","nsaid","meloxicam","carprofen","dexamethasone",
+  "prednisolone","cortisone","analgesic","pain","sedative","anesthesia",
+  "adrenaline","epinephrine","atropine","treatment","therapeutic",
+  "antiseptic","antihistamine","antidiarrheal","antacid","diuretic",
+];
+
+type SentimentResult = {
+  sentiment: "positive" | "somewhat-negative" | "neutral";
+  label: string;
+  sublabel: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  Icon: React.ElementType;
+};
+
+function getMedicineSentiment(name: string, category: string, sources: string[]): SentimentResult {
+  const hay = (name + " " + category).toLowerCase();
+  const sourceStr = sources.join(" ").toLowerCase();
+
+  // Detect vaccine via sources first (most reliable)
+  const isVaccineSource = sourceStr.includes("vaccination") || sourceStr.includes("pet_vaccination");
+  const isVaccineKeyword = VACCINE_KEYWORDS.some(k => hay.includes(k));
+  const isTreatmentSource = sourceStr.includes("treatment") || sourceStr.includes("livestock_treatment");
+  const isTreatmentKeyword = TREATMENT_KEYWORDS.some(k => hay.includes(k));
+
+  if (isVaccineSource || isVaccineKeyword) {
+    return {
+      sentiment: "positive",
+      label: "Positive Signal",
+      sublabel: "Preventive — High usage reflects proactive vaccination coverage",
+      color: "#15803d",
+      bgColor: "#f0fdf4",
+      borderColor: "#86efac",
+      Icon: Shield,
+    };
+  }
+  if (isTreatmentSource || isTreatmentKeyword) {
+    return {
+      sentiment: "somewhat-negative",
+      label: "Caution Signal",
+      sublabel: "Treatment — High usage may indicate rising disease burden",
+      color: "#b45309",
+      bgColor: "#fffbeb",
+      borderColor: "#fcd34d",
+      Icon: TrendingDown,
+    };
+  }
+  return {
+    sentiment: "neutral",
+    label: "Neutral Signal",
+    sublabel: "General use — Monitor trends for unusual spikes",
+    color: "#4c1d95",
+    bgColor: "#f5f3ff",
+    borderColor: "#c4b5fd",
+    Icon: Activity,
+  };
+}
+
+// ─── SENTIMENT BADGE (reusable) ───────────────────────────────────────────────
+function SentimentBadge({ name, category, sources, compact = false }: {
+  name: string; category: string; sources: string[]; compact?: boolean;
+}) {
+  const s = getMedicineSentiment(name, category, sources);
+  const Icon = s.Icon;
+  if (compact) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border"
+        style={{ background: s.bgColor, color: s.color, borderColor: s.borderColor }}>
+        <Icon className="w-3 h-3" />{s.label}
+      </span>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border mt-2"
+      style={{ background: s.bgColor, borderColor: s.borderColor }}>
+      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+        style={{ background: s.color }}>
+        <Icon className="w-3.5 h-3.5 text-white" />
+      </div>
+      <div>
+        <p className="text-xs font-bold" style={{ color: s.color }}>{s.label}</p>
+        <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: s.color + "cc" }}>{s.sublabel}</p>
+      </div>
+    </div>
+  );
 }
 
 function sourceLabel(s: string) {
@@ -461,6 +564,41 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
         </div>
 
         <div className="p-6">
+          {/* ── Medicine Signal Legend ───────────────────────────────────── */}
+          <div className="mb-5 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5"/> Medicine Signal Analysis
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="flex items-start gap-2 p-2.5 bg-green-50 border border-green-200 rounded-xl">
+                <div className="w-6 h-6 rounded-lg bg-green-700 flex items-center justify-center shrink-0">
+                  <Shield className="w-3.5 h-3.5 text-white"/>
+                </div>
+                <div>
+                  <p className="font-bold text-green-800">Positive Signal</p>
+                  <p className="text-green-600 mt-0.5 leading-relaxed">Vaccines &amp; preventives. High usage = strong immunization coverage. Encourage continued uptake.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="w-6 h-6 rounded-lg bg-amber-600 flex items-center justify-center shrink-0">
+                  <TrendingDown className="w-3.5 h-3.5 text-white"/>
+                </div>
+                <div>
+                  <p className="font-bold text-amber-800">Caution Signal</p>
+                  <p className="text-amber-700 mt-0.5 leading-relaxed">Antibiotics, treatments &amp; dewormers. High usage may indicate a rising disease burden. Monitor for outbreak patterns.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 p-2.5 bg-violet-50 border border-violet-200 rounded-xl">
+                <div className="w-6 h-6 rounded-lg bg-violet-700 flex items-center justify-center shrink-0">
+                  <Activity className="w-3.5 h-3.5 text-white"/>
+                </div>
+                <div>
+                  <p className="font-bold text-violet-800">Neutral Signal</p>
+                  <p className="text-violet-600 mt-0.5 leading-relaxed">General-purpose supplies. Context-dependent. Cross-reference with vet visit records for deeper insight.</p>
+                </div>
+              </div>
+            </div>
+          </div>
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <div className="w-10 h-10 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin"/>
@@ -533,6 +671,8 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
                                       <span key={si} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-medium rounded-md">{sourceLabel(s as string)}</span>
                                     ))}
                                   </div>
+                                  {/* ── Sentiment indicator ── */}
+                                  <SentimentBadge name={fm.medicine_name} category={fm.category} sources={fm.sources} />
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-2">
                                   <ChevronRight className="w-4 h-4 text-slate-400"/>
@@ -573,6 +713,8 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
                                   <AlertTriangle className="w-3 h-3"/> Expires: {new Date(m.expiry_date).toLocaleDateString('en-PH')}
                                 </p>
                               )}
+                              {/* ── Sentiment indicator ── */}
+                              <SentimentBadge name={m.name} category={m.category} sources={[]} compact />
                             </div>
                             <button onClick={()=>setResupplyModal({name:m.name,qty:m.quantity,unit:m.unit})}
                               className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded-xl hover:bg-green-700 flex items-center gap-1.5 shrink-0">
@@ -698,22 +840,30 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">#</th>
                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Medicine</th>
                               <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Category</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wide">Signal</th>
                               <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide">Total Used</th>
                               <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wide">Barangays</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
-                            {topMeds.slice(0,15).map((m,i)=>(
+                            {topMeds.slice(0,15).map((m,i)=>{
+                              const usageEntry = usageRows.filter(r=>r.medicine_name===m.medicine_name);
+                              const allSources = usageEntry.flatMap(r=>r.sources);
+                              return (
                               <tr key={i} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-4 py-3 text-slate-400 font-bold text-xs">#{i+1}</td>
                                 <td className="px-4 py-3 font-semibold text-slate-800">{m.medicine_name}</td>
                                 <td className="px-4 py-3">
                                   <span className="px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-semibold rounded-md">{m.category||"—"}</span>
                                 </td>
+                                <td className="px-4 py-3">
+                                  <SentimentBadge name={m.medicine_name} category={m.category} sources={allSources} compact />
+                                </td>
                                 <td className="px-4 py-3 text-right font-black text-violet-700">{m.total_qty}</td>
                                 <td className="px-4 py-3 text-right text-slate-500 font-semibold">{m.barangay_count}</td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -775,6 +925,8 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
                                   </span>
                                   <ChevronRight className="w-4 h-4" style={{color:st.text}}/>
                                 </div>
+                                {/* ── Sentiment indicator ── */}
+                                <SentimentBadge name={fm.medicine_name} category={fm.category} sources={fm.sources} compact />
                               </div>
                             </div>
                           </div>

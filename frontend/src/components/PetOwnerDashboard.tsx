@@ -190,7 +190,26 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         }
 
         const data = await response.json();
-        setLostFoundReports(data.reports || []);
+        const mapped = (data.reports || []).map((r: any) => ({
+          id: r.id,
+          petId: r.pet_id ?? r.petId ?? '',
+          petName: r.pet_name ?? r.petName ?? '',
+          species: r.species ?? '',
+          breed: r.breed ?? '',
+          color: r.color ?? '',
+          type: r.type ?? 'Lost',
+          reportedBy: r.reported_by ?? r.reportedBy ?? '',
+          reportedByRole: r.reported_by_role ?? r.reportedByRole ?? '',
+          ownerId: r.owner_id ?? r.ownerId ?? '',
+          contactNumber: r.contact_number ?? r.contactNumber ?? '',
+          lastSeenLocation: r.last_seen_location ?? r.lastSeenLocation ?? '',
+          barangay: r.barangay ?? '',
+          dateReported: r.date_reported ?? r.dateReported ?? '',
+          description: r.description ?? '',
+          status: r.status ?? 'Open',
+          photo: r.photo ?? undefined,
+        }));
+        setLostFoundReports(mapped);
       } catch (error) {
         console.error('Error fetching lost & found reports:', error);
         toast.error('Failed to load lost & found reports');
@@ -204,40 +223,23 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
   const handleReportLostPet = async () => {
     try {
-      let petData;
-      
-      if (reportForm.manualEntry) {
-        // Manual entry for unregistered pets
-        if (!reportForm.petName || !reportForm.species || !reportForm.breed || !reportForm.color) {
-          toast.error('Please fill in all pet information');
-          return;
-        }
-        petData = {
-          petId: 'UNKNOWN',
-          petName: reportForm.petName,
-          species: reportForm.species,
-          breed: reportForm.breed,
-          color: reportForm.color,
-        };
-      } else {
-        // From registered pets
-        if (!reportForm.selectedPetId) {
-          toast.error('Please select a pet');
-          return;
-        }
-        const selectedPet = pets.find(p => p.id === reportForm.selectedPetId);
-        if (!selectedPet) {
-          toast.error('Selected pet not found');
-          return;
-        }
-        petData = {
-          petId: selectedPet.id,
-          petName: selectedPet.petName,
-          species: selectedPet.species,
-          breed: selectedPet.breed,
-          color: selectedPet.color,
-        };
+      // Pet owners must select from their registered/tagged pets only
+      if (!reportForm.selectedPetId) {
+        toast.error('Please select one of your registered pets');
+        return;
       }
+      const selectedPet = pets.find(p => p.id === reportForm.selectedPetId);
+      if (!selectedPet) {
+        toast.error('Selected pet not found');
+        return;
+      }
+      const petData = {
+        petId: selectedPet.id,
+        petName: selectedPet.petName,
+        species: selectedPet.species,
+        breed: selectedPet.breed,
+        color: selectedPet.color,
+      };
 
       if (!reportForm.lastSeenLocation || !reportForm.barangay || !reportForm.description) {
         toast.error('Please fill in all location and description fields');
@@ -273,7 +275,27 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
       }
 
       const data = await response.json();
-      setLostFoundReports(prev => [data.report, ...prev]);
+      const r = data.report;
+      const mappedReport = {
+        id: r.id,
+        petId: r.pet_id ?? r.petId ?? '',
+        petName: r.pet_name ?? r.petName ?? '',
+        species: r.species ?? '',
+        breed: r.breed ?? '',
+        color: r.color ?? '',
+        type: r.type ?? 'Lost',
+        reportedBy: r.reported_by ?? r.reportedBy ?? '',
+        reportedByRole: r.reported_by_role ?? r.reportedByRole ?? '',
+        ownerId: r.owner_id ?? r.ownerId ?? '',
+        contactNumber: r.contact_number ?? r.contactNumber ?? '',
+        lastSeenLocation: r.last_seen_location ?? r.lastSeenLocation ?? '',
+        barangay: r.barangay ?? '',
+        dateReported: r.date_reported ?? r.dateReported ?? '',
+        description: r.description ?? '',
+        status: r.status ?? 'Open',
+        photo: r.photo ?? undefined,
+      };
+      setLostFoundReports(prev => [mappedReport, ...prev]);
       
       // Reset form
       setReportForm({
@@ -1144,89 +1166,29 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
             </div>
 
             <div className="p-6 space-y-4">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setReportForm(prev => ({ ...prev, manualEntry: false }))}
-                  className={`flex-1 py-3 rounded-lg text-sm font-medium border-2 transition-all ${
-                    !reportForm.manualEntry
-                      ? 'border-[#2B5EA6] bg-[#2B5EA6]/10 text-[#2B5EA6]'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  Select Registered Pet
-                </button>
-                <button
-                  onClick={() => setReportForm(prev => ({ ...prev, manualEntry: true }))}
-                  className={`flex-1 py-3 rounded-lg text-sm font-medium border-2 transition-all ${
-                    reportForm.manualEntry
-                      ? 'border-[#2B5EA6] bg-[#2B5EA6]/10 text-[#2B5EA6]'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  Enter Manually for Unregistered Pets
-                </button>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800">You can only report a lost pet that is already tagged/registered under your account.</p>
               </div>
 
-              {!reportForm.manualEntry ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Pet</label>
-                  <select
-                    value={reportForm.selectedPetId}
-                    onChange={(e) => setReportForm(prev => ({ ...prev, selectedPetId: e.target.value }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                  >
-                    <option value="">-- Select a registered pet --</option>
-                    {pets.filter(p => p.status === 'Active').map(pet => (
-                      <option key={pet.id} value={pet.id}>
-                        {pet.petName} ({pet.species} - {pet.breed})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Pet Name</label>
-                    <input
-                      type="text"
-                      value={reportForm.petName}
-                      onChange={(e) => setReportForm(prev => ({ ...prev, petName: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                      placeholder="Enter pet name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Species</label>
-                    <input
-                      type="text"
-                      value={reportForm.species}
-                      onChange={(e) => setReportForm(prev => ({ ...prev, species: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                      placeholder="Dog, Cat, etc."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Breed</label>
-                    <input
-                      type="text"
-                      value={reportForm.breed}
-                      onChange={(e) => setReportForm(prev => ({ ...prev, breed: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                      placeholder="Enter breed"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
-                    <input
-                      type="text"
-                      value={reportForm.color}
-                      onChange={(e) => setReportForm(prev => ({ ...prev, color: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
-                      placeholder="Enter color"
-                    />
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Your Registered Pet *</label>
+                <select
+                  value={reportForm.selectedPetId}
+                  onChange={(e) => setReportForm(prev => ({ ...prev, selectedPetId: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
+                >
+                  <option value="">-- Select a registered pet --</option>
+                  {pets.map(pet => (
+                    <option key={pet.id} value={pet.id}>
+                      {pet.petName} ({pet.species} — {pet.breed}) · {pet.id}
+                    </option>
+                  ))}
+                </select>
+                {pets.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">No registered pets found. Please register your pet first before filing a lost report.</p>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
