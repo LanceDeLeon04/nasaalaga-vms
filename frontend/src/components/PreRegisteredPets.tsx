@@ -328,7 +328,7 @@ export function PreRegisteredPets() {
                       {p.expires_at ? formatDate(p.expires_at) : '—'}
                       {isExpired(p) && <div style={{ fontSize: 11, color: '#dc2626' }}>EXPIRED</div>}
                     </td>
-                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Pending' ? p.status : p.status === 'Approved' ? '✅' : '❌'} {p.status}</span></td>
+                    <td><span className={`prl-badge ${p.status}`}>{p.status === 'Approved' ? '✅ ' : p.status === 'Denied' ? '❌ ' : ''}{p.status}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="prl-btn prl-btn-blue" onClick={() => { setSelected(p); setShowDetails(true); }}>View</button>

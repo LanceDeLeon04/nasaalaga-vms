@@ -559,7 +559,45 @@ const seed = async () => {
     }
     console.log(`  ✓ Rules seeded (${rules.length})`);
 
-    // ── Medicine Inventory ────────────────────────────────────────────────
+    // ── Budget Programs & Line Items (must exist before inventory so program_id/line_item_id resolve) ──
+    await client.query(`
+      INSERT INTO budget_programs (id,name,description,total_allotment,fiscal_year,color,created_by) VALUES
+        ('PROG-2025-001','Rabies Control Program','Anti-rabies vaccination, PEP biologics, and community awareness campaigns.',1200000,2025,'#2B5EA6','system'),
+        ('PROG-2025-002','Avian Influenza Preparedness','Bird flu surveillance, rapid response kits, containment, and response teams.',800000,2025,'#e8a838','system'),
+        ('PROG-2025-003','Livestock Health Program','Vaccines, treatments, and health monitoring for all livestock species.',950000,2025,'#60A85C','system'),
+        ('PROG-2025-004','Animal Welfare & Impounding','Impounding operations, spaying/neutering, and animal shelter maintenance.',600000,2025,'#7c3aed','system'),
+        ('PROG-2025-005','Administrative & Operations','Office supplies, fuel, IT infrastructure, personnel training, and communications.',500000,2025,'#0891b2','system')
+      ON CONFLICT (id) DO NOTHING
+    `);
+    await client.query(`
+      INSERT INTO budget_line_items (id,program_id,name,category,expenditure_type,allotment,fiscal_year,created_by) VALUES
+        ('LI-2025-001','PROG-2025-001','Anti-Rabies Vaccines (Dogs & Cats)','Vaccines','opex',600000,2025,'system'),
+        ('LI-2025-002','PROG-2025-001','Human PEP Biologics (Verorab/Rabipur)','Vaccines','opex',300000,2025,'system'),
+        ('LI-2025-003','PROG-2025-001','Syringes & Injection Supplies','Supplies','opex',150000,2025,'system'),
+        ('LI-2025-004','PROG-2025-001','IEC Materials & Advocacy','Communication','opex',100000,2025,'system'),
+        ('LI-2025-005','PROG-2025-001','Cold Chain Equipment & Maintenance','Equipment','capex',50000,2025,'system'),
+        ('LI-2025-006','PROG-2025-002','AI Surveillance & Diagnostic Kits','Diagnostics','opex',250000,2025,'system'),
+        ('LI-2025-007','PROG-2025-002','Avian Flu Antiviral Medications','Medicines','opex',300000,2025,'system'),
+        ('LI-2025-008','PROG-2025-002','PPE & Protective Equipment','Supplies','opex',150000,2025,'system'),
+        ('LI-2025-009','PROG-2025-002','Response Vehicle Operations','Operations','opex',100000,2025,'system'),
+        ('LI-2025-010','PROG-2025-003','FMD Vaccines (Cattle/Carabao)','Vaccines','opex',300000,2025,'system'),
+        ('LI-2025-011','PROG-2025-003','Hog Cholera & ASF Vaccines','Vaccines','opex',250000,2025,'system'),
+        ('LI-2025-012','PROG-2025-003','Newcastle Disease & Poultry Vaccines','Vaccines','opex',200000,2025,'system'),
+        ('LI-2025-013','PROG-2025-003','Antiparasitics & Dewormers','Medicines','opex',150000,2025,'system'),
+        ('LI-2025-014','PROG-2025-003','Veterinary Instruments & Equipment','Equipment','capex',50000,2025,'system'),
+        ('LI-2025-015','PROG-2025-004','Impounding Operations & Transport','Operations','opex',200000,2025,'system'),
+        ('LI-2025-016','PROG-2025-004','Spaying & Neutering Procedures','Medical Procedures','opex',250000,2025,'system'),
+        ('LI-2025-017','PROG-2025-004','Animal Shelter Maintenance & Feed','Facilities','opex',100000,2025,'system'),
+        ('LI-2025-018','PROG-2025-004','Shelter Construction/Expansion','Facilities','capex',50000,2025,'system'),
+        ('LI-2025-019','PROG-2025-005','Office Supplies & Materials','Supplies','opex',100000,2025,'system'),
+        ('LI-2025-020','PROG-2025-005','Fuel & Transportation','Operations','opex',200000,2025,'system'),
+        ('LI-2025-021','PROG-2025-005','IT Equipment & System Maintenance','Equipment','capex',150000,2025,'system'),
+        ('LI-2025-022','PROG-2025-005','Staff Training & Capacity Building','Training','opex',50000,2025,'system')
+      ON CONFLICT (id) DO NOTHING
+    `);
+    console.log('  ✓ Budget programs & line items ensured (upsert)');
+
+        // ── Medicine Inventory ────────────────────────────────────────────────
     const medicines = [
       // purpose/program_id/line_item_id/fiscal_year added so filtering by Budget program works out-of-the-box
       { id: 'MED-001', barcode: '8901234567890', name: 'Rabies Vaccine (Rabisin)', generic_name: 'Inactivated Rabies Virus', category: 'Vaccine', type: 'Viral Vaccine', lot_number: 'LT2025-R01', expiry_date: '2026-06-30', manufacture_date: '2024-06-01', manufacturer: 'Merial Philippines', quantity: 250, unit: 'vials', reorder_level: 50, unit_cost: 185.00, storage_condition: 'Refrigerate 2-8°C', description: 'Anti-rabies vaccine for dogs and cats', purpose: 'program', program_id: 'PROG-2025-001', line_item_id: 'LI-2025-001', fiscal_year: 2025 },
