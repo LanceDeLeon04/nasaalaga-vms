@@ -536,6 +536,31 @@ function AddOrderModal({
               <span className="text-lg font-black text-green-800">₱{(form.unitCost*form.quantity).toLocaleString('en-PH',{maximumFractionDigits:2})}</span>
             </div>
           )}
+          {/* Budget affordability check */}
+          {form.lineItemId && form.unitCost > 0 && form.quantity > 0 && (() => {
+            const selectedLI = (programs.find((p: any) => p.id === form.programId)?.line_items || []).find((li: any) => li.id === form.lineItemId);
+            if (!selectedLI) return null;
+            const balance = Number(selectedLI.allotment) - Number(selectedLI.utilized) - Number(selectedLI.obligated);
+            const orderCost = form.unitCost * form.quantity;
+            const canAfford = balance >= orderCost;
+            const pctOfBalance = balance > 0 ? Math.round((orderCost / balance) * 100) : 999;
+            return (
+              <div className={`rounded-xl px-4 py-3 border flex items-start gap-3 ${canAfford ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                {canAfford
+                  ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  : <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
+                <div>
+                  <p className={`text-sm font-bold ${canAfford ? 'text-green-800' : 'text-red-800'}`}>
+                    {canAfford ? '✅ Budget Sufficient' : '❌ Budget Shortfall'}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${canAfford ? 'text-green-700' : 'text-red-700'}`}>
+                    Line item balance: ₱{balance.toLocaleString('en-PH',{maximumFractionDigits:0})} · This order is ₱{orderCost.toLocaleString('en-PH',{maximumFractionDigits:0})} ({pctOfBalance}% of balance)
+                    {!canAfford && ` · Shortfall: ₱${(orderCost - balance).toLocaleString('en-PH',{maximumFractionDigits:0})}`}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3 justify-end rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
@@ -1583,6 +1608,175 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         {/* ── OVERVIEW ─────────────────────────────────────────────────────────── */}
         {tab === 'overview' && (
           <div className="p-6 space-y-6">
+            {/* ── BUDGET DECISION SUPPORT PANEL ──────────────────────────────── */}
+            {programs.length > 0 && (() => {
+              // Flatten all line items across programs for budget awareness
+              const allLineItems = programs.flatMap((p: any) =>
+                (p.line_items || []).map((li: any) => ({
+                  ...li,
+                  programName: p.name,
+                  programColor: p.color || '#2B5EA6',
+                  balance: Number(li.allotment) - Number(li.utilized) - Number(li.obligated),
+                  utilPct: Number(li.allotment) > 0 ? Math.round(Number(li.utilized) / Number(li.allotment) * 100) : 0,
+                }))
+              );
+
+              // Items needing restock with a cost estimate
+              const restockNeeded = [
+                ...medicines.filter(m => m.quantity <= m.reorder_level).map(m => ({
+                  name: m.name, type: 'medicine' as const,
+                  qty: m.quantity, reorder: m.reorder_level,
+                  restockQty: Math.max(m.reorder_level * 2 - m.quantity, m.reorder_level),
+                  unitCost: Number(m.unit_cost) || 0,
+                  lineItemId: m.line_item_id,
+                  programId: m.program_id,
+                })),
+                ...supplies.filter(s => s.quantity <= s.reorder_level).map(s => ({
+                  name: s.name, type: 'supply' as const,
+                  qty: s.quantity, reorder: s.reorder_level,
+                  restockQty: Math.max(s.reorder_level * 2 - s.quantity, s.reorder_level),
+                  unitCost: Number(s.unit_cost) || 0,
+                  lineItemId: s.line_item_id,
+                  programId: s.program_id,
+                })),
+              ].map(item => {
+                const linkedLI = allLineItems.find(li => li.id === item.lineItemId);
+                const estimatedCost = item.restockQty * item.unitCost;
+                const canAfford = linkedLI ? linkedLI.balance >= estimatedCost : null;
+                return { ...item, linkedLI, estimatedCost, canAfford };
+              });
+
+              const totalRestockCost = restockNeeded.reduce((s, i) => s + i.estimatedCost, 0);
+              const affordableCount = restockNeeded.filter(i => i.canAfford === true).length;
+              const unaffordableCount = restockNeeded.filter(i => i.canAfford === false).length;
+              const unlinkedCount = restockNeeded.filter(i => i.canAfford === null).length;
+
+              const navigateToBudget = () => {
+                sessionStorage.setItem('nasaalaga_nav_request', JSON.stringify({ view: 'budget' }));
+                window.dispatchEvent(new Event('nasaalaga_nav_request'));
+              };
+
+              return (
+                <div className="bg-gradient-to-br from-blue-50 via-white to-green-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-[#2B5EA6]/10 rounded-xl">
+                        <DollarSign className="w-5 h-5 text-[#2B5EA6]" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm">Budget × Inventory Decision Support</h3>
+                        <p className="text-xs text-gray-500">Restock needs vs. available budget balance</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={navigateToBudget}
+                      className="flex items-center gap-1.5 text-xs text-[#2B5EA6] font-semibold hover:underline"
+                    >
+                      Open Budget <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {restockNeeded.length === 0 ? (
+                    <div className="flex items-center gap-3 bg-green-50 rounded-xl px-4 py-3 border border-green-100">
+                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                      <p className="text-sm text-green-700 font-semibold">All inventory items are above reorder levels. No immediate restocking needed.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary row */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                        {[
+                          { label: 'Items Needing Restock', value: restockNeeded.length, color: 'bg-red-50 text-red-700 border-red-100' },
+                          { label: 'Est. Total Restock Cost', value: `₱${totalRestockCost.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`, color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                          { label: 'Budget Sufficient', value: `${affordableCount} items`, color: 'bg-green-50 text-green-700 border-green-100' },
+                          { label: 'Budget Shortfall / Unlinked', value: `${unaffordableCount + unlinkedCount} items`, color: unaffordableCount > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100' },
+                        ].map(s => (
+                          <div key={s.label} className={`rounded-xl px-3 py-2.5 border text-center ${s.color}`}>
+                            <p className="text-base font-black">{s.value}</p>
+                            <p className="text-[10px] font-semibold opacity-80 mt-0.5">{s.label}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Item-level decision table */}
+                      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                        {restockNeeded.slice(0, 10).map((item, i) => (
+                          <div key={i} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${item.type === 'medicine' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                              {item.type === 'medicine' ? '💊' : '📦'} {item.type}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+                              <p className="text-xs text-gray-400">
+                                {item.qty} in stock · Reorder at {item.reorder} · Need ~{item.restockQty} units
+                                {item.unitCost > 0 && ` · ₱${item.unitCost.toLocaleString()} ea`}
+                              </p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              {item.estimatedCost > 0 && (
+                                <p className="text-xs font-bold text-gray-800">₱{item.estimatedCost.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p>
+                              )}
+                              {item.linkedLI ? (
+                                <div className={`text-[10px] font-semibold mt-0.5 ${item.canAfford ? 'text-green-600' : 'text-red-600'}`}>
+                                  {item.canAfford ? '✅ Budget OK' : '❌ Budget Short'}
+                                  <span className="block text-gray-400 font-normal">{item.linkedLI.programName}</span>
+                                  <span className="block text-gray-400 font-normal">Bal: ₱{item.linkedLI.balance.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-amber-600 font-semibold mt-0.5 block">⚠️ Not budget-linked</span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => { setAddOrderPrefill({ itemName: item.name, itemType: item.type, quantity: item.restockQty, unitCost: item.unitCost, programId: item.programId, lineItemId: item.lineItemId }); setShowAddOrderModal(true); setTab('orders'); }}
+                              className="flex-shrink-0 px-3 py-1.5 bg-[#2B5EA6] text-white text-[10px] font-bold rounded-lg hover:bg-[#2B5EA6]/90"
+                            >
+                              Order
+                            </button>
+                          </div>
+                        ))}
+                        {restockNeeded.length > 10 && (
+                          <p className="text-xs text-center text-gray-400 py-1">+{restockNeeded.length - 10} more items need restocking</p>
+                        )}
+                      </div>
+
+                      {/* Budget line item health */}
+                      {allLineItems.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Budget Line Item Balances (linked to inventory)</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {allLineItems
+                              .filter(li => ['Vaccines', 'Medicines', 'Supplies', 'Medical Supplies'].includes(li.category))
+                              .slice(0, 6)
+                              .map(li => {
+                                const pct = Math.min(Math.round(Number(li.utilized) / Number(li.allotment) * 100), 100);
+                                const balColor = li.balance < 0 ? 'text-red-600' : li.balance < Number(li.allotment) * 0.1 ? 'text-amber-600' : 'text-green-600';
+                                return (
+                                  <div key={li.id} className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <div>
+                                        <p className="text-xs font-semibold text-gray-800 truncate" style={{ maxWidth: 160 }}>{li.name}</p>
+                                        <p className="text-[10px] text-gray-400">{li.programName}</p>
+                                      </div>
+                                      <span className={`text-xs font-black ${balColor}`}>
+                                        ₱{li.balance.toLocaleString('en-PH', { maximumFractionDigits: 0 })}
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: pct >= 95 ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#22c55e' }} />
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 mt-1">{pct}% utilized of ₱{Number(li.allotment).toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label:'Medicine Items', value:medicines.length, icon:FlaskConical, color:'#2B5EA6', sub:`₱${totalMedValue.toLocaleString('en-PH',{maximumFractionDigits:0})} value` },

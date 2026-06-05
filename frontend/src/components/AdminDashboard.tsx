@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { MyProfile } from './MyProfile';
@@ -39,6 +39,22 @@ export type ActiveView =
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Cross-module navigation via sessionStorage events
+  useEffect(() => {
+    const handleNavRequest = () => {
+      const raw = sessionStorage.getItem('nasaalaga_nav_request');
+      if (raw) {
+        try {
+          const { view } = JSON.parse(raw);
+          sessionStorage.removeItem('nasaalaga_nav_request');
+          if (view) setActiveView(view as ActiveView);
+        } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('nasaalaga_nav_request', handleNavRequest);
+    return () => window.removeEventListener('nasaalaga_nav_request', handleNavRequest);
+  }, []);
 
   const renderContent = () => {
     // Superadmin cannot access the 'settings' route directly from admin sidebar

@@ -548,6 +548,8 @@ export function BudgetUtilization({ userRole }: Props) {
   const [invFilter, setInvFilter] = useState<'all' | 'linked' | 'unlinked'>('all');
   const [linkingItem, setLinkingItem] = useState<any | null>(null);
   const [linkForm, setLinkForm] = useState({ program_id: '', line_item_id: '', fiscal_year: new Date().getFullYear(), override_amount: '' });
+  // Broader inventory snapshot for decision support (medicines + supplies)
+  const [budgetInvSnapshot, setBudgetInvSnapshot] = useState<{ medicines: any[]; supplies: any[] }>({ medicines: [], supplies: [] });
   const isAdmin = userRole === 'admin' || userRole === 'superadmin';
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -585,13 +587,42 @@ export function BudgetUtilization({ userRole }: Props) {
 
   useEffect(() => { loadPrograms(); loadSavedRecs(); }, [fy]);
 
+  // Load inventory snapshot for decision support (on mount / FY change)
+  useEffect(() => {
+    Promise.all([api.getMedicines(), api.getSupplies()])
+      .then(([meds, sups]) => {
+        setBudgetInvSnapshot({
+          medicines: meds.medicines || [],
+          supplies: sups.supplies || [],
+        });
+      })
+      .catch(() => { /* silent — inventory is supplemental */ });
+  }, [fy]);
+
   // ── AI Analysis ──────────────────────────────────────────────────────────
   const runAI = useCallback(async () => {
     setAiLoading(true);
     setActiveTab('ai');
     try {
       const ctx = await api.getBudgetContext(fy);
-      const prompt = buildAIPrompt(ctx);
+      // Augment context with live low-stock and expiry data from current snapshot
+      const { medicines, supplies } = budgetInvSnapshot;
+      const now = new Date(), in90 = new Date(now.getTime() + 90 * 86400000);
+      const lowStock = [
+        ...medicines.filter(m => m.quantity <= m.reorder_level).map(m => ({
+          name: m.name, type: 'medicine', qty: m.quantity, reorder: m.reorder_level,
+          unit_cost: Number(m.unit_cost), isExpired: m.expiry_date && new Date(m.expiry_date) < now,
+          expiresIn: m.expiry_date ? Math.ceil((new Date(m.expiry_date).getTime() - now.getTime()) / 86400000) : null,
+        })),
+        ...supplies.filter(s => s.quantity <= s.reorder_level).map(s => ({
+          name: s.name, type: 'supply', qty: s.quantity, reorder: s.reorder_level,
+          unit_cost: Number(s.unit_cost), isExpired: false, expiresIn: null,
+        })),
+      ];
+      const expiringSoon = medicines.filter(m => m.expiry_date && new Date(m.expiry_date) >= now && new Date(m.expiry_date) <= in90)
+        .map(m => ({ name: m.name, expiresIn: Math.ceil((new Date(m.expiry_date).getTime() - now.getTime()) / 86400000), qty: m.quantity, unit_cost: Number(m.unit_cost) }));
+
+      const prompt = buildAIPrompt({ ...ctx, low_stock_items: lowStock, expiring_soon: expiringSoon });
       // Route through backend proxy — no API key needed in browser
       const result = await api.budgetAIAnalyze({ prompt, fiscal_year: fy });
       const parsed: AIRec[] = result.recommendations || [];
@@ -607,7 +638,7 @@ export function BudgetUtilization({ userRole }: Props) {
       showToast(`Analysis failed: ${e.message}`, 'error');
     }
     setAiLoading(false);
-  }, [fy, programs]);
+  }, [fy, programs, budgetInvSnapshot]);
 
   // ── Program CRUD ─────────────────────────────────────────────────────────
   const saveProgram = async (data: any) => {
@@ -826,6 +857,7 @@ export function BudgetUtilization({ userRole }: Props) {
 
       {/* ─── OVERVIEW ─── */}
       {activeTab === 'overview' && (
+        <div className="space-y-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Budget vs Utilization by Program</h3>
@@ -902,6 +934,114 @@ export function BudgetUtilization({ userRole }: Props) {
               })}
             </div>
           </div>
+        </div>
+
+        {/* ── INVENTORY DECISION SUPPORT (Budget × Inventory cross-view) ── */}
+        {(() => {
+          const { medicines, supplies } = budgetInvSnapshot;
+          if (!medicines.length && !supplies.length) return null;
+
+          const now = new Date(), in90 = new Date(now.getTime() + 90 * 86400000);
+          const lowStockItems = [
+            ...medicines.filter(m => m.quantity <= m.reorder_level).map(m => ({ ...m, _type: 'medicine', isExpired: m.expiry_date && new Date(m.expiry_date) < now, isExpiringSoon: m.expiry_date && new Date(m.expiry_date) >= now && new Date(m.expiry_date) <= in90 })),
+            ...supplies.filter(s => s.quantity <= s.reorder_level).map(s => ({ ...s, _type: 'supply', isExpired: false, isExpiringSoon: false })),
+          ];
+          const expiredItems = medicines.filter(m => m.expiry_date && new Date(m.expiry_date) < now);
+          const expiringSoon = medicines.filter(m => m.expiry_date && new Date(m.expiry_date) >= now && new Date(m.expiry_date) <= in90);
+
+          const totalRestockEstimate = lowStockItems.reduce((s, item) => {
+            const restockQty = Math.max((item.reorder_level || 0) * 2 - item.quantity, item.reorder_level || 0);
+            return s + restockQty * (parseFloat(item.unit_cost) || 0);
+          }, 0);
+
+          // Match low-stock items to budget line items
+          const enriched = lowStockItems.map(item => {
+            const linkedLI = allItems.find((li: any) => li.id === item.line_item_id);
+            const liBalance = linkedLI ? Number(linkedLI.allotment) - Number(linkedLI.utilized) - Number(linkedLI.obligated) : null;
+            const restockQty = Math.max((item.reorder_level || 0) * 2 - item.quantity, item.reorder_level || 0);
+            const estCost = restockQty * (parseFloat(item.unit_cost) || 0);
+            return { ...item, linkedLI, liBalance, restockQty, estCost, canAfford: liBalance !== null ? liBalance >= estCost : null };
+          });
+
+          const navigateToInventory = () => {
+            sessionStorage.setItem('nasaalaga_nav_request', JSON.stringify({ view: 'inventory' }));
+            window.dispatchEvent(new Event('nasaalaga_nav_request'));
+          };
+
+          return (
+            <div className="bg-gradient-to-br from-amber-50 via-white to-red-50 border border-amber-200 rounded-2xl p-5 shadow-sm mt-2">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-100 rounded-xl">
+                    <Package className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm">Inventory Pressure on Budget</h3>
+                    <p className="text-xs text-gray-500">Items below reorder level and their budget impact</p>
+                  </div>
+                </div>
+                <button
+                  onClick={navigateToInventory}
+                  className="flex items-center gap-1.5 text-xs text-amber-700 font-semibold hover:underline"
+                >
+                  Open Inventory <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                {[
+                  { label: 'Low / Out of Stock', value: lowStockItems.length, color: 'bg-red-50 text-red-700 border-red-100' },
+                  { label: 'Expiring ≤90 days', value: expiringSoon.length, color: 'bg-orange-50 text-orange-700 border-orange-100' },
+                  { label: 'Already Expired', value: expiredItems.length, color: expiredItems.length > 0 ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-600 border-green-100' },
+                  { label: 'Est. Restock Cost', value: `₱${totalRestockEstimate.toLocaleString('en-PH', { maximumFractionDigits: 0 })}`, color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl px-3 py-2.5 border text-center ${s.color}`}>
+                    <p className="text-base font-black">{s.value}</p>
+                    <p className="text-[10px] font-semibold opacity-80 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {enriched.length === 0 ? (
+                <div className="flex items-center gap-2 bg-green-50 rounded-xl px-4 py-3 border border-green-100">
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                  <p className="text-sm text-green-700 font-semibold">All inventory items are above reorder levels.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {enriched.slice(0, 8).map((item, i) => (
+                    <div key={i} className="bg-white border border-gray-100 rounded-xl px-3 py-2.5 flex items-center gap-3 shadow-sm">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${item._type === 'medicine' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {item._type === 'medicine' ? '💊' : '📦'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-900 truncate">{item.name}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {item.quantity} in stock · Need ~{item.restockQty} · Est. {fmt(item.estCost)}
+                          {item.isExpired && <span className="ml-1 text-red-600 font-bold">EXPIRED</span>}
+                          {item.isExpiringSoon && !item.isExpired && <span className="ml-1 text-orange-500 font-bold">EXP. SOON</span>}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0 text-[10px]">
+                        {item.linkedLI ? (
+                          <div className={item.canAfford ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                            {item.canAfford ? '✅ Funded' : '❌ Shortfall'}
+                            <div className="text-gray-400 font-normal">Bal: {fmt(item.liBalance!)}</div>
+                          </div>
+                        ) : (
+                          <span className="text-amber-600 font-semibold">⚠️ Unlinked</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {enriched.length > 8 && (
+                    <p className="text-xs text-center text-gray-400">+{enriched.length - 8} more low-stock items</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         </div>
       )}
 
@@ -1089,6 +1229,15 @@ export function BudgetUtilization({ userRole }: Props) {
               </p>
             </div>
             <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem('nasaalaga_nav_request', JSON.stringify({ view: 'inventory' }));
+                    window.dispatchEvent(new Event('nasaalaga_nav_request'));
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-semibold hover:bg-indigo-100 border border-indigo-100"
+                >
+                  <Package className="w-4 h-4" /> Open Inventory
+                </button>
               <button onClick={loadInventory} className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200">
                 <RefreshCw className="w-4 h-4" /> Refresh
               </button>
@@ -1378,13 +1527,36 @@ function buildAIPrompt(ctx: any): string {
     value: Math.round(Number(m.unit_cost) * Number(m.quantity)),
   }));
 
+  const lowStock = (ctx.low_stock_items || []).slice(0, 15).map((m: any) => ({
+    name: m.name, type: m.type, qty: m.qty, reorder: m.reorder,
+    unit_cost: m.unit_cost,
+    est_restock_cost: Math.max((m.reorder || 0) * 2 - m.qty, m.reorder || 0) * m.unit_cost,
+    isExpired: m.isExpired,
+    expiresInDays: m.expiresIn,
+  }));
+
+  const expiringSoon = (ctx.expiring_soon || []).slice(0, 10).map((m: any) => ({
+    name: m.name, expiresInDays: m.expiresIn, qty: m.qty, wasteCost: m.qty * m.unit_cost,
+  }));
+
+  const totalRestockEstimate = lowStock.reduce((s: number, m: any) => s + (m.est_restock_cost || 0), 0);
+  const expiredLoss = expiringSoon.filter((m: any) => m.expiresInDays < 0).reduce((s: number, m: any) => s + m.wasteCost, 0);
+
   return `You are a veterinary office fiscal analyst for Calaca City's Veterinary Management System. Analyze the live data below and generate 5–8 OBJECTIVE, DATA-DRIVEN budget recommendations.
 
 BUDGET DATA (FY${ctx.fiscal_year}):
 ${JSON.stringify(programs, null, 2)}
 
-MEDICINE INVENTORY:
+MEDICINE INVENTORY (all items):
 ${JSON.stringify(inventory, null, 2)}
+
+LOW STOCK ITEMS (below reorder level — immediate procurement risk):
+${lowStock.length > 0 ? JSON.stringify(lowStock, null, 2) : '[]'}
+Total estimated restock cost: ₱${totalRestockEstimate.toLocaleString()}
+
+EXPIRING WITHIN 90 DAYS (waste risk):
+${expiringSoon.length > 0 ? JSON.stringify(expiringSoon, null, 2) : '[]'}
+Estimated loss from near-expired stock: ₱${expiredLoss.toLocaleString()}
 
 OPERATIONAL STATS (last 6 months):
 - Pets: ${ctx.pet_stats?.total || 0} total, ${ctx.pet_stats?.vaccinated || 0} vaccinated
@@ -1397,10 +1569,11 @@ RULES:
 1. Base ALL recommendations strictly on numbers above — no invented data
 2. Types: "realignment" (move within FY), "reallocation" (between programs), "next_fy" (plan for next FY), "warning" (critical), "infrastructure" (facility/equipment), "program" (new or expanded program)
 3. For infrastructure: if impounding is >20 in 6 months, recommend shelter expansion; if spay/neuter >30, recommend budget increase
-4. For inventory: compare expiring items (within 90 days) vs critical stock items — recommend procurement plan adjustment
+4. For inventory: if low_stock_items has items with est_restock_cost > available balance in their line items, generate a realignment or warning; if expiringSoon items have wasteCost > 0, recommend procurement timing fix
 5. Suggested_pct must be computed from actual gaps, not arbitrary — max 60%
 6. Confidence: 85–95 for clear data signals, 65–80 for trends, <65 for weak signals
-7. Include at minimum 3 data_points per recommendation quoting actual numbers
+7. Include at minimum 3 data_points per recommendation quoting actual numbers — reference item names, quantities, and peso amounts
+8. When low-stock items have unit_cost > 0, compute and cite the actual restock cost in the recommendation
 
 Return ONLY valid JSON array — no markdown, no preamble:
 [
