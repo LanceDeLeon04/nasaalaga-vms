@@ -1166,6 +1166,7 @@ if (isMain) {
     .then(() => migrateProfileColumns())
     .then(() => migrateInventoryV3())
     .then(() => migrateDispatch())
+    .then(() => migrateOfficeBudgetColumns())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1174,6 +1175,31 @@ if (isMain) {
       console.error('Migration error:', err);
       process.exit(1);
     });
+}
+
+// ── Budget columns for office_supplies (program/line-item linking) ──────────
+export async function migrateOfficeBudgetColumns() {
+  const client = await pool.connect();
+  try {
+    // Add the same budget-linking columns that medicine_inventory and supplies_inventory have
+    await client.query(`ALTER TABLE office_supplies ADD COLUMN IF NOT EXISTS purpose VARCHAR(50) DEFAULT 'office'`);
+    await client.query(`ALTER TABLE office_supplies ADD COLUMN IF NOT EXISTS program_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE office_supplies ADD COLUMN IF NOT EXISTS line_item_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE office_supplies ADD COLUMN IF NOT EXISTS fiscal_year INTEGER`);
+    await client.query(`ALTER TABLE office_supplies ADD COLUMN IF NOT EXISTS received_by VARCHAR(255)`);
+    // Indexes for fast program/line-item filtering
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_office_program_id ON office_supplies (program_id) WHERE program_id IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_office_line_item_id ON office_supplies (line_item_id) WHERE line_item_id IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_med_program_id ON medicine_inventory (program_id) WHERE program_id IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_med_line_item_id ON medicine_inventory (line_item_id) WHERE line_item_id IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sup_program_id ON supplies_inventory (program_id) WHERE program_id IS NOT NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_sup_line_item_id ON supplies_inventory (line_item_id) WHERE line_item_id IS NOT NULL`);
+    console.log('✅ Budget columns (purpose, program_id, line_item_id, fiscal_year, received_by) ensured on office_supplies');
+  } catch (err) {
+    console.error('❌ Office budget columns migration failed:', err);
+  } finally {
+    client.release();
+  }
 }
 
 // ── Dispatch / Barangay tracking migration ──────────────────────────────────

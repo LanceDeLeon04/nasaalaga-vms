@@ -1291,6 +1291,8 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('All');
+  const [programFilter, setProgramFilter] = useState('All');
+  const [lineItemFilter, setLineItemFilter] = useState('All');
   const [orderFilter, setOrderFilter] = useState('pending');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [showMedModal, setShowMedModal] = useState(false);
@@ -1473,17 +1475,23 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const filteredMeds = medicines.filter(m => {
     const q = search.toLowerCase();
     return (!q || m.name?.toLowerCase().includes(q) || m.barcode?.includes(q) || m.generic_name?.toLowerCase().includes(q))
-      && (catFilter === 'All' || m.category === catFilter);
+      && (catFilter === 'All' || m.category === catFilter)
+      && (programFilter === 'All' || m.program_id === programFilter)
+      && (lineItemFilter === 'All' || m.line_item_id === lineItemFilter);
   });
   const filteredSups = supplies.filter(s => {
     const q = search.toLowerCase();
     return (!q || s.name?.toLowerCase().includes(q) || s.barcode?.includes(q))
-      && (catFilter === 'All' || s.category === catFilter);
+      && (catFilter === 'All' || s.category === catFilter)
+      && (programFilter === 'All' || s.program_id === programFilter)
+      && (lineItemFilter === 'All' || s.line_item_id === lineItemFilter);
   });
   const filteredOffice = officeSupplies.filter(o => {
     const q = search.toLowerCase();
     return (!q || o.name?.toLowerCase().includes(q) || o.barcode?.includes(q))
-      && (catFilter === 'All' || o.category === catFilter);
+      && (catFilter === 'All' || o.category === catFilter)
+      && (programFilter === 'All' || o.program_id === programFilter)
+      && (lineItemFilter === 'All' || o.line_item_id === lineItemFilter);
   });
   const filteredOrders = pendingOrders.filter(o =>
     (orderFilter === 'all' || o.status === orderFilter) &&
@@ -1598,7 +1606,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex border-b border-gray-100 overflow-x-auto">
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => { setTab(id as TabId); setSearch(''); setCatFilter('All'); }}
+            <button key={id} onClick={() => { setTab(id as TabId); setSearch(''); setCatFilter('All'); setProgramFilter('All'); setLineItemFilter('All'); }}
               className={`flex items-center gap-2 px-4 py-4 text-sm font-semibold whitespace-nowrap transition-all ${tab===id?'text-[#2B5EA6] border-b-2 border-[#2B5EA6] bg-blue-50/50':'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
               <Icon className="w-4 h-4" /> {label}
             </button>
@@ -1827,8 +1835,8 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         {/* ── MEDICINES TABLE ─────────────────────────────────────────────────── */}
         {tab === 'medicines' && (
           <div className="p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, barcode..."
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none" />
@@ -1837,6 +1845,28 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                 <option value="All">All Categories</option>
                 {MEDICINE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
+              {programs.length > 0 && (
+                <select value={programFilter} onChange={e => { setProgramFilter(e.target.value); setLineItemFilter('All'); }}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-blue-50 text-blue-800 font-medium">
+                  <option value="All">All Programs</option>
+                  {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )}
+              {programs.length > 0 && programFilter !== 'All' && (
+                <select value={lineItemFilter} onChange={e => setLineItemFilter(e.target.value)}
+                  className="border border-blue-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-blue-50 text-blue-700">
+                  <option value="All">All Line Items</option>
+                  {(programs.find(p => p.id === programFilter)?.line_items || []).map((li: any) => (
+                    <option key={li.id} value={li.id}>{li.name}</option>
+                  ))}
+                </select>
+              )}
+              {(programFilter !== 'All' || lineItemFilter !== 'All') && (
+                <button onClick={() => { setProgramFilter('All'); setLineItemFilter('All'); }}
+                  className="text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded-xl px-3 py-2.5 whitespace-nowrap">
+                  ✕ Clear Budget Filter
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full text-sm">
@@ -1844,6 +1874,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-left">Item</th>
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
+                  <th className="px-4 py-3 text-left">Budget Program</th>
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">Total Value</th>
@@ -1852,10 +1883,12 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-center">Actions</th>
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
-                  {loading ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">Loading...</td></tr>
-                  : filteredMeds.length === 0 ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">No medicines found.</td></tr>
+                  {loading ? <tr><td colSpan={10} className="text-center py-8 text-gray-400">Loading...</td></tr>
+                  : filteredMeds.length === 0 ? <tr><td colSpan={10} className="text-center py-8 text-gray-400">No medicines found.</td></tr>
                   : filteredMeds.map(m => {
                     const sup = suppliers.find(s => s.id === m.supplier_id);
+                    const prog = programs.find((p: any) => p.id === m.program_id);
+                    const lineItem = prog?.line_items?.find((li: any) => li.id === m.line_item_id);
                     return (
                     <tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-4 py-3">
@@ -1866,6 +1899,16 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{m.category}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{sup?.name || '—'}</td>
+                      <td className="px-4 py-3">
+                        {prog ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: (prog.color || '#2B5EA6') + '18', color: prog.color || '#2B5EA6' }}>
+                              {prog.name}
+                            </span>
+                            {lineItem && <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[160px]">{lineItem.name}</p>}
+                          </div>
+                        ) : <span className="text-xs text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">{m.quantity} <span className="text-xs text-gray-400">{m.unit}</span></td>
                       <td className="px-4 py-3 text-right text-gray-600">₱{Number(m.unit_cost||0).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((m.quantity||0)*(parseFloat(m.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
@@ -1892,8 +1935,8 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         {/* ── SUPPLIES TABLE ──────────────────────────────────────────────────── */}
         {tab === 'supplies' && (
           <div className="p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search supplies..."
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#60A85C]/30 outline-none" />
@@ -1902,6 +1945,28 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                 <option value="All">All Categories</option>
                 {SUPPLY_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
+              {programs.length > 0 && (
+                <select value={programFilter} onChange={e => { setProgramFilter(e.target.value); setLineItemFilter('All'); }}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-green-50 text-green-800 font-medium">
+                  <option value="All">All Programs</option>
+                  {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )}
+              {programs.length > 0 && programFilter !== 'All' && (
+                <select value={lineItemFilter} onChange={e => setLineItemFilter(e.target.value)}
+                  className="border border-green-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-green-50 text-green-700">
+                  <option value="All">All Line Items</option>
+                  {(programs.find(p => p.id === programFilter)?.line_items || []).map((li: any) => (
+                    <option key={li.id} value={li.id}>{li.name}</option>
+                  ))}
+                </select>
+              )}
+              {(programFilter !== 'All' || lineItemFilter !== 'All') && (
+                <button onClick={() => { setProgramFilter('All'); setLineItemFilter('All'); }}
+                  className="text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded-xl px-3 py-2.5 whitespace-nowrap">
+                  ✕ Clear Budget Filter
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full text-sm">
@@ -1909,6 +1974,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-left">Supply</th>
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
+                  <th className="px-4 py-3 text-left">Budget Program</th>
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">Total Value</th>
@@ -1916,10 +1982,12 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-center">Actions</th>
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
-                  {loading ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading...</td></tr>
-                  : filteredSups.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No supplies found.</td></tr>
+                  {loading ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">Loading...</td></tr>
+                  : filteredSups.length === 0 ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">No supplies found.</td></tr>
                   : filteredSups.map(s => {
                     const sup = suppliers.find(x => x.id === s.supplier_id);
+                    const prog = programs.find((p: any) => p.id === s.program_id);
+                    const lineItem = prog?.line_items?.find((li: any) => li.id === s.line_item_id);
                     return (
                     <tr key={s.id} className="hover:bg-green-50/30 transition-colors">
                       <td className="px-4 py-3">
@@ -1928,6 +1996,16 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{s.category}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{sup?.name || s.supplier || '—'}</td>
+                      <td className="px-4 py-3">
+                        {prog ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: (prog.color || '#60A85C') + '18', color: prog.color || '#60A85C' }}>
+                              {prog.name}
+                            </span>
+                            {lineItem && <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[160px]">{lineItem.name}</p>}
+                          </div>
+                        ) : <span className="text-xs text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">{s.quantity} <span className="text-xs text-gray-400">{s.unit}</span></td>
                       <td className="px-4 py-3 text-right text-gray-600">₱{Number(s.unit_cost||0).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((s.quantity||0)*(parseFloat(s.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
@@ -1953,8 +2031,8 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         {/* ── OFFICE SUPPLIES ─────────────────────────────────────────────────── */}
         {tab === 'office' && (
           <div className="p-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search office supplies..."
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-400/30 outline-none" />
@@ -1963,6 +2041,28 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                 <option value="All">All Categories</option>
                 {OFFICE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
+              {programs.length > 0 && (
+                <select value={programFilter} onChange={e => { setProgramFilter(e.target.value); setLineItemFilter('All'); }}
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-amber-50 text-amber-800 font-medium">
+                  <option value="All">All Programs</option>
+                  {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )}
+              {programs.length > 0 && programFilter !== 'All' && (
+                <select value={lineItemFilter} onChange={e => setLineItemFilter(e.target.value)}
+                  className="border border-amber-200 rounded-xl px-3 py-2.5 text-sm outline-none bg-amber-50 text-amber-700">
+                  <option value="All">All Line Items</option>
+                  {(programs.find(p => p.id === programFilter)?.line_items || []).map((li: any) => (
+                    <option key={li.id} value={li.id}>{li.name}</option>
+                  ))}
+                </select>
+              )}
+              {(programFilter !== 'All' || lineItemFilter !== 'All') && (
+                <button onClick={() => { setProgramFilter('All'); setLineItemFilter('All'); }}
+                  className="text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded-xl px-3 py-2.5 whitespace-nowrap">
+                  ✕ Clear Budget Filter
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto rounded-xl border border-gray-100">
               <table className="w-full text-sm">
@@ -1970,6 +2070,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-left">Item</th>
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
+                  <th className="px-4 py-3 text-left">Budget Program</th>
                   <th className="px-4 py-3 text-right">Qty</th>
                   <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">Total Value</th>
@@ -1977,10 +2078,12 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-center">Actions</th>
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
-                  {loading ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">Loading...</td></tr>
-                  : filteredOffice.length === 0 ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No office supplies found.</td></tr>
+                  {loading ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">Loading...</td></tr>
+                  : filteredOffice.length === 0 ? <tr><td colSpan={9} className="text-center py-8 text-gray-400">No office supplies found.</td></tr>
                   : filteredOffice.map(o => {
                     const sup = suppliers.find(x => x.id === o.supplier_id);
+                    const prog = programs.find((p: any) => p.id === o.program_id);
+                    const lineItem = prog?.line_items?.find((li: any) => li.id === o.line_item_id);
                     return (
                     <tr key={o.id} className="hover:bg-amber-50/40 transition-colors">
                       <td className="px-4 py-3">
@@ -1989,6 +2092,16 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{o.category}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{sup?.name || '—'}</td>
+                      <td className="px-4 py-3">
+                        {prog ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: (prog.color || '#0891b2') + '18', color: prog.color || '#0891b2' }}>
+                              {prog.name}
+                            </span>
+                            {lineItem && <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[160px]">{lineItem.name}</p>}
+                          </div>
+                        ) : <span className="text-xs text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">{o.quantity} <span className="text-xs text-gray-400">{o.unit}</span></td>
                       <td className="px-4 py-3 text-right text-gray-600">₱{Number(o.unit_cost||0).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((o.quantity||0)*(parseFloat(o.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
