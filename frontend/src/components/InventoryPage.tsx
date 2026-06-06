@@ -7,7 +7,7 @@ import {
   DollarSign, Activity, Filter, Truck, ClipboardList, Users,
   ShoppingCart, ArrowRight, CheckSquare, FileText, LayoutGrid,
   Briefcase, ChevronRight, Hash, Layers, SendHorizonal, MapPin,
-  Syringe, Stethoscope, PawPrint,
+  Syringe, Stethoscope, PawPrint, Archive,
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
@@ -677,6 +677,7 @@ function AddOrderModal({
   });
   const [nameQuery, setNameQuery] = useState(form.itemName);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [supplierAutoDetected, setSupplierAutoDetected] = useState(!!prefill?.supplierId);
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   const allItems = [
@@ -729,6 +730,9 @@ function AddOrderModal({
                     setNameQuery(item.name); set('itemName',item.name);
                     set('category',item.category||''); set('unit',item.unit||'pieces');
                     set('unitCost',item.unit_cost||0); set('itemType',item._type);
+                    // Auto-detect supplier from item's default supplier
+                    if (item.supplier_id) { set('supplierId', item.supplier_id); setSupplierAutoDetected(true); }
+                    else { setSupplierAutoDetected(false); }
                     setShowDropdown(false);
                   }} className="w-full text-left px-4 py-2.5 hover:bg-blue-50 flex items-center gap-3 border-b border-gray-50 last:border-b-0">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${item._type==='medicine'?'bg-blue-100 text-blue-700':item._type==='supply'?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>{item._type}</span>
@@ -736,7 +740,14 @@ function AddOrderModal({
                       <p className="text-sm font-semibold text-gray-900">{item.name}</p>
                       {item.category && <p className="text-xs text-gray-400">{item.category}</p>}
                     </div>
-                    <span className="ml-auto text-xs text-gray-400">{item.quantity} {item.unit} in stock</span>
+                    <div className="ml-auto text-right shrink-0">
+                      <p className="text-xs text-gray-400">{item.quantity} {item.unit} in stock</p>
+                      {item.supplier_id && suppliers.find((s:any) => s.id === item.supplier_id) && (
+                        <p className="text-[10px] text-blue-500 font-semibold">
+                          📦 {suppliers.find((s:any) => s.id === item.supplier_id)?.name}
+                        </p>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -767,13 +778,38 @@ function AddOrderModal({
             </div>
           </div>
 
-          {/* Supplier — 1 item, 1 supplier */}
+          {/* Supplier — auto-detected or manual */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Supplier *</label>
-            <select value={form.supplierId} onChange={e => set('supplierId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
-              <option value="">— Select Supplier —</option>
-              {suppliers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
-            </select>
+            <label className="block text-xs font-semibold text-gray-600 mb-1 flex items-center gap-2">
+              Supplier *
+              {supplierAutoDetected && form.supplierId && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                  ✨ Auto-detected from item
+                </span>
+              )}
+            </label>
+            {supplierAutoDetected && form.supplierId && suppliers.find((s:any) => s.id === form.supplierId) ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center gap-3 bg-teal-50 border-2 border-teal-300 rounded-lg px-3 py-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-teal-800">{suppliers.find((s:any) => s.id === form.supplierId)?.name}</p>
+                    <p className="text-[10px] text-teal-500">{suppliers.find((s:any) => s.id === form.supplierId)?.category} · Default supplier for this item</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => { setSupplierAutoDetected(false); }}
+                  className="px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 shrink-0">
+                  Change
+                </button>
+              </div>
+            ) : (
+              <select value={form.supplierId} onChange={e => { set('supplierId',e.target.value); setSupplierAutoDetected(false); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                <option value="">— Select Supplier —</option>
+                {suppliers.filter((s:any) => s.is_active).map((s:any) => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
+              </select>
+            )}
           </div>
 
           {/* Budget deduction */}
@@ -839,6 +875,186 @@ function AddOrderModal({
           <button onClick={() => { if (!form.itemName.trim()) { toast.error('Item name required'); return; } onSave({ ...form, source: 'manual' }); }}
             className="px-6 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/90 flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" /> Place Order
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add Old Stock Modal (Admin-only migration tool) ───────────────────────────
+function AddOldStockModal({
+  medicines, supplies, officeSupplies, programs, onClose, onSave
+}: {
+  medicines: any[]; supplies: any[]; officeSupplies: any[];
+  programs: any[]; onClose: () => void; onSave: (d: any) => void;
+}) {
+  const [form, setForm] = useState({
+    itemType: 'medicine' as 'medicine'|'supply'|'office',
+    name: '', genericName: '', category: '', type: '',
+    barcode: '', lotNumber: '', manufacturer: '', supplier: '',
+    expiryDate: '', manufactureDate: '',
+    quantity: 1, unit: 'vials', reorderLevel: 10,
+    unitCost: 0,
+    doseType: 'single', dosesPerContainer: 1,
+    concentrationValue: '', concentrationUnit: 'IU/mL',
+    volumePerContainer: '', volumeUnit: 'ml',
+    unitType: 'Vial',
+    storageCondition: '', description: '',
+    programId: '', lineItemId: '',
+    fiscalYear: new Date().getFullYear(),
+    receivedBy: '',
+    notes: '',
+  });
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const lineItems = programs.find((p: any) => p.id === form.programId)?.line_items || [];
+
+  const typeUnits: Record<string, string> = { medicine: 'vials', supply: 'pieces', office: 'pieces' };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] overflow-y-auto">
+        <div className="sticky top-0 bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <div>
+            <h2 className="text-lg font-bold text-amber-900 flex items-center gap-2">
+              <Archive className="w-5 h-5 text-amber-600" /> Add Old Stock
+            </h2>
+            <p className="text-xs text-amber-700 mt-0.5">Migration entry — adds directly to inventory (Admin only)</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-amber-100 rounded-lg"><X className="w-5 h-5 text-amber-700" /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Item type */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-2">Item Type</label>
+            <div className="flex gap-2">
+              {([{v:'medicine',l:'Medicine',c:'bg-[#2B5EA6]'},{v:'supply',l:'Supply',c:'bg-[#60A85C]'},{v:'office',l:'Office Supply',c:'bg-amber-500'}] as const).map(t => (
+                <button key={t.v} onClick={() => { set('itemType',t.v); set('unit',typeUnits[t.v]); set('reorderLevel', t.v==='medicine'?10:5); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${form.itemType===t.v?`${t.c} text-white border-transparent`:'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Basic info */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Item Name *</label>
+              <input value={form.name} onChange={e => set('name',e.target.value)} placeholder="e.g. Rabies Vaccine (Rabisin)" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-400/30 outline-none" />
+            </div>
+            {form.itemType === 'medicine' && (
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Generic Name</label>
+                <input value={form.genericName} onChange={e => set('genericName',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
+              <input value={form.category} onChange={e => set('category',e.target.value)} placeholder="e.g. Vaccine" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Type / Formulation</label>
+              <input value={form.type} onChange={e => set('type',e.target.value)} placeholder="e.g. Inactivated" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Barcode (optional)</label>
+              <input value={form.barcode} onChange={e => set('barcode',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Lot / Batch No.</label>
+              <input value={form.lotNumber} onChange={e => set('lotNumber',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            {form.itemType === 'medicine' ? (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacturer</label>
+                <input value={form.manufacturer} onChange={e => set('manufacturer',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Supplier</label>
+                <input value={form.supplier} onChange={e => set('supplier',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Expiry Date</label>
+              <input type="date" value={form.expiryDate} onChange={e => set('expiryDate',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            {form.itemType === 'medicine' && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacture Date</label>
+                <input type="date" value={form.manufactureDate} onChange={e => set('manufactureDate',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+              </div>
+            )}
+          </div>
+
+          {/* Quantity & cost */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Quantity *</label>
+              <input type="number" min={1} value={form.quantity} onChange={e => set('quantity',parseInt(e.target.value)||1)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Unit</label>
+              <input value={form.unit} onChange={e => set('unit',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Unit Cost (₱)</label>
+              <input type="number" step="0.01" min={0} value={form.unitCost} onChange={e => set('unitCost',parseFloat(e.target.value)||0)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Reorder Level</label>
+              <input type="number" min={0} value={form.reorderLevel} onChange={e => set('reorderLevel',parseInt(e.target.value)||0)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+          </div>
+
+          {/* Received by */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Originally Received By</label>
+            <input value={form.receivedBy} onChange={e => set('receivedBy',e.target.value)} placeholder="Full name of the original recipient" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+          </div>
+
+          {/* Budget linkage */}
+          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+            <p className="text-xs font-bold text-blue-700 mb-3">💰 Budget Linkage (optional — for tracking purposes)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Budget Program</label>
+                <select value={form.programId} onChange={e => { set('programId',e.target.value); set('lineItemId',''); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+                  <option value="">— Not linked —</option>
+                  {programs.map((p: any) => <option key={p.id} value={p.id}>{p.name} (FY{p.fiscal_year})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Line Item</label>
+                <select value={form.lineItemId} onChange={e => set('lineItemId',e.target.value)} className={`w-full border rounded-lg px-3 py-2 text-sm outline-none bg-white ${!form.programId?'border-gray-100 text-gray-400':lineItems.length?'border-gray-200':'border-yellow-200 text-yellow-700'}`} disabled={!form.programId||!lineItems.length}>
+                  <option value="">{!form.programId?'— Select program first —':lineItems.length===0?'— No line items —':'— Select Line Item —'}</option>
+                  {lineItems.map((li: any) => <option key={li.id} value={li.id}>{li.name}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Migration Notes</label>
+            <input value={form.notes} onChange={e => set('notes',e.target.value)} placeholder="e.g. Existing stock from CY 2023, manual records" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+          </div>
+
+          {form.unitCost > 0 && form.quantity > 0 && (
+            <div className="bg-amber-50 rounded-xl px-4 py-3 flex items-center justify-between border border-amber-200">
+              <span className="text-sm text-amber-700 font-semibold">Total Stock Value</span>
+              <span className="text-lg font-black text-amber-800">₱{(form.unitCost*form.quantity).toLocaleString('en-PH',{maximumFractionDigits:2})}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3 justify-end rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+          <button onClick={() => { if (!form.name.trim()) { toast.error('Item name required'); return; } onSave(form); }}
+            className="px-6 py-2 bg-amber-600 text-white rounded-xl text-sm font-semibold hover:bg-amber-700 flex items-center gap-2">
+            <Archive className="w-4 h-4" /> Add to Inventory
           </button>
         </div>
       </div>
@@ -1551,6 +1767,7 @@ function LogbookModal({ transactions, itemName, onClose }: { transactions: any[]
 // ── MAIN ─────────────────────────────────────────────────────────────────────
 export function InventoryPage({ userRole, currentUser }: Props) {
   const canEdit = ['admin','superadmin','cvoStaff'].includes(userRole);
+  const isAdminUser = ['admin','superadmin'].includes(userRole);
   type TabId = 'overview'|'medicines'|'supplies'|'office'|'orders'|'logbook'|'suppliers';
   const [tab, setTab] = useState<TabId>('overview');
   const [medicines, setMedicines] = useState<any[]>([]);
@@ -1572,6 +1789,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const [showOfficModal, setShowOfficModal] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
+  const [showOldStockModal, setShowOldStockModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState<any>(null);
   const [showMoveModal, setShowMoveModal] = useState<{ item: any; type: string } | null>(null);
   const [showLogbook, setShowLogbook] = useState<{ item: any; txs: any[] } | null>(null);
@@ -1676,6 +1894,15 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       setShowAddOrderModal(false); setAddOrderPrefill(null);
       await loadData(); setTab('orders');
       toast.success('Order placed — now pending receipt');
+    } catch (e: any) { setError(e.message); }
+  };
+
+  const saveOldStock = async (form: any) => {
+    try {
+      await api.addOldStock(form);
+      setShowOldStockModal(false);
+      await loadData();
+      toast.success('Old stock added to inventory!');
     } catch (e: any) { setError(e.message); }
   };
 
@@ -1823,6 +2050,13 @@ export function InventoryPage({ userRole, currentUser }: Props) {
               <ShoppingCart className="w-4 h-4" /> New Order
             </button>
           )}
+          {isAdminUser && (
+            <button onClick={() => setShowOldStockModal(true)}
+              title="Add pre-existing stock from manual records (migration)"
+              className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-amber-600 shadow">
+              <Archive className="w-4 h-4" /> Old Stock
+            </button>
+          )}
           {canEdit && (
             <button onClick={() => setShowDispatchModal(true)}
               className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 shadow">
@@ -1923,6 +2157,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   unitCost: Number(m.unit_cost) || 0,
                   lineItemId: m.line_item_id,
                   programId: m.program_id,
+                  supplierId: m.supplier_id || '',
                 })),
                 ...supplies.filter(s => s.quantity <= s.reorder_level).map(s => ({
                   name: s.name, type: 'supply' as const,
@@ -1931,6 +2166,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   unitCost: Number(s.unit_cost) || 0,
                   lineItemId: s.line_item_id,
                   programId: s.program_id,
+                  supplierId: s.supplier_id || '',
                 })),
               ].map(item => {
                 const linkedLI = allLineItems.find(li => li.id === item.lineItemId);
@@ -2004,6 +2240,13 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                                 {item.qty} in stock · Reorder at {item.reorder} · Need ~{item.restockQty} units
                                 {item.unitCost > 0 && ` · ₱${item.unitCost.toLocaleString()} ea`}
                               </p>
+                              {item.supplierId && suppliers.find((s:any) => s.id === item.supplierId) && (
+                                <p className="text-[10px] text-teal-600 font-semibold mt-0.5 flex items-center gap-1">
+                                  <Building2 className="w-3 h-3" />
+                                  {suppliers.find((s:any) => s.id === item.supplierId)?.name}
+                                  <span className="text-gray-400 font-normal">· default supplier</span>
+                                </p>
+                              )}
                             </div>
                             <div className="text-right flex-shrink-0">
                               {item.estimatedCost > 0 && (
@@ -2020,7 +2263,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                               )}
                             </div>
                             <button
-                              onClick={() => { setAddOrderPrefill({ itemName: item.name, itemType: item.type, quantity: item.restockQty, unitCost: item.unitCost, programId: item.programId, lineItemId: item.lineItemId }); setShowAddOrderModal(true); setTab('orders'); }}
+                              onClick={() => { setAddOrderPrefill({ itemName: item.name, itemType: item.type, quantity: item.restockQty, unitCost: item.unitCost, programId: item.programId, lineItemId: item.lineItemId, supplierId: item.supplierId }); setShowAddOrderModal(true); setTab('orders'); }}
                               className="flex-shrink-0 px-3 py-1.5 bg-[#2B5EA6] text-white text-[10px] font-bold rounded-lg hover:bg-[#2B5EA6]/90"
                             >
                               Order
@@ -2630,6 +2873,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       {showOfficModal && <OfficeSupplyModal item={editItem} suppliers={suppliers} programs={programs} onClose={() => { setShowOfficModal(false); setEditItem(null); }} onSave={saveOfficeSupply} />}
       {showSupplierModal && <SupplierModal item={editItem} onClose={() => { setShowSupplierModal(false); setEditItem(null); }} onSave={saveSupplier} />}
       {showAddOrderModal && <AddOrderModal prefill={addOrderPrefill} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} suppliers={suppliers} programs={programs} onClose={() => { setShowAddOrderModal(false); setAddOrderPrefill(null); }} onSave={saveOrder} />}
+      {showOldStockModal && <AddOldStockModal medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} programs={programs} onClose={() => setShowOldStockModal(false)} onSave={saveOldStock} />}
       {showReceiveModal && <ReceiveOrderModal order={showReceiveModal} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} onClose={() => setShowReceiveModal(null)} onReceive={receiveOrder} />}
       {showMoveModal && <MovementModal item={showMoveModal.item} itemType={showMoveModal.type} onClose={() => setShowMoveModal(null)} onSave={handleMovement} />}
       {showLogbook && <LogbookModal transactions={showLogbook.txs} itemName={showLogbook.item.name} onClose={() => setShowLogbook(null)} />}
