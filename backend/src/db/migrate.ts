@@ -1160,6 +1160,34 @@ export async function migrateInventoryV3() {
   }
 }
 
+// ── Dosage / Unit-Type columns for medicine_inventory ───────────────────────
+export async function migrateInventoryDosage() {
+  const client = await pool.connect();
+  try {
+    // unit_type: Box | Vial | Bottle | Ampoule | Tablet | Other
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS unit_type VARCHAR(50) DEFAULT 'Other'`);
+    // dose_type: single | multi (for Vial / Bottle / Ampoule)
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS dose_type VARCHAR(20) DEFAULT 'single'`);
+    // doses_per_container: how many doses fit in one vial / bottle / ampoule, OR tablets per box
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS doses_per_container INTEGER DEFAULT 1`);
+    // total_doses: computed = quantity * doses_per_container (stored for fast queries)
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS total_doses INTEGER DEFAULT 0`);
+    // concentration info
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS concentration_value NUMERIC(10,4) DEFAULT NULL`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS concentration_unit VARCHAR(20) DEFAULT NULL`); // mg, ml, mcg, IU, %
+    // volume per container (ml)
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS volume_per_container NUMERIC(10,4) DEFAULT NULL`);
+    await client.query(`ALTER TABLE medicine_inventory ADD COLUMN IF NOT EXISTS volume_unit VARCHAR(20) DEFAULT 'ml'`);
+    // Backfill total_doses for existing rows
+    await client.query(`UPDATE medicine_inventory SET total_doses = quantity * COALESCE(doses_per_container, 1) WHERE total_doses = 0`);
+    console.log('✅ Inventory Dosage columns added to medicine_inventory');
+  } catch (err) {
+    console.error('❌ Inventory Dosage migration failed:', err);
+  } finally {
+    client.release();
+  }
+}
+
 // Only run migration chain when executed directly (ts-node migrate.ts), NOT when imported
 const isMain = require.main === module ||
   (process.argv[1] && process.argv[1].includes('migrate'));
@@ -1173,6 +1201,7 @@ if (isMain) {
     .then(() => migrateInventoryV3())
     .then(() => migrateDispatch())
     .then(() => migrateOfficeBudgetColumns())
+    .then(() => migrateInventoryDosage())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);

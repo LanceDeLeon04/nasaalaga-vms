@@ -729,10 +729,12 @@ router.post('/inventory/medicines', authenticate, async (req: AuthRequest, res: 
     const qty = d.quantity || 0;
     const unitCost = d.unitCost || 0;
     const totalCost = qty * unitCost;
+    const dosesPerContainer = d.dosesPerContainer || 1;
+    const totalDoses = qty * dosesPerContainer;
     const result = await query(
-      `INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, manufacture_date, manufacturer, quantity, unit, reorder_level, unit_cost, storage_condition, description, purpose, program_id, line_item_id, fiscal_year, received_by, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
-      [newId, d.barcode, d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufactureDate, d.manufacturer, qty, d.unit || 'vials', d.reorderLevel || 10, unitCost, d.storageCondition, d.description, d.purpose || 'program', d.programId || null, d.lineItemId || null, fy, d.receivedBy || null, req.user?.username]
+      `INSERT INTO medicine_inventory (id, barcode, name, generic_name, category, type, lot_number, expiry_date, manufacture_date, manufacturer, quantity, unit, unit_type, dose_type, doses_per_container, total_doses, concentration_value, concentration_unit, volume_per_container, volume_unit, reorder_level, unit_cost, storage_condition, description, purpose, program_id, line_item_id, fiscal_year, received_by, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *`,
+      [newId, d.barcode, d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufactureDate, d.manufacturer, qty, d.unit || 'vials', d.unitType || 'Vial', d.doseType || 'single', dosesPerContainer, totalDoses, d.concentrationValue || null, d.concentrationUnit || null, d.volumePerContainer || null, d.volumeUnit || 'ml', d.reorderLevel || 10, unitCost, d.storageCondition, d.description, d.purpose || 'program', d.programId || null, d.lineItemId || null, fy, d.receivedBy || null, req.user?.username]
     );
     // Log IN transaction
     await query(
@@ -770,8 +772,8 @@ router.put('/inventory/medicines/:id', authenticate, async (req: AuthRequest, re
     const prevLineItemId = prev.rows[0]?.line_item_id || null;
 
     const result = await query(
-      `UPDATE medicine_inventory SET name=$1, generic_name=$2, category=$3, type=$4, lot_number=$5, expiry_date=$6, manufacturer=$7, quantity=$8, unit=$9, reorder_level=$10, unit_cost=$11, storage_condition=$12, description=$13, status=$14, purpose=$15, program_id=$16, line_item_id=$17, fiscal_year=$18, updated_at=NOW() WHERE id=$19 RETURNING *`,
-      [d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufacturer, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.storageCondition, d.description, d.status || 'Active', d.purpose || 'program', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
+      `UPDATE medicine_inventory SET name=$1, generic_name=$2, category=$3, type=$4, lot_number=$5, expiry_date=$6, manufacturer=$7, quantity=$8, unit=$9, unit_type=$10, dose_type=$11, doses_per_container=$12, total_doses=$13, concentration_value=$14, concentration_unit=$15, volume_per_container=$16, volume_unit=$17, reorder_level=$18, unit_cost=$19, storage_condition=$20, description=$21, status=$22, purpose=$23, program_id=$24, line_item_id=$25, fiscal_year=$26, updated_at=NOW() WHERE id=$27 RETURNING *`,
+      [d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufacturer, d.quantity, d.unit, d.unitType || 'Vial', d.doseType || 'single', d.dosesPerContainer || 1, (d.quantity||0)*(d.dosesPerContainer||1), d.concentrationValue || null, d.concentrationUnit || null, d.volumePerContainer || null, d.volumeUnit || 'ml', d.reorderLevel, d.unitCost, d.storageCondition, d.description, d.status || 'Active', d.purpose || 'program', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
     );
     // Log quantity transaction
     const diff = d.quantity - prevQty;

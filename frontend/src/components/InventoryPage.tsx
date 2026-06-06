@@ -41,37 +41,82 @@ function ExpiryBadge({ date }: { date?: string }) {
 }
 
 // ── Medicine Modal ───────────────────────────────────────────────────────────
+const UNIT_TYPES = [
+  { value: 'Vial',     label: 'Vial',     icon: '💉', desc: 'Injectable liquid in glass/plastic vials' },
+  { value: 'Bottle',   label: 'Bottle',   icon: '🍶', desc: 'Liquid medicine in a bottle' },
+  { value: 'Ampoule',  label: 'Ampoule',  icon: '⚗️',  desc: 'Sealed glass ampoule' },
+  { value: 'Box',      label: 'Box',      icon: '📦', desc: 'Box containing tablets, capsules or sachets' },
+  { value: 'Tablet',   label: 'Tablet',   icon: '💊', desc: 'Loose tablets / capsules (not boxed)' },
+  { value: 'Other',    label: 'Other',    icon: '🗃️',  desc: 'Any other unit type' },
+];
+const CONC_UNITS = ['mg', 'mcg', 'g', 'IU', 'mEq', 'mg/ml', 'mcg/ml', 'IU/ml', '%'];
+const VOL_UNITS  = ['ml', 'L', 'cc'];
+
 function MedicineModal({ item, programs, suppliers, onClose, onSave }: {
   item?: any; programs: any[]; suppliers: any[]; onClose: () => void; onSave: (d: any) => void;
 }) {
   const [form, setForm] = useState(item ? {
-    name:item.name, genericName:item.generic_name||'', category:item.category,
-    type:item.type||'', lotNumber:item.lot_number||'', expiryDate:item.expiry_date?.split('T')[0]||'',
-    manufactureDate:item.manufacture_date?.split('T')[0]||'', manufacturer:item.manufacturer||'',
-    quantity:item.quantity, unit:item.unit||'vials', reorderLevel:item.reorder_level,
-    unitCost:item.unit_cost, storageCondition:item.storage_condition||'', description:item.description||'',
-    barcode:item.barcode||'', status:item.status||'Active', supplierId:item.supplier_id||'',
-    purpose:item.purpose||'program', programId:item.program_id||'', lineItemId:item.line_item_id||'',
-    fiscalYear:item.fiscal_year||new Date().getFullYear(), receivedBy:item.received_by||'',
+    name: item.name, genericName: item.generic_name||'', category: item.category,
+    type: item.type||'', lotNumber: item.lot_number||'', expiryDate: item.expiry_date?.split('T')[0]||'',
+    manufactureDate: item.manufacture_date?.split('T')[0]||'', manufacturer: item.manufacturer||'',
+    quantity: item.quantity, reorderLevel: item.reorder_level,
+    unitCost: item.unit_cost, storageCondition: item.storage_condition||'', description: item.description||'',
+    barcode: item.barcode||'', status: item.status||'Active', supplierId: item.supplier_id||'',
+    purpose: item.purpose||'program', programId: item.program_id||'', lineItemId: item.line_item_id||'',
+    fiscalYear: item.fiscal_year||new Date().getFullYear(), receivedBy: item.received_by||'',
+    // Dosage fields
+    unitType: item.unit_type||'Vial',
+    doseType: item.dose_type||'single',
+    dosesPerContainer: item.doses_per_container||1,
+    concentrationValue: item.concentration_value||'',
+    concentrationUnit: item.concentration_unit||'mg',
+    volumePerContainer: item.volume_per_container||'',
+    volumeUnit: item.volume_unit||'ml',
   } : {
     name:'', genericName:'', category:'Vaccine', type:'', lotNumber:'', expiryDate:'',
-    manufactureDate:'', manufacturer:'', quantity:0, unit:'vials', reorderLevel:10,
+    manufactureDate:'', manufacturer:'', quantity:0, reorderLevel:10,
     unitCost:0, storageCondition:'', description:'', barcode:'', status:'Active', supplierId:'',
     purpose:'program', programId:'', lineItemId:'', fiscalYear:new Date().getFullYear(), receivedBy:'',
+    unitType:'Vial', doseType:'single', dosesPerContainer:1,
+    concentrationValue:'', concentrationUnit:'mg', volumePerContainer:'', volumeUnit:'ml',
   });
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
-  const totalCost = (form.quantity||0) * (form.unitCost||0);
-  const lineItems = programs.find(p => p.id === form.programId)?.line_items || [];
+
+  // Derived
+  const isContainer  = ['Vial','Bottle','Ampoule'].includes(form.unitType);
+  const isBox        = form.unitType === 'Box';
+  const isMultiDose  = isContainer && form.doseType === 'multi';
+  const dosesPerUnit = (isContainer && isMultiDose) ? (form.dosesPerContainer || 1)
+                     : isBox                         ? (form.dosesPerContainer || 1)
+                     : 1;
+  const totalDoses   = (form.quantity || 0) * dosesPerUnit;
+
+  // unit label: e.g. "vials", "bottles", "boxes", "tablets"
+  const unitLabel = form.unitType === 'Other' ? 'units' : form.unitType.toLowerCase() + 's';
+  const containerItemLabel = isBox ? 'tablet' : (isContainer ? 'dose' : 'unit');
+
+  const totalCost  = (form.quantity||0) * (form.unitCost||0);
+  const lineItems  = programs.find(p => p.id === form.programId)?.line_items || [];
+
+  const concentrationStr = form.concentrationValue
+    ? `${form.concentrationValue} ${form.concentrationUnit}`
+    : '';
+  const volumeStr = form.volumePerContainer
+    ? `${form.volumePerContainer} ${form.volumeUnit}`
+    : '';
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <FlaskConical className="w-5 h-5 text-[#2B5EA6]" />{item ? 'Edit Medicine' : 'Add Medicine / Vitamin'}
+            <FlaskConical className="w-5 h-5 text-[#2B5EA6]" />{item ? 'Edit Medicine' : 'Add Medicine / Vaccine / Vitamin'}
           </h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-5">
+
+          {/* Purpose */}
           <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
             <label className="block text-xs font-semibold text-blue-700 mb-2">Purpose *</label>
             <div className="flex gap-3">
@@ -83,6 +128,7 @@ function MedicineModal({ item, programs, suppliers, onClose, onSave }: {
               ))}
             </div>
           </div>
+
           {form.purpose === 'program' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -101,34 +147,35 @@ function MedicineModal({ item, programs, suppliers, onClose, onSave }: {
               </div>
             </div>
           )}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Supplier</label>
-            <select value={form.supplierId} onChange={e => set('supplierId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
-              <option value="">— Select Supplier (optional) —</option>
-              {suppliers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Supplier</label>
+              <select value={form.supplierId} onChange={e => set('supplierId',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
+                <option value="">— Select Supplier (optional) —</option>
+                {suppliers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Received By *</label>
+              <input value={form.receivedBy} onChange={e => set('receivedBy',e.target.value)} placeholder="Full name of recipient" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none" />
+            </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Received By *</label>
-            <input value={form.receivedBy} onChange={e => set('receivedBy',e.target.value)} placeholder="Full name of recipient" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none" />
-          </div>
+
+          {/* Core product info */}
           <div className="grid grid-cols-2 gap-4">
-            {[
-              {label:'Product Name *',key:'name',col:2},{label:'Generic Name',key:'genericName',col:1},
-              {label:'Manufacturer',key:'manufacturer',col:1},{label:'Lot / Batch Number',key:'lotNumber',col:1},
-              {label:'Barcode',key:'barcode',col:1},{label:'Manufacture Date',key:'manufactureDate',type:'date',col:1},
-              {label:'Expiry Date',key:'expiryDate',type:'date',col:1},{label:'Quantity',key:'quantity',type:'number',col:1},
-              {label:'Unit',key:'unit',col:1},{label:'Reorder Level',key:'reorderLevel',type:'number',col:1},
-              {label:'Unit Price (₱)',key:'unitCost',type:'number',step:'0.01',col:1},
-              {label:'Storage Condition',key:'storageCondition',col:2},{label:'Description',key:'description',col:2},
-            ].map(({ label, key, col, type, step }: any) => (
-              <div key={key} className={col===2?'col-span-2':''}>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-                <input type={type||'text'} step={step} value={(form as any)[key]}
-                  onChange={e => set(key, type==='number'?parseFloat(e.target.value)||0:e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none" />
-              </div>
-            ))}
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Product Name *</label>
+              <input value={form.name} onChange={e => set('name',e.target.value)} placeholder="e.g. Rabies Vaccine (Rabisin)" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Generic Name</label>
+              <input value={form.genericName} onChange={e => set('genericName',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacturer</label>
+              <input value={form.manufacturer} onChange={e => set('manufacturer',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
               <select value={form.category} onChange={e => set('category',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none">
@@ -137,19 +184,213 @@ function MedicineModal({ item, programs, suppliers, onClose, onSave }: {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Type / Subtype</label>
-              <input value={form.type} onChange={e => set('type',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+              <input value={form.type} onChange={e => set('type',e.target.value)} placeholder="e.g. Live Attenuated, Inactivated" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Lot / Batch Number</label>
+              <input value={form.lotNumber} onChange={e => set('lotNumber',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Barcode</label>
+              <input value={form.barcode} onChange={e => set('barcode',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Manufacture Date</label>
+              <input type="date" value={form.manufactureDate} onChange={e => set('manufactureDate',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Expiry Date</label>
+              <input type="date" value={form.expiryDate} onChange={e => set('expiryDate',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
             </div>
           </div>
-          {totalCost > 0 && (
-            <div className="bg-green-50 rounded-xl px-4 py-3 flex items-center justify-between border border-green-100">
-              <span className="text-sm text-green-700 font-semibold">Total Cost (Qty × Unit Price)</span>
-              <span className="text-lg font-black text-green-800">₱{totalCost.toLocaleString('en-PH',{maximumFractionDigits:2})}</span>
+
+          {/* ── CONCENTRATION / STRENGTH ── */}
+          <div className="rounded-xl border border-purple-100 bg-purple-50 p-4">
+            <label className="block text-xs font-semibold text-purple-700 mb-3 flex items-center gap-1">
+              <Syringe className="w-3.5 h-3.5" /> Strength / Concentration (optional)
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Concentration / Strength</label>
+                <div className="flex gap-2">
+                  <input type="number" step="0.001" value={form.concentrationValue} onChange={e => set('concentrationValue',e.target.value)}
+                    placeholder="e.g. 500" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none min-w-0" />
+                  <select value={form.concentrationUnit} onChange={e => set('concentrationUnit',e.target.value)} className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none">
+                    {CONC_UNITS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">e.g. 500 mg, 250 IU, 1 mg/ml</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Volume per Container</label>
+                <div className="flex gap-2">
+                  <input type="number" step="0.01" value={form.volumePerContainer} onChange={e => set('volumePerContainer',e.target.value)}
+                    placeholder="e.g. 1" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none min-w-0" />
+                  <select value={form.volumeUnit} onChange={e => set('volumeUnit',e.target.value)} className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none">
+                    {VOL_UNITS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">e.g. 1 ml, 5 ml per vial</p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── UNIT TYPE SELECTOR ── */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <label className="block text-xs font-semibold text-blue-700 mb-3">Unit Type *</label>
+            <div className="grid grid-cols-3 gap-2">
+              {UNIT_TYPES.map(ut => (
+                <button key={ut.value} type="button"
+                  onClick={() => {
+                    set('unitType', ut.value);
+                    // reset dose fields when unit type changes
+                    if (!['Vial','Bottle','Ampoule'].includes(ut.value)) {
+                      set('doseType','single');
+                      set('dosesPerContainer',1);
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl border-2 transition-all text-center ${
+                    form.unitType === ut.value
+                      ? 'border-[#2B5EA6] bg-[#2B5EA6] text-white shadow-md'
+                      : 'border-gray-200 bg-white text-gray-600 hover:border-[#2B5EA6]/60'
+                  }`}>
+                  <span className="text-xl">{ut.icon}</span>
+                  <span className="text-xs font-bold">{ut.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-500 mt-2">{UNIT_TYPES.find(u => u.value === form.unitType)?.desc}</p>
+          </div>
+
+          {/* ── VIAL / BOTTLE / AMPOULE: Single or Multi-dose ── */}
+          {isContainer && (
+            <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4 space-y-3">
+              <label className="block text-xs font-semibold text-teal-700">
+                Dosage Type per {form.unitType} *
+              </label>
+              <div className="flex gap-3">
+                {[
+                  { value:'single', label:'Single-Dose', desc:`Each ${form.unitType.toLowerCase()} = 1 dose` },
+                  { value:'multi',  label:'Multi-Dose',  desc:`Each ${form.unitType.toLowerCase()} contains multiple doses` },
+                ].map(dt => (
+                  <button key={dt.value} type="button" onClick={() => set('doseType', dt.value)}
+                    className={`flex-1 py-3 px-3 rounded-xl border-2 transition-all text-left ${
+                      form.doseType === dt.value
+                        ? 'border-teal-500 bg-teal-500 text-white'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-teal-400'
+                    }`}>
+                    <p className="text-sm font-bold">{dt.label}</p>
+                    <p className={`text-[11px] mt-0.5 ${form.doseType===dt.value?'text-teal-100':'text-gray-400'}`}>{dt.desc}</p>
+                  </button>
+                ))}
+              </div>
+              {isMultiDose && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Doses per {form.unitType} *</label>
+                  <input type="number" min={2} value={form.dosesPerContainer}
+                    onChange={e => set('dosesPerContainer', parseInt(e.target.value)||1)}
+                    className="w-full border-2 border-teal-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-teal-400/30 outline-none font-semibold" />
+                  <p className="text-[10px] text-teal-600 mt-1 font-medium">e.g. 10 doses per vial (like multi-dose rabies vaccine)</p>
+                </div>
+              )}
             </div>
           )}
+
+          {/* ── BOX: Tablets per Box ── */}
+          {isBox && (
+            <div className="rounded-xl border border-orange-100 bg-orange-50/60 p-4 space-y-3">
+              <label className="block text-xs font-semibold text-orange-700">Box Contents *</label>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Tablets / Capsules / Sachets per Box *</label>
+                <input type="number" min={1} value={form.dosesPerContainer}
+                  onChange={e => set('dosesPerContainer', parseInt(e.target.value)||1)}
+                  className="w-full border-2 border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400/30 outline-none font-semibold" />
+                <p className="text-[10px] text-orange-600 mt-1 font-medium">e.g. 100 tablets per box</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── QUANTITY & PRICING ── */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                Quantity ({form.unitType === 'Other' ? 'units' : form.unitType.toLowerCase() + 's'}) *
+              </label>
+              <input type="number" min={0} value={form.quantity}
+                onChange={e => set('quantity', parseInt(e.target.value)||0)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#2B5EA6]/30 outline-none font-semibold" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Reorder Level</label>
+              <input type="number" min={0} value={form.reorderLevel}
+                onChange={e => set('reorderLevel', parseInt(e.target.value)||0)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Unit Price per {form.unitType} (₱)</label>
+              <input type="number" step="0.01" min={0} value={form.unitCost}
+                onChange={e => set('unitCost', parseFloat(e.target.value)||0)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Storage Condition</label>
+              <input value={form.storageCondition} onChange={e => set('storageCondition',e.target.value)} placeholder="e.g. Refrigerate 2–8°C" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Description / Notes</label>
+              <input value={form.description} onChange={e => set('description',e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none" />
+            </div>
+          </div>
+
+          {/* ── COMPUTED SUMMARY ── */}
+          {(form.quantity > 0) && (
+            <div className="rounded-xl bg-gradient-to-r from-[#2B5EA6]/10 to-teal-50 border border-[#2B5EA6]/20 p-4 space-y-2">
+              <p className="text-xs font-bold text-[#2B5EA6] uppercase tracking-wide mb-3">📊 Inventory Summary</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-white rounded-lg p-3 border border-gray-100">
+                  <p className="text-[10px] text-gray-400 font-semibold uppercase">Containers</p>
+                  <p className="text-xl font-black text-gray-900">{(form.quantity||0).toLocaleString()}</p>
+                  <p className="text-[10px] text-gray-500">{unitLabel}</p>
+                </div>
+                {(isContainer || isBox) && (
+                  <div className="bg-white rounded-lg p-3 border border-teal-200">
+                    <p className="text-[10px] text-teal-600 font-semibold uppercase">
+                      Total {isBox ? 'Tablets' : 'Doses'}
+                    </p>
+                    <p className="text-xl font-black text-teal-700">{totalDoses.toLocaleString()}</p>
+                    <p className="text-[10px] text-teal-500">
+                      {isBox
+                        ? `${form.dosesPerContainer} tablets × ${form.quantity} ${unitLabel}`
+                        : form.doseType === 'multi'
+                          ? `${form.dosesPerContainer} doses × ${form.quantity} ${unitLabel}`
+                          : `1 dose × ${form.quantity} ${unitLabel}`
+                      }
+                    </p>
+                  </div>
+                )}
+                {concentrationStr && (
+                  <div className="bg-white rounded-lg p-3 border border-purple-100">
+                    <p className="text-[10px] text-purple-500 font-semibold uppercase">Strength</p>
+                    <p className="text-base font-black text-purple-700">{concentrationStr}</p>
+                    {volumeStr && <p className="text-[10px] text-gray-400">per {volumeStr}</p>}
+                  </div>
+                )}
+                {totalCost > 0 && (
+                  <div className="bg-white rounded-lg p-3 border border-green-100">
+                    <p className="text-[10px] text-green-600 font-semibold uppercase">Total Cost</p>
+                    <p className="text-xl font-black text-green-700">₱{totalCost.toLocaleString('en-PH',{maximumFractionDigits:0})}</p>
+                    <p className="text-[10px] text-gray-400">₱{Number(form.unitCost).toLocaleString('en-PH',{maximumFractionDigits:2})} / {form.unitType.toLowerCase()}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3 justify-end rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
-          <button onClick={() => onSave(form)} className="px-6 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/90">
+          <button onClick={() => onSave({ ...form, unit: unitLabel, totalDoses })}
+            className="px-6 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/90">
             {item ? 'Save Changes' : 'Add Item'}
           </button>
         </div>
@@ -1498,10 +1739,23 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const lowStockOffice = officeSupplies.filter(o => o.quantity > 0 && o.quantity <= o.reorder_level).length;
   const totalMedValue = medicines.reduce((s, m) => s + (m.quantity||0) * (parseFloat(m.unit_cost)||0), 0);
   const totalSupValue = supplies.reduce((s, m) => s + (m.quantity||0) * (parseFloat(m.unit_cost)||0), 0);
+  const totalDosesAvailable = medicines.reduce((s, m) => s + (m.total_doses || (m.quantity * (m.doses_per_container||1)) || 0), 0);
+  const totalTabletsAvailable = medicines.filter(m => m.unit_type === 'Box' || m.unit_type === 'Tablet').reduce((s, m) => s + (m.total_doses || m.quantity||0), 0);
   const pendingCount = pendingOrders.filter(o => o.status === 'pending').length;
 
   const medByCat = MEDICINE_CATEGORIES.map(c => ({ name:c, value:medicines.filter(m=>m.category===c).reduce((s,m)=>s+m.quantity,0) })).filter(c=>c.value>0);
   const supByCat = SUPPLY_CATEGORIES.map(c => ({ name:c, qty:supplies.filter(s=>s.category===c).length })).filter(c=>c.qty>0);
+  const dosesByItem = medicines
+    .filter(m => m.unit_type === 'Vial' || m.unit_type === 'Bottle' || m.unit_type === 'Ampoule' || m.unit_type === 'Box')
+    .map(m => ({
+      name: m.name.length > 20 ? m.name.slice(0,18)+'…' : m.name,
+      doses: m.total_doses || m.quantity * (m.doses_per_container||1),
+      unit: m.unit_type === 'Box' ? 'tablets' : 'doses',
+      qty: m.quantity,
+      unitType: m.unit_type,
+    }))
+    .sort((a,b) => b.doses - a.doses)
+    .slice(0, 8);
 
   const filteredMeds = medicines.filter(m => {
     const q = search.toLowerCase();
@@ -1819,13 +2073,13 @@ export function InventoryPage({ userRole, currentUser }: Props) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { label:'Medicine Items', value:medicines.length, icon:FlaskConical, color:'#2B5EA6', sub:`₱${totalMedValue.toLocaleString('en-PH',{maximumFractionDigits:0})} value` },
+                { label:'Total Doses Available', value:totalDosesAvailable.toLocaleString(), icon:Syringe, color:'#0891b2', sub:`across all vials/bottles/ampoules` },
+                { label:'Tablet / Capsule Units', value:totalTabletsAvailable.toLocaleString(), icon:Activity, color:'#7c3aed', sub:`tablets & boxed items` },
                 { label:'Supply Items', value:supplies.length, icon:Package, color:'#60A85C', sub:`₱${totalSupValue.toLocaleString('en-PH',{maximumFractionDigits:0})} value` },
                 { label:'Office Supplies', value:officeSupplies.length, icon:Briefcase, color:'#f59e0b', sub:`${lowStockOffice} low stock` },
                 { label:'Pending Orders', value:pendingCount, icon:ShoppingCart, color:'#8b5cf6', sub:`${pendingOrders.filter(o=>o.status==='received').length} received` },
                 { label:'Low / Out of Stock', value:lowStockMeds+outOfStockMeds+lowStockSups, icon:AlertTriangle, color:'#ef4444', sub:`${outOfStockMeds} out of stock` },
                 { label:'Expiring / Expired', value:expiringSoon+expired, icon:Calendar, color:'#ef4444', sub:`${expired} already expired` },
-                { label:'Suppliers', value:suppliers.length, icon:Building2, color:'#6366f1', sub:`${suppliers.filter(s=>s.is_active).length} active` },
-                { label:'Total Items', value:medicines.length+supplies.length+officeSupplies.length, icon:Layers, color:'#14b8a6', sub:'across all categories' },
               ].map(({ label, value, icon: Icon, color, sub }) => (
                 <div key={label} className="bg-gray-50 rounded-2xl p-5 border border-gray-100">
                   <div className="flex items-center justify-between mb-3">
@@ -1859,6 +2113,29 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   </Pie><Tooltip /><Legend /></PieChart>
                 </ResponsiveContainer>
               </div>
+              {dosesByItem.length > 0 && (
+                <div className="bg-teal-50/60 rounded-2xl p-5 border border-teal-100 lg:col-span-2">
+                  <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Syringe className="w-4 h-4 text-teal-600" /> Doses / Tablets Available by Medicine</h3>
+                  <div className="space-y-2">
+                    {dosesByItem.map((d,i) => {
+                      const max = dosesByItem[0]?.doses || 1;
+                      const pct = Math.round((d.doses / max) * 100);
+                      return (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-600 w-36 truncate shrink-0">{d.name}</span>
+                          <div className="flex-1 bg-white rounded-full h-5 overflow-hidden border border-teal-100">
+                            <div className="h-full rounded-full flex items-center px-2 transition-all"
+                              style={{ width: `${Math.max(pct,4)}%`, backgroundColor: COLORS[i % COLORS.length] + 'cc' }}>
+                              <span className="text-[10px] font-bold text-white whitespace-nowrap">{d.doses.toLocaleString()} {d.unit}</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-gray-400 w-20 text-right shrink-0">{d.qty} {d.unitType?.toLowerCase()}s</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1906,7 +2183,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   <th className="px-4 py-3 text-left">Category</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Budget Program</th>
-                  <th className="px-4 py-3 text-right">Qty</th>
+                  <th className="px-4 py-3 text-right">Qty / Doses</th>
                   <th className="px-4 py-3 text-right">Unit Price</th>
                   <th className="px-4 py-3 text-right">Total Value</th>
                   <th className="px-4 py-3 text-left">Expiry</th>
@@ -1925,6 +2202,20 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">{m.name}</p>
                         {m.generic_name && <p className="text-xs text-gray-400">{m.generic_name}</p>}
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {m.unit_type && m.unit_type !== 'Other' && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{m.unit_type}</span>
+                          )}
+                          {m.dose_type === 'multi' && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-600">{m.doses_per_container}×dose</span>
+                          )}
+                          {m.concentration_value && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{m.concentration_value}{m.concentration_unit}</span>
+                          )}
+                          {m.volume_per_container && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{m.volume_per_container}{m.volume_unit}</span>
+                          )}
+                        </div>
                         {m.barcode && <p className="text-xs text-gray-300 flex items-center gap-1"><Barcode className="w-3 h-3" />{m.barcode}</p>}
                         {m.lot_number && <p className="text-xs text-gray-300">Lot: {m.lot_number}</p>}
                       </td>
@@ -1940,7 +2231,14 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                           </div>
                         ) : <span className="text-xs text-gray-300">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-900">{m.quantity} <span className="text-xs text-gray-400">{m.unit}</span></td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-900">
+                        <span>{m.quantity} <span className="text-xs text-gray-400">{m.unit}</span></span>
+                        {(m.unit_type === 'Vial' || m.unit_type === 'Bottle' || m.unit_type === 'Ampoule' || m.unit_type === 'Box') && (m.total_doses || m.doses_per_container > 1) ? (
+                          <span className="block text-xs font-semibold text-teal-600 mt-0.5">
+                            {(m.total_doses || m.quantity * (m.doses_per_container||1)).toLocaleString()} {m.unit_type === 'Box' ? 'tablets' : 'doses'}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 text-right text-gray-600">₱{Number(m.unit_cost||0).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((m.quantity||0)*(parseFloat(m.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
                       <td className="px-4 py-3"><ExpiryBadge date={m.expiry_date} /></td>
