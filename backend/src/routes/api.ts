@@ -764,13 +764,16 @@ router.put('/inventory/medicines/:id', authenticate, async (req: AuthRequest, re
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const d = req.body;
-    const prev = await query('SELECT quantity FROM medicine_inventory WHERE id=$1', [req.params.id]);
+    const prev = await query('SELECT quantity, unit_cost, line_item_id FROM medicine_inventory WHERE id=$1', [req.params.id]);
     const prevQty = prev.rows[0]?.quantity || 0;
+    const prevUnitCost = parseFloat(prev.rows[0]?.unit_cost) || 0;
+    const prevLineItemId = prev.rows[0]?.line_item_id || null;
+
     const result = await query(
       `UPDATE medicine_inventory SET name=$1, generic_name=$2, category=$3, type=$4, lot_number=$5, expiry_date=$6, manufacturer=$7, quantity=$8, unit=$9, reorder_level=$10, unit_cost=$11, storage_condition=$12, description=$13, status=$14, purpose=$15, program_id=$16, line_item_id=$17, fiscal_year=$18, updated_at=NOW() WHERE id=$19 RETURNING *`,
       [d.name, d.genericName, d.category, d.type, d.lotNumber, d.expiryDate, d.manufacturer, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.storageCondition, d.description, d.status || 'Active', d.purpose || 'program', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
     );
-    // Log transaction
+    // Log quantity transaction
     const diff = d.quantity - prevQty;
     const txType = diff > 0 ? 'IN' : diff < 0 ? 'OUT' : 'ADJUST';
     await query(
@@ -778,6 +781,40 @@ router.put('/inventory/medicines/:id', authenticate, async (req: AuthRequest, re
        VALUES ($1,'medicine',$2,$3,$4,$5,$6,$7,'manual',$8,$9)`,
       [req.params.id, txType, Math.abs(diff), prevQty, d.quantity, d.reason || 'Manual stock update', req.user?.username, d.name, d.receivedBy || req.user?.username]
     );
+    // Recalculate budget expenditure if price, quantity, or line item changed
+    const newUnitCost = parseFloat(d.unitCost) || 0;
+    const newQty = parseInt(d.quantity) || 0;
+    const newLineItemId = d.lineItemId || null;
+    const costChanged = newUnitCost !== prevUnitCost || newQty !== prevQty;
+    const lineItemChanged = newLineItemId !== prevLineItemId;
+    if (newLineItemId && (costChanged || lineItemChanged)) {
+      const newTotal = newUnitCost * newQty;
+      const refId = `EXP-INV-MED-${req.params.id}`;
+      // If line item changed, remove expenditure from old line item
+      if (lineItemChanged && prevLineItemId) {
+        await query(`DELETE FROM budget_expenditures WHERE ref_id=$1`, [refId]);
+        await query(
+          `UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`,
+          [prevLineItemId]
+        );
+      }
+      // Upsert expenditure on the new/current line item
+      await query(
+        `INSERT INTO budget_expenditures (ref_id,line_item_id,amount,expenditure_type,description,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES ($1,$2,$3,'utilized',$4,CURRENT_DATE,$5,'inventory',$6,$7,$8)
+         ON CONFLICT (ref_id) DO UPDATE SET amount=EXCLUDED.amount,line_item_id=EXCLUDED.line_item_id,inventory_item_name=EXCLUDED.inventory_item_name,quantity_used=EXCLUDED.quantity_used,expenditure_date=CURRENT_DATE`,
+        [refId, newLineItemId, newTotal, `Stock update: ${d.name} × ${newQty} @ ₱${newUnitCost}`, req.user?.username, req.params.id, d.name, newQty]
+      );
+      // Recalculate utilized on affected line items
+      const lineItemsToUpdate = [...new Set([newLineItemId, prevLineItemId].filter(Boolean))];
+      for (const liId of lineItemsToUpdate) {
+        await query(
+          `UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`,
+          [liId]
+        );
+      }
+    }
+    logAudit(req, 'Update', 'medicine_inventory', req.params.id, { name: d.name, qty: d.quantity, unitCost: d.unitCost, lineItemId: d.lineItemId });
     return res.json({ success: true, medicine: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -843,14 +880,41 @@ router.put('/inventory/supplies/:id', authenticate, async (req: AuthRequest, res
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const d = req.body;
+    const prev = await query('SELECT quantity, unit_cost, line_item_id FROM supplies_inventory WHERE id=$1', [req.params.id]);
+    const prevQty = parseInt(prev.rows[0]?.quantity) || 0;
+    const prevUnitCost = parseFloat(prev.rows[0]?.unit_cost) || 0;
+    const prevLineItemId = prev.rows[0]?.line_item_id || null;
+
     const result = await query(
       `UPDATE supplies_inventory SET name=$1, category=$2, type=$3, quantity=$4, unit=$5, reorder_level=$6, unit_cost=$7, supplier=$8, last_restocked=$9, description=$10, status=$11, purpose=$12, program_id=$13, line_item_id=$14, fiscal_year=$15, updated_at=NOW() WHERE id=$16 RETURNING *`,
       [d.name, d.category, d.type, d.quantity, d.unit, d.reorderLevel, d.unitCost, d.supplier, d.lastRestocked, d.description, d.status || 'Active', d.purpose || 'office', d.programId || null, d.lineItemId || null, d.fiscalYear || null, req.params.id]
     );
+    const newUnitCost = parseFloat(d.unitCost) || 0;
+    const newQty = parseInt(d.quantity) || 0;
+    const newLineItemId = d.lineItemId || null;
+    const costChanged = newUnitCost !== prevUnitCost || newQty !== prevQty;
+    const lineItemChanged = newLineItemId !== prevLineItemId;
+    if (newLineItemId && (costChanged || lineItemChanged)) {
+      const newTotal = newUnitCost * newQty;
+      const refId = `EXP-INV-SUP-${req.params.id}`;
+      if (lineItemChanged && prevLineItemId) {
+        await query(`DELETE FROM budget_expenditures WHERE ref_id=$1`, [refId]);
+        await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [prevLineItemId]);
+      }
+      await query(
+        `INSERT INTO budget_expenditures (ref_id,line_item_id,amount,expenditure_type,description,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES ($1,$2,$3,'utilized',$4,CURRENT_DATE,$5,'inventory',$6,$7,$8)
+         ON CONFLICT (ref_id) DO UPDATE SET amount=EXCLUDED.amount,line_item_id=EXCLUDED.line_item_id,inventory_item_name=EXCLUDED.inventory_item_name,quantity_used=EXCLUDED.quantity_used,expenditure_date=CURRENT_DATE`,
+        [refId, newLineItemId, newTotal, `Stock update: ${d.name} x ${newQty} @ P${newUnitCost}`, req.user?.username, req.params.id, d.name, newQty]
+      );
+      const lineItemsToUpdate = [...new Set([newLineItemId, prevLineItemId].filter(Boolean))];
+      for (const liId of lineItemsToUpdate) {
+        await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [liId]);
+      }
+    }
+    logAudit(req, 'Update', 'supplies_inventory', req.params.id, { name: d.name, qty: d.quantity, unitCost: d.unitCost, lineItemId: d.lineItemId });
     return res.json({ success: true, supply: result.rows[0] });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+  } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/inventory/supplies/:id', authenticate, async (req: AuthRequest, res: Response) => {
@@ -2030,11 +2094,27 @@ router.post('/inventory/office-supplies', authenticate, async (req: AuthRequest,
   try {
     const d = req.body;
     const id = `OS-${Date.now()}`;
+    const qty = Number(d.quantity) || 0;
+    const unitCost = Number(d.unitCost) || 0;
+    const fy = d.fiscalYear || new Date().getFullYear();
     const result = await query(
-      `INSERT INTO office_supplies (id, barcode, name, category, quantity, unit, reorder_level, unit_cost, supplier_id, description, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Active',$11) RETURNING *`,
-      [id,d.barcode||null,d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',req.user?.username]
+      `INSERT INTO office_supplies (id, barcode, name, category, quantity, unit, reorder_level, unit_cost, supplier_id, description, status, purpose, program_id, line_item_id, fiscal_year, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'Active',$11,$12,$13,$14,$15) RETURNING *`,
+      [id, d.barcode||null, d.name, d.category||'General', qty, d.unit||'pieces', d.reorderLevel||5, unitCost,
+       d.supplierId||null, d.description||'',
+       d.programId ? 'program' : 'office',
+       d.programId||null, d.lineItemId||null, fy,
+       req.user?.username]
     );
+    const totalCost = qty * unitCost;
+    if (d.lineItemId && totalCost > 0) {
+      await query(
+        `INSERT INTO budget_expenditures(line_item_id,amount,expenditure_type,description,reference_no,vendor,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES($1,$2,'utilized',$3,$4,$5,$6,$7,'inventory',$8,$9,$10)`,
+        [d.lineItemId, totalCost, `Inventory purchase: ${d.name}`, id, d.supplier||'', new Date().toISOString().split('T')[0], req.user?.username, id, d.name, qty]
+      );
+      await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [d.lineItemId]);
+    }
     return res.json({ success: true, item: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2043,11 +2123,39 @@ router.put('/inventory/office-supplies/:id', authenticate, async (req: AuthReque
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const d = req.body;
+    const prev = await query('SELECT quantity, unit_cost, line_item_id FROM office_supplies WHERE id=$1', [req.params.id]);
+    const prevQty = parseInt(prev.rows[0]?.quantity) || 0;
+    const prevUnitCost = parseFloat(prev.rows[0]?.unit_cost) || 0;
+    const prevLineItemId = prev.rows[0]?.line_item_id || null;
+
     const result = await query(
       `UPDATE office_supplies SET name=$1,category=$2,quantity=$3,unit=$4,reorder_level=$5,unit_cost=$6,supplier_id=$7,description=$8,status=$9,program_id=$10,line_item_id=$11,fiscal_year=$12,purpose=$13,updated_at=NOW() WHERE id=$14 RETURNING *`,
       [d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',d.status||'Active',d.programId||null,d.lineItemId||null,d.fiscalYear||null,d.purpose||'office',req.params.id]
     );
-    logAudit(req, 'Update', 'office_supplies', req.params.id, { name: d.name, programId: d.programId, lineItemId: d.lineItemId });
+    const newUnitCost = parseFloat(d.unitCost) || 0;
+    const newQty = parseInt(d.quantity) || 0;
+    const newLineItemId = d.lineItemId || null;
+    const costChanged = newUnitCost !== prevUnitCost || newQty !== prevQty;
+    const lineItemChanged = newLineItemId !== prevLineItemId;
+    if (newLineItemId && (costChanged || lineItemChanged)) {
+      const newTotal = newUnitCost * newQty;
+      const refId = `EXP-INV-OS-${req.params.id}`;
+      if (lineItemChanged && prevLineItemId) {
+        await query(`DELETE FROM budget_expenditures WHERE ref_id=$1`, [refId]);
+        await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [prevLineItemId]);
+      }
+      await query(
+        `INSERT INTO budget_expenditures (ref_id,line_item_id,amount,expenditure_type,description,expenditure_date,recorded_by,source_type,inventory_item_id,inventory_item_name,quantity_used)
+         VALUES ($1,$2,$3,'utilized',$4,CURRENT_DATE,$5,'inventory',$6,$7,$8)
+         ON CONFLICT (ref_id) DO UPDATE SET amount=EXCLUDED.amount,line_item_id=EXCLUDED.line_item_id,inventory_item_name=EXCLUDED.inventory_item_name,quantity_used=EXCLUDED.quantity_used,expenditure_date=CURRENT_DATE`,
+        [refId, newLineItemId, newTotal, `Stock update: ${d.name} x ${newQty} @ ₱${newUnitCost}`, req.user?.username, req.params.id, d.name, newQty]
+      );
+      const lineItemsToUpdate = [...new Set([newLineItemId, prevLineItemId].filter(Boolean))];
+      for (const liId of lineItemsToUpdate) {
+        await query(`UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),updated_at=NOW() WHERE id=$1`, [liId]);
+      }
+    }
+    logAudit(req, 'Update', 'office_supplies', req.params.id, { name: d.name, qty: d.quantity, unitCost: d.unitCost, programId: d.programId, lineItemId: d.lineItemId });
     return res.json({ success: true, item: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2675,7 +2783,7 @@ router.post('/budget/ai-analyze', authenticate, async (req: AuthRequest, res: Re
   }
 });
 
-// GET /budget/unlinked-inventory — inventory items with no line_item_id, grouped by fiscal year
+// GET /budget/unlinked-inventory — all inventory items, grouped by fiscal year (linked + unlinked)
 router.get('/budget/unlinked-inventory', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const meds = await query(`
@@ -2696,7 +2804,16 @@ router.get('/budget/unlinked-inventory', authenticate, async (req: AuthRequest, 
       WHERE unit_cost > 0 AND quantity > 0
       ORDER BY created_at DESC
     `);
-    const all = [...meds.rows, ...sups.rows];
+    const office = await query(`
+      SELECT id, name, category, 'office_supply' as item_type, quantity, unit_cost,
+             (quantity * unit_cost) as total_cost, barcode, purpose,
+             line_item_id, program_id, fiscal_year,
+             created_at
+      FROM office_supplies
+      WHERE unit_cost > 0 AND quantity > 0
+      ORDER BY created_at DESC
+    `);
+    const all = [...meds.rows, ...sups.rows, ...office.rows];
     return res.json({ success: true, items: all });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2708,7 +2825,7 @@ router.post('/budget/link-inventory', authenticate, async (req: AuthRequest, res
     const { item_id, item_type, line_item_id, program_id, fiscal_year, override_amount } = req.body;
     if (!item_id || !line_item_id) return res.status(400).json({ error: 'item_id and line_item_id required' });
 
-    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const table = item_type === 'office_supply' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
     const item = await query(`SELECT * FROM ${table} WHERE id=$1`, [item_id]);
     if (!item.rows.length) return res.status(404).json({ error: 'Item not found' });
     const inv = item.rows[0];
@@ -2755,7 +2872,7 @@ router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: Auth
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { item_type } = req.body;
-    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const table = item_type === 'office_supply' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
     const item = await query(`SELECT line_item_id FROM ${table} WHERE id=$1`, [req.params.itemId]);
     if (!item.rows.length) return res.status(404).json({ error: 'Not found' });
     const lineItemId = item.rows[0].line_item_id;

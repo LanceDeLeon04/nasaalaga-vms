@@ -713,6 +713,72 @@ const seed = async () => {
     }
     console.log(`  ✓ Office supplies seeded (${officeSupplies.length})`);
 
+    // ── Budget Expenditures — one row per seeded inventory item ──────────────
+    // Each row records the procurement cost (qty × unit_cost) as a 'utilized' expenditure
+    // against its assigned budget line item, so the Budget module reflects real spending.
+    const inventoryExpenditures = [
+      // Medicines
+      { id:'EXP-SEED-001', line_item_id:'LI-2025-001', amount:46250.00, item_id:'MED-001', item_name:'Rabies Vaccine (Rabisin)',        qty:250,  desc:'Initial stock procurement — Rabies Vaccine (Rabisin) × 250 vials' },
+      { id:'EXP-SEED-002', line_item_id:'LI-2025-002', amount:36000.00, item_id:'MED-008', item_name:'Anti-Rabies Serum (Equine)',       qty:30,   desc:'Initial stock procurement — Anti-Rabies Serum (Equine) × 30 ampoules' },
+      { id:'EXP-SEED-003', line_item_id:'LI-2025-012', amount: 9900.00, item_id:'MED-005', item_name:'Newcastle Disease Vaccine',        qty:45,   desc:'Initial stock procurement — Newcastle Disease Vaccine × 45 vials' },
+      { id:'EXP-SEED-004', line_item_id:'LI-2025-013', amount:10000.00, item_id:'MED-002', item_name:'Amoxicillin 500mg',                qty:800,  desc:'Initial stock procurement — Amoxicillin 500mg × 800 tablets' },
+      { id:'EXP-SEED-005', line_item_id:'LI-2025-013', amount:38400.00, item_id:'MED-003', item_name:'Ivermectin 1%',                   qty:120,  desc:'Initial stock procurement — Ivermectin 1% × 120 vials' },
+      { id:'EXP-SEED-006', line_item_id:'LI-2025-013', amount:15750.00, item_id:'MED-004', item_name:'Vitamin B Complex',               qty:350,  desc:'Initial stock procurement — Vitamin B Complex × 350 ampoules' },
+      { id:'EXP-SEED-007', line_item_id:'LI-2025-013', amount:28800.00, item_id:'MED-006', item_name:'Oxytetracycline 20%',             qty:60,   desc:'Initial stock procurement — Oxytetracycline 20% × 60 vials' },
+      { id:'EXP-SEED-008', line_item_id:'LI-2025-013', amount:25200.00, item_id:'MED-007', item_name:'Vitamin E + Selenium',            qty:90,   desc:'Initial stock procurement — Vitamin E + Selenium × 90 vials' },
+      // Supplies
+      { id:'EXP-SEED-009', line_item_id:'LI-2025-003', amount:17000.00, item_id:'SUP-001', item_name:'Disposable Syringes 5ml',         qty:2000, desc:'Initial stock procurement — Disposable Syringes 5ml × 2000 pcs' },
+      { id:'EXP-SEED-010', line_item_id:'LI-2025-003', amount: 6750.00, item_id:'SUP-007', item_name:'Disposable Needles 18G',          qty:1500, desc:'Initial stock procurement — Disposable Needles 18G × 1500 pcs' },
+      { id:'EXP-SEED-011', line_item_id:'LI-2025-005', amount:14400.00, item_id:'SUP-005', item_name:'Vaccine Carrier / Cold Box',      qty:8,    desc:'Initial stock procurement — Vaccine Carrier / Cold Box × 8 pcs' },
+      { id:'EXP-SEED-012', line_item_id:'LI-2025-006', amount: 7500.00, item_id:'SUP-003', item_name:'Specimen Collection Tubes',       qty:300,  desc:'Initial stock procurement — Specimen Collection Tubes × 300 pcs' },
+      { id:'EXP-SEED-013', line_item_id:'LI-2025-008', amount: 7500.00, item_id:'SUP-002', item_name:'Examination Gloves (Large)',      qty:500,  desc:'Initial stock procurement — Examination Gloves × 500 pairs' },
+      { id:'EXP-SEED-014', line_item_id:'LI-2025-014', amount: 9750.00, item_id:'SUP-004', item_name:'Thermometer (Digital Rectal)',    qty:15,   desc:'Initial stock procurement — Thermometer (Digital Rectal) × 15 pcs' },
+      { id:'EXP-SEED-015', line_item_id:'LI-2025-014', amount:13200.00, item_id:'SUP-008', item_name:'Stethoscope (Veterinary)',        qty:6,    desc:'Initial stock procurement — Stethoscope (Veterinary) × 6 pcs' },
+      { id:'EXP-SEED-016', line_item_id:'LI-2025-016', amount: 7200.00, item_id:'SUP-006', item_name:'Gauze Bandage 4 inch',           qty:400,  desc:'Initial stock procurement — Gauze Bandage 4 inch × 400 rolls' },
+      // Office Supplies
+      { id:'EXP-SEED-017', line_item_id:'LI-2025-019', amount: 5500.00, item_id:'OS-001', item_name:'A4 Bond Paper (500 sheets/ream)',  qty:20,   desc:'Initial stock procurement — A4 Bond Paper × 20 reams' },
+      { id:'EXP-SEED-018', line_item_id:'LI-2025-019', amount:  960.00, item_id:'OS-002', item_name:'Ballpen Blue (Box of 12)',         qty:8,    desc:'Initial stock procurement — Ballpen Blue (Box of 12) × 8 boxes' },
+      { id:'EXP-SEED-019', line_item_id:'LI-2025-019', amount:  510.00, item_id:'OS-003', item_name:'Stamp Pad (Violet)',              qty:6,    desc:'Initial stock procurement — Stamp Pad (Violet) × 6 pcs' },
+      { id:'EXP-SEED-020', line_item_id:'LI-2025-019', amount: 1800.00, item_id:'OS-004', item_name:'Stapler Heavy Duty',              qty:4,    desc:'Initial stock procurement — Stapler Heavy Duty × 4 pcs' },
+      { id:'EXP-SEED-021', line_item_id:'LI-2025-019', amount:  550.00, item_id:'OS-005', item_name:'Staple Wire No. 35 (Box)',        qty:10,   desc:'Initial stock procurement — Staple Wire × 10 boxes' },
+      { id:'EXP-SEED-022', line_item_id:'LI-2025-019', amount: 3200.00, item_id:'OS-008', item_name:'Photocopy Paper Legal (ream)',    qty:10,   desc:'Initial stock procurement — Photocopy Paper Legal × 10 reams' },
+      { id:'EXP-SEED-023', line_item_id:'LI-2025-019', amount: 2700.00, item_id:'OS-009', item_name:'Long Folder Pressboard',         qty:15,   desc:'Initial stock procurement — Long Folder Pressboard × 15 packs' },
+      { id:'EXP-SEED-024', line_item_id:'LI-2025-019', amount: 1740.00, item_id:'OS-010', item_name:'Record Book 500 pages',          qty:12,   desc:'Initial stock procurement — Record Book 500 pages × 12 pcs' },
+      { id:'EXP-SEED-025', line_item_id:'LI-2025-019', amount:  440.00, item_id:'OS-011', item_name:'Rubber Band Box 350g',           qty:4,    desc:'Initial stock procurement — Rubber Band Box × 4 boxes' },
+      { id:'EXP-SEED-026', line_item_id:'LI-2025-019', amount:  544.00, item_id:'OS-013', item_name:'Dishwashing Liquid 500ml',       qty:8,    desc:'Initial stock procurement — Dishwashing Liquid × 8 bottles' },
+      { id:'EXP-SEED-027', line_item_id:'LI-2025-019', amount: 1950.00, item_id:'OS-014', item_name:'Tissue Paper (12 rolls/pack)',   qty:10,   desc:'Initial stock procurement — Tissue Paper × 10 packs' },
+      { id:'EXP-SEED-028', line_item_id:'LI-2025-019', amount:  960.00, item_id:'OS-015', item_name:'Whiteboard Marker Set (4 colors)',qty:6,   desc:'Initial stock procurement — Whiteboard Marker Set × 6 sets' },
+      { id:'EXP-SEED-029', line_item_id:'LI-2025-021', amount: 3250.00, item_id:'OS-006', item_name:'Ink Cartridge Black Canon PG-745',qty:5,   desc:'Initial stock procurement — Ink Cartridge Black × 5 pcs' },
+      { id:'EXP-SEED-030', line_item_id:'LI-2025-021', amount: 2340.00, item_id:'OS-007', item_name:'Ink Cartridge Color Canon CL-746',qty:3,   desc:'Initial stock procurement — Ink Cartridge Color × 3 pcs' },
+      { id:'EXP-SEED-031', line_item_id:'LI-2025-021', amount: 1900.00, item_id:'OS-012', item_name:'Flash Drive 32GB USB 3.0',       qty:5,   desc:'Initial stock procurement — Flash Drive 32GB × 5 pcs' },
+    ];
+    for (const e of inventoryExpenditures) {
+      await client.query(
+        `INSERT INTO budget_expenditures
+           (ref_id, line_item_id, amount, expenditure_type, description, expenditure_date,
+            recorded_by, source_type, inventory_item_id, inventory_item_name, quantity_used)
+         VALUES ($1,$2,$3,'utilized',$4,'2025-01-15','system','inventory',$5,$6,$7)
+         ON CONFLICT (ref_id) DO UPDATE SET
+           amount = EXCLUDED.amount,
+           description = EXCLUDED.description,
+           inventory_item_name = EXCLUDED.inventory_item_name,
+           quantity_used = EXCLUDED.quantity_used`,
+        [e.id, e.line_item_id, e.amount, e.desc, e.item_id, e.item_name, e.qty]
+      );
+    }
+    // Recalculate utilized totals on all affected line items from actual expenditures
+    const affectedLineItems = [...new Set(inventoryExpenditures.map(e => e.line_item_id))];
+    for (const liId of affectedLineItems) {
+      await client.query(
+        `UPDATE budget_line_items
+         SET utilized = COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [liId]
+      );
+    }
+    console.log(`  ✓ Budget expenditures seeded (${inventoryExpenditures.length} items) — utilized totals updated on ${affectedLineItems.length} line items`);
+
     // ── Sample Pending Orders ─────────────────────────────────────────────────
     const pendingOrders = [
       { id: 'PO-SEED-001', item_name: 'Rabisin Anti-Rabies Vaccine', item_type: 'medicine', category: 'Vaccine', quantity: 200, unit: 'vials', unit_cost: 100.00, supplier_id: 'SUPL-002', notes: 'Q3 quarterly restock for mass vaccination drive', status: 'pending', source: 'manual' },

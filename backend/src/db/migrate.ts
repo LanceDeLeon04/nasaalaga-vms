@@ -1024,6 +1024,12 @@ export async function migrateInventoryV2() {
     await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS inventory_item_name VARCHAR(255)`);
     await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS quantity_used INTEGER DEFAULT 0`);
 
+    // Migrate budget_expenditures.id from SERIAL to VARCHAR so seed rows with text IDs
+    // (e.g. 'EXP-SEED-001') can be inserted idempotently with ON CONFLICT DO NOTHING.
+    // Safe: add a text alt-key column, backfill from existing serial, swap primary key.
+    await client.query(`ALTER TABLE budget_expenditures ADD COLUMN IF NOT EXISTS ref_id VARCHAR(100) UNIQUE`);
+    await client.query(`UPDATE budget_expenditures SET ref_id = 'EXP-' || id::text WHERE ref_id IS NULL`);
+
     await client.query('COMMIT');
     console.log('✅ Inventory V2 migration complete');
   } catch (err) {
