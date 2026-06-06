@@ -269,16 +269,19 @@ function SupplyModal({ item, programs, suppliers, onClose, onSave }: {
 }
 
 // ── Office Supply Modal ───────────────────────────────────────────────────────
-function OfficeSupplyModal({ item, suppliers, onClose, onSave }: {
-  item?: any; suppliers: any[]; onClose: () => void; onSave: (d: any) => void;
+function OfficeSupplyModal({ item, suppliers, programs, onClose, onSave }: {
+  item?: any; suppliers: any[]; programs: any[]; onClose: () => void; onSave: (d: any) => void;
 }) {
   const [form, setForm] = useState(item ? {
     name:item.name, category:item.category||'General', quantity:item.quantity, unit:item.unit||'pieces',
     reorderLevel:item.reorder_level||5, unitCost:item.unit_cost||0, supplierId:item.supplier_id||'',
     description:item.description||'', barcode:item.barcode||'', status:item.status||'Active',
+    purpose:item.purpose||'office', programId:item.program_id||'', lineItemId:item.line_item_id||'',
+    fiscalYear:item.fiscal_year||new Date().getFullYear(),
   } : {
     name:'', category:'Paper & Stationery', quantity:0, unit:'pieces', reorderLevel:5,
     unitCost:0, supplierId:'', description:'', barcode:'', status:'Active',
+    purpose:'office', programId:'', lineItemId:'', fiscalYear:new Date().getFullYear(),
   });
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   return (
@@ -319,6 +322,34 @@ function OfficeSupplyModal({ item, suppliers, onClose, onSave }: {
               <option value="">— Select Supplier —</option>
               {suppliers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+          </div>
+          {/* Budget program & line item */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-3">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Budget Program Assignment</p>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Program</label>
+              <select value={form.programId} onChange={e => { set('programId', e.target.value); set('lineItemId', ''); }}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white">
+                <option value="">— No Program —</option>
+                {programs.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Line Item</label>
+              <select value={form.lineItemId} onChange={e => set('lineItemId', e.target.value)}
+                disabled={!form.programId}
+                className={`w-full border rounded-lg px-3 py-2 text-sm outline-none bg-white ${!form.programId ? 'border-gray-100 text-gray-400' : 'border-gray-200'}`}>
+                <option value="">{!form.programId ? '— Select a program first —' : '— Select Line Item —'}</option>
+                {(programs.find((p: any) => p.id === form.programId)?.line_items || []).map((li: any) => (
+                  <option key={li.id} value={li.id}>{li.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Fiscal Year</label>
+              <input type="number" value={form.fiscalYear} onChange={e => set('fiscalYear', parseInt(e.target.value)||new Date().getFullYear())}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none bg-white" />
+            </div>
           </div>
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3 justify-end rounded-b-2xl">
@@ -2298,7 +2329,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       {/* ── Modals ── */}
       {showMedModal && <MedicineModal item={editItem} programs={programs} suppliers={suppliers} onClose={() => { setShowMedModal(false); setEditItem(null); }} onSave={saveMedicine} />}
       {showSupModal && <SupplyModal item={editItem} programs={programs} suppliers={suppliers} onClose={() => { setShowSupModal(false); setEditItem(null); }} onSave={saveSupply} />}
-      {showOfficModal && <OfficeSupplyModal item={editItem} suppliers={suppliers} onClose={() => { setShowOfficModal(false); setEditItem(null); }} onSave={saveOfficeSupply} />}
+      {showOfficModal && <OfficeSupplyModal item={editItem} suppliers={suppliers} programs={programs} onClose={() => { setShowOfficModal(false); setEditItem(null); }} onSave={saveOfficeSupply} />}
       {showSupplierModal && <SupplierModal item={editItem} onClose={() => { setShowSupplierModal(false); setEditItem(null); }} onSave={saveSupplier} />}
       {showAddOrderModal && <AddOrderModal prefill={addOrderPrefill} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} suppliers={suppliers} programs={programs} onClose={() => { setShowAddOrderModal(false); setAddOrderPrefill(null); }} onSave={saveOrder} />}
       {showReceiveModal && <ReceiveOrderModal order={showReceiveModal} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} onClose={() => setShowReceiveModal(null)} onReceive={receiveOrder} />}

@@ -159,6 +159,7 @@ export function AuditLogs() {
   const [logs, setLogs] = useState<any[]>([]);
   const [stats, setStats] = useState({ todayTotal: 0, failedLogins: 0, modifications: 0, recentAlerts: 0 });
   const [loading, setLoading] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAction, setFilterAction] = useState('all');
   const [dateFrom, setDateFrom] = useState('');
@@ -177,6 +178,7 @@ export function AuditLogs() {
       if (dateTo)   filtered = filtered.filter((l: any) => new Date(l.created_at) <= new Date(dateTo + 'T23:59:59'));
       setLogs(filtered);
       setStats(statsRes);
+      setLastRefreshed(new Date());
     } catch {
       toast.error('Failed to load audit logs');
     } finally {
@@ -185,6 +187,12 @@ export function AuditLogs() {
   }, [filterAction, searchTerm, dateFrom, dateTo]);
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
+
+  // ── Real-time polling: refresh every 30 seconds ──
+  useEffect(() => {
+    const interval = setInterval(() => { loadLogs(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [loadLogs]);
 
   const handleExport = () => {
     const csv = [
@@ -263,7 +271,16 @@ export function AuditLogs() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-gray-800 mb-1">Audit Logs</h2>
-          <p className="text-gray-600">Real-time system activity tracking — ISO 27001 Compliance</p>
+          <div className="flex items-center gap-3">
+            <p className="text-gray-600">Real-time system activity tracking — ISO 27001 Compliance</p>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 bg-green-50 border border-green-200 rounded-full text-xs font-semibold text-green-700">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse inline-block" />
+              Live · auto-refresh 30s
+            </span>
+          </div>
+          {lastRefreshed && (
+            <p className="text-xs text-gray-400 mt-0.5">Last updated: {lastRefreshed.toLocaleTimeString('en-PH')}</p>
+          )}
         </div>
         <div className="flex gap-2">
           <button onClick={loadLogs} className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-sm">

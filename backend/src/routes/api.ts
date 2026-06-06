@@ -953,16 +953,6 @@ router.post('/inventory/outbreak-dispatch', authenticate, async (req: AuthReques
 });
 
 // ── Audit Logs ─────────────────────────────────────────────────────────────
-router.get('/audit-logs', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
-  try {
-    const result = await query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 200');
-    return res.json({ success: true, logs: result.rows });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 router.post('/audit-logs', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
@@ -2054,9 +2044,10 @@ router.put('/inventory/office-supplies/:id', authenticate, async (req: AuthReque
   try {
     const d = req.body;
     const result = await query(
-      `UPDATE office_supplies SET name=$1,category=$2,quantity=$3,unit=$4,reorder_level=$5,unit_cost=$6,supplier_id=$7,description=$8,status=$9,updated_at=NOW() WHERE id=$10 RETURNING *`,
-      [d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',d.status||'Active',req.params.id]
+      `UPDATE office_supplies SET name=$1,category=$2,quantity=$3,unit=$4,reorder_level=$5,unit_cost=$6,supplier_id=$7,description=$8,status=$9,program_id=$10,line_item_id=$11,fiscal_year=$12,purpose=$13,updated_at=NOW() WHERE id=$14 RETURNING *`,
+      [d.name,d.category||'General',d.quantity||0,d.unit||'pieces',d.reorderLevel||5,d.unitCost||0,d.supplierId||null,d.description||'',d.status||'Active',d.programId||null,d.lineItemId||null,d.fiscalYear||null,d.purpose||'office',req.params.id]
     );
+    logAudit(req, 'Update', 'office_supplies', req.params.id, { name: d.name, programId: d.programId, lineItemId: d.lineItemId });
     return res.json({ success: true, item: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
