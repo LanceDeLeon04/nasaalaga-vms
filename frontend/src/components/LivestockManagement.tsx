@@ -112,7 +112,7 @@ function SelectField({ label, value, onChange, options, className = '' }: any) {
 
 // ─── REGISTER MODAL ───────────────────────────────────────────────────────────
 
-function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>Promise<void> }) {
+function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>Promise<{tempId?:string}|void> }) {
   const [f, setF] = useState({
     animalType:'', breed:'', quantity:'1', gender:'', age:'', colorMarkings:'',
     purpose:'Mixed', source:'', tagNumber:'', ownerName:'', contactNumber:'',
@@ -120,8 +120,51 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
     notes:'', quarantineDate:'', quarantineReason:'',
   });
   const [saving, setSaving] = useState(false);
+
+  // Owner lookup state
+  const [ownerSuggestions, setOwnerSuggestions] = useState<{id:string;username:string;owner_id:string;email:string;barangay:string;address:string}[]>([]);
+  const [showOwnerSugg, setShowOwnerSugg]     = useState(false);
+  const [ownerLookupTimer, setOwnerLookupTimer] = useState<any>(null);
+  const [selectedOwnerId, setSelectedOwnerId]   = useState<string|null>(null);
+  const [isUnregisteredOwner, setIsUnregisteredOwner] = useState(false);
+  const [generatedTempId, setGeneratedTempId]   = useState<string|null>(null);
+
   const s = (k:string) => (v:string) => setF(p=>({...p,[k]:v}));
   const t = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>) => setF(p=>({...p,[k]:e.target.value}));
+
+  const handleSave = async () => {
+    if (!f.animalType || !f.ownerName || !f.barangay) return;
+    setSaving(true);
+    const result = await onSave({
+      ...f,
+      quantity: parseInt(f.quantity) || 1,
+      ownerId: selectedOwnerId || undefined,
+      isUnregistered: isUnregisteredOwner,
+    });
+    setSaving(false);
+    if (result && (result as any).tempId) {
+      setGeneratedTempId((result as any).tempId);
+    }
+  };
+
+  // ── Temp-ID success screen ─────────────────────────────────────────────
+  if (generatedTempId) {
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center text-center gap-4">
+          <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center text-3xl">🐄</div>
+          <p className="font-bold text-amber-800 text-lg">Unregistered Owner — Temporary ID Issued</p>
+          <p className="text-sm text-amber-700">Livestock has been registered with a Temporary Owner ID. Give this ID to the owner — they can enter it during account signup to auto-link their livestock records.</p>
+          <div style={{background:'#fff',border:'2px solid #f59e0b',borderRadius:8,padding:'10px 20px',fontFamily:'monospace',fontSize:24,fontWeight:900,color:'#2B5EA6',letterSpacing:'.06em'}}>{generatedTempId}</div>
+          <button
+            onClick={()=>{ setGeneratedTempId(null); onClose(); }}
+            className="w-full py-2.5 bg-[#2B5EA6] text-white rounded-xl font-bold hover:bg-[#234a85]">
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -149,16 +192,97 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
               <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Source</label><input value={f.source} onChange={t('source')} className={INPUT} placeholder="e.g., Local farm"/></div>
             </div>
           </div>
-          {/* Owner Info */}
+
+          {/* Owner Info — with autocomplete */}
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Owner / Farm</p>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name *</label><input value={f.ownerName} onChange={t('ownerName')} className={INPUT} placeholder="Full name"/></div>
+
+              {/* Owner Name — autocomplete field */}
+              <div style={{position:'relative', gridColumn:'1/-1'}}>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  Owner Name * <span style={{color:'#9ca3af',fontWeight:400,fontSize:11}}>(type name or ID to search registered users)</span>
+                </label>
+
+                {/* Status badges */}
+                {selectedOwnerId && (
+                  <div style={{background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#14532d',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span style={{display:'flex',alignItems:'center',gap:4}}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      Linked to registered user
+                    </span>
+                    <button onClick={()=>{setSelectedOwnerId(null);setIsUnregisteredOwner(false);}} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Remove</button>
+                  </div>
+                )}
+                {isUnregisteredOwner && !selectedOwnerId && (
+                  <div style={{background:'#fff8ed',border:'1.5px solid #fbbf24',borderRadius:8,padding:'6px 12px',marginBottom:6,fontSize:12,color:'#92400e',fontWeight:700,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span style={{display:'flex',alignItems:'center',gap:4}}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      Unregistered owner — Temp ID will be issued
+                    </span>
+                    <button onClick={()=>setIsUnregisteredOwner(false)} style={{background:'none',border:'none',color:'#dc2626',cursor:'pointer',fontSize:12,fontWeight:700}}>✕ Cancel</button>
+                  </div>
+                )}
+
+                <input
+                  value={f.ownerName}
+                  onChange={e => {
+                    setF(p=>({...p, ownerName: e.target.value}));
+                    setSelectedOwnerId(null); setIsUnregisteredOwner(false);
+                    if (ownerLookupTimer) clearTimeout(ownerLookupTimer);
+                    if (e.target.value.length >= 2) {
+                      const timer = setTimeout(async () => {
+                        try {
+                          const r = await fetch(`/api/livestock/owner-search?q=${encodeURIComponent(e.target.value)}`);
+                          const d = await r.json();
+                          setOwnerSuggestions(d.users || []);
+                          setShowOwnerSugg(true);
+                        } catch {}
+                      }, 300);
+                      setOwnerLookupTimer(timer);
+                    } else { setOwnerSuggestions([]); setShowOwnerSugg(false); }
+                  }}
+                  onFocus={()=>{ if (ownerSuggestions.length > 0) setShowOwnerSugg(true); }}
+                  onBlur={()=>setTimeout(()=>setShowOwnerSugg(false), 200)}
+                  className={INPUT}
+                  placeholder="Start typing owner name or ID number…"
+                />
+
+                {/* Dropdown suggestions */}
+                {showOwnerSugg && (
+                  <div style={{position:'absolute',top:'100%',left:0,right:0,background:'#fff',border:'1.5px solid #e5e7eb',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:200,maxHeight:220,overflowY:'auto'}}>
+                    {ownerSuggestions.map(u => (
+                      <div
+                        key={u.id}
+                        onClick={()=>{
+                          setF(p=>({...p, ownerName:u.username, contactNumber:'', farmAddress:u.address||'', barangay:u.barangay||p.barangay}));
+                          setSelectedOwnerId(u.owner_id);
+                          setShowOwnerSugg(false); setOwnerSuggestions([]);
+                        }}
+                        style={{padding:'10px 14px',cursor:'pointer',borderBottom:'1px solid #f1f5f9',fontSize:13}}
+                        onMouseEnter={e=>(e.currentTarget.style.background='#f0f7ff')}
+                        onMouseLeave={e=>(e.currentTarget.style.background='')}>
+                        <div style={{fontWeight:700,color:'#1f2937'}}>{u.username}</div>
+                        <div style={{fontSize:11,color:'#9ca3af'}}>{u.email} · {u.barangay||'—'} · ID: {u.owner_id}</div>
+                      </div>
+                    ))}
+                    <div
+                      onClick={()=>{ setIsUnregisteredOwner(true); setSelectedOwnerId(null); setShowOwnerSugg(false); }}
+                      style={{padding:'10px 14px',cursor:'pointer',fontSize:13,fontWeight:700,color:'#f59e0b',background:'#fffbeb',borderTop:'1px solid #fde68a'}}
+                      onMouseEnter={e=>(e.currentTarget.style.background='#fef9c3')}
+                      onMouseLeave={e=>(e.currentTarget.style.background='#fffbeb')}>
+                      Owner not registered — issue Temporary ID
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number</label><input value={f.contactNumber} onChange={t('contactNumber')} className={INPUT} placeholder="0917-xxx-xxxx"/></div>
               <SelectField label="Barangay *" value={f.barangay} onChange={s('barangay')} options={['', ...CALACA_BARANGAYS]}/>
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Farm Address</label><input value={f.farmAddress} onChange={t('farmAddress')} className={INPUT} placeholder="Purok / Zone / Sitio"/></div>
+              <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Farm Address</label><input value={f.farmAddress} onChange={t('farmAddress')} className={INPUT} placeholder="Purok / Zone / Sitio"/></div>
             </div>
           </div>
+
           {/* Health */}
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 border-b pb-2">Health Status</p>
@@ -178,7 +302,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
         <div className="shrink-0 px-6 py-4 border-t border-gray-100 flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
           <button
-            onClick={async()=>{if(!f.animalType||!f.ownerName||!f.barangay)return;setSaving(true);await onSave({...f,quantity:parseInt(f.quantity)||1});setSaving(false);}}
+            onClick={handleSave}
             disabled={!f.animalType||!f.ownerName||!f.barangay||saving}
             className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-40 flex items-center justify-center gap-2">
             {saving?<><RefreshCw className="w-4 h-4 animate-spin"/>Saving…</>:'Register Livestock'}
@@ -554,7 +678,7 @@ export function LivestockManagement() {
     finally { setLsLookupLoading(false); }
   };
 
-  const handleRegister = async(data:any)=>{ try { await api.createLivestock(data); await loadAll(); setShowReg(false); } catch(e:any){ alert('Error: '+e.message); } };
+  const handleRegister = async(data:any)=>{ try { const res = await api.createLivestock(data); await loadAll(); if (!(res as any)?.tempId) setShowReg(false); return res; } catch(e:any){ alert('Error: '+e.message); } };
 
   const handleDelete = async(id:string)=>{
     if(!confirm('Delete this livestock record?')) return;

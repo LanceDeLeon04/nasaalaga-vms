@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
@@ -59,6 +60,24 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ── Owner search (autocomplete) ───────────────────────────────────────────
+router.get('/owner-search', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json({ users: [] });
+    const result = await query(
+      `SELECT id, username, owner_id, email, barangay, address
+       FROM users
+       WHERE LOWER(username) LIKE LOWER($1) OR LOWER(owner_id) LIKE LOWER($1)
+       ORDER BY username LIMIT 10`,
+      [`%${q}%`]
+    );
+    return res.json({ users: result.rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST create livestock ─────────────────────────────────────────────────
 router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -66,6 +85,13 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     const countResult = await query('SELECT COUNT(*) FROM livestock');
     const count = parseInt(countResult.rows[0].count);
     const newId = `LS-${String(count + 1).padStart(3, '0')}`;
+
+    // Handle temp ID for unregistered owners (mirrors pets module)
+    let tempId: string | null = null;
+    if (d.isUnregistered) {
+      tempId = `TEMP-${uuidv4().slice(0, 8).toUpperCase()}`;
+    }
+
     const result = await query(
       `INSERT INTO livestock
         (id, owner_id, animal_type, breed, quantity, gender, age, color_markings,
@@ -79,7 +105,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
        d.ownerName, d.contactNumber || null, d.barangay, d.farmAddress || null,
        d.healthStatus || 'Healthy', d.farmType || 'Backyard', d.notes || null]
     );
-    return res.json({ livestock: result.rows[0], success: true });
+    return res.json({ livestock: result.rows[0], success: true, tempId });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
