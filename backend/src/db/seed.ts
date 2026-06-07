@@ -162,10 +162,12 @@ const seed = async () => {
       { id:'PRP-000-00010', owner_id:null, pet_name:'Sparky', species:'Dog', breed:'Aspin', age:2, color:'Black', gender:'Male', is_spayed:false, is_neutered:false, owner_name:'Gregorio Flores', contact_number:'0956-012-3456', barangay:'Bagong Tubig', address:'Block 6', vaccination_status:'Not Vaccinated', status:'Active', impound_status:'For Adoption', impound_reason:'Owner surrendered', impound_date:'2025-01-20', registration_date:'2024-12-01' , pet_tag_id:'PRP-000-00010' },
     ];
 
-    // Delete existing seed pets first to avoid both id and pet_tag_id unique conflicts
+    // Delete existing seed pets + stale vaccination history to ensure clean, aligned state
     const seedPetIds = pets.map(p => p.id);
     const seedTagIds = pets.map(p => (p as any).pet_tag_id).filter(Boolean);
     if (seedPetIds.length > 0) {
+      // Clear stale VAX-SEED records for these pets first (avoid foreign key issues)
+      await client.query(`DELETE FROM vaccination_history WHERE id LIKE 'VAX-SEED-%' AND pet_id = ANY($1::text[])`, [seedPetIds]);
       await client.query(`DELETE FROM pets WHERE id = ANY($1::text[])`, [seedPetIds]);
     }
     if (seedTagIds.length > 0) {
@@ -185,6 +187,37 @@ const seed = async () => {
       );
     }
     console.log(`  ✓ Pets seeded (${pets.length})`);
+
+    // ── Vaccination History (aligned with each pet's vaccination_status) ──────
+    // Build vaccination_history for all Vaccinated / Due Soon pets so that
+    // viewing a pet card always shows records matching its displayed status.
+    // First remove any leftover VAX-SEED records that no longer match status.
+    await client.query(`
+      DELETE FROM vaccination_history
+      WHERE id LIKE 'VAX-SEED-%'
+        AND pet_id IN (
+          SELECT id FROM pets WHERE vaccination_status = 'Not Vaccinated'
+        )
+    `);
+    const vaccinatedPets = pets.filter(p =>
+      p.vaccination_status === 'Vaccinated' || p.vaccination_status === 'Due Soon'
+    );
+    for (const p of vaccinatedPets) {
+      const vaxDate = (p as any).last_vaccination_date || '2025-01-01';
+      const vaxId = `VAX-SEED-${p.id}-001`;
+      await client.query(
+        `INSERT INTO vaccination_history
+           (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number,
+            vaccine_barcode, veterinarian, vet_license, medicine_id, administered_by)
+         VALUES ($1,$2,$3,'Rabisin Anti-Rabies Vaccine','LOT-RABVAC-2025','BATCH-001',
+                 'RABVAC-2025-001','Dr. Amalia Vergara','VET-LIC-2024-001','MED-DEMO-001','Dr. Amalia Vergara')
+         ON CONFLICT (id) DO UPDATE
+           SET date_of_vaccination = EXCLUDED.date_of_vaccination,
+               pet_id = EXCLUDED.pet_id`,
+        [vaxId, p.id, vaxDate]
+      );
+    }
+    console.log(`  ✓ Vaccination history seeded (${vaccinatedPets.length} vaccinated/due-soon pets)`);
 
     // ── Livestock ──────────────────────────────────────────────────────────
     const livestock = [

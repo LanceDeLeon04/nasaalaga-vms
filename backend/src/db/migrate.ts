@@ -730,43 +730,34 @@ export const createTables = async () => {
       ON CONFLICT (barcode) DO NOTHING;
     `);
 
-    // ── Seed demo vaccination history for existing pets ─────────────────────
+    // ── Seed vaccination history aligned with pet vaccination_status ──────────
+    // Only insert records for pets actually marked Vaccinated or Due Soon.
+    // Remove any stale records for pets now marked Not Vaccinated.
+    await client.query(`
+      DELETE FROM vaccination_history
+      WHERE id LIKE 'VAX-SEED-%'
+        AND pet_id IN (
+          SELECT id FROM pets
+          WHERE vaccination_status = 'Not Vaccinated'
+        );
+    `);
     await client.query(`
       INSERT INTO vaccination_history (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number, vaccine_barcode, veterinarian, vet_license, medicine_id, administered_by)
       SELECT
         'VAX-SEED-' || p.id || '-001',
         p.id,
-        CURRENT_DATE - INTERVAL '180 days',
+        COALESCE(p.last_vaccination_date, CURRENT_DATE - INTERVAL '180 days'),
         'Rabisin Anti-Rabies Vaccine',
         'LOT-RABVAC-2025',
         'BATCH-001',
         'RABVAC-2025-001',
-        'Dr. Roberto Santos',
+        'Dr. Amalia Vergara',
         'VET-LIC-2024-001',
         'MED-DEMO-001',
-        'Dr. Roberto Santos'
+        'Dr. Amalia Vergara'
       FROM pets p
-      WHERE p.status = 'Active'
-      LIMIT 10
-      ON CONFLICT (id) DO NOTHING;
-    `);
-    await client.query(`
-      INSERT INTO vaccination_history (id, pet_id, date_of_vaccination, vaccine_name, lot_number, batch_number, vaccine_barcode, veterinarian, vet_license, medicine_id, administered_by)
-      SELECT
-        'VAX-SEED-' || p.id || '-002',
-        p.id,
-        CURRENT_DATE - INTERVAL '30 days',
-        'Rabisin Anti-Rabies Vaccine',
-        'LOT-RABVAC-2025',
-        'BATCH-002',
-        'RABVAC-2025-001',
-        'Dr. Roberto Santos',
-        'VET-LIC-2024-001',
-        'MED-DEMO-001',
-        'Dr. Roberto Santos'
-      FROM pets p
-      WHERE p.status = 'Active'
-      LIMIT 5
+      WHERE p.vaccination_status IN ('Vaccinated', 'Due Soon')
+        AND p.status = 'Active'
       ON CONFLICT (id) DO NOTHING;
     `);
 
