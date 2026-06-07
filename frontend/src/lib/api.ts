@@ -233,6 +233,7 @@ export const api = {
   getDashboardMedicineUsageAnalytics: (days = 90) => request(`/dashboard/medicine-usage-analytics?days=${days}`),
   getDashboardAnimalPopulation: () => request('/dashboard/animal-population'),
   getDashboardDiseaseIntel: () => request('/dashboard/disease-intel'),
+  getPetZoneDistribution: () => request('/dashboard/pet-zone-distribution'),
   // ── Budget Utilization Module ──────────────────────────────────────────
   getBudgetPrograms: (fy?: number) => request(fy ? `/budget/programs?fiscal_year=${fy}` : '/budget/programs'),
   getBudgetContext: (fy = 2025) => request(`/budget/context?fiscal_year=${fy}`),

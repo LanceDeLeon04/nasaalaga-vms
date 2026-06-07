@@ -98,6 +98,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
   const [dbSummary, setDbSummary] = useState<any>(null);
   const [diseaseAlertsDb, setDiseaseAlertsDb] = useState<any[]>([]);
   const [preRegsDb, setPreRegsDb] = useState<any[]>([]);
+  const [petZoneDist, setPetZoneDist] = useState<{ data: any[]; species: string[] }>({ data: [], species: [] });
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
@@ -132,6 +133,10 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       ].slice(0, 5);
       setDiseaseAlertsDb(activeAlerts);
       if (prRes?.preRegistrations) setPreRegsDb(prRes.preRegistrations.slice(0, 5));
+      // Fetch pet zone distribution
+      api.getPetZoneDistribution().catch(() => null).then((zRes: any) => {
+        if (zRes?.data?.length) setPetZoneDist({ data: zRes.data, species: zRes.species || [] });
+      });
       // Fetch real budget programs
       api.getBudgetPrograms(2025).then((bp: any) => {
         if (bp?.programs?.length) {
@@ -300,6 +305,28 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
     poultry: "#10b981",
     goats: "#f59e0b",
   };
+
+  // Zone badge colors matching the tag color system
+  const ZONE_COLORS: Record<string, string> = {
+    East: '#2B5EA6',
+    West: '#8B5CF6',
+    North: '#6B7280',
+    'Baybay-Highway': '#E85D3B',
+  };
+
+  // Species color palette for the zone distribution chart
+  const SPECIES_PALETTE = ['#2B5EA6','#E85D3B','#10b981','#f59e0b','#8B5CF6','#ec4899','#14b8a6','#f97316'];
+
+  // Fallback data when DB hasn't loaded yet
+  const fallbackZoneDist = [
+    { zone: 'East',           Dog: 8,  Cat: 5 },
+    { zone: 'West',           Dog: 6,  Cat: 4 },
+    { zone: 'North',          Dog: 9,  Cat: 3 },
+    { zone: 'Baybay-Highway', Dog: 10, Cat: 6 },
+  ];
+  const fallbackSpecies = ['Dog', 'Cat'];
+  const effectiveZoneDist = petZoneDist.data.length > 0 ? petZoneDist.data : fallbackZoneDist;
+  const effectiveSpecies  = petZoneDist.species.length > 0 ? petZoneDist.species : fallbackSpecies;
 
   const tabs = [
     {
@@ -744,6 +771,96 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
 
             {/* Pet Survey Chart */}
             <PetSurveyChart />
+
+            {/* Pet Distribution by Zone & Type */}
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm lg:col-span-2">
+              <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
+                <div>
+                  <p className="font-bold text-slate-800 text-base">
+                    Pet Distribution by Zone &amp; Type
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Dogs, cats &amp; other pets · grouped by color-coded zone
+                  </p>
+                </div>
+                {/* Zone legend */}
+                <div className="flex flex-wrap gap-3">
+                  {Object.entries(ZONE_COLORS).map(([zone, color]) => (
+                    <div key={zone} className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm" style={{ background: color }} />
+                      <span className="text-xs text-slate-500 font-medium">{zone}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-6 flex-wrap lg:flex-nowrap">
+                {/* Grouped bar chart */}
+                <div className="flex-1 min-w-0">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={effectiveZoneDist} barSize={18} barGap={3}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis
+                        dataKey="zone"
+                        tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => v === 'Baybay-Highway' ? 'Baybay-Hwy' : v}
+                      />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f8fafc' }} />
+                      {effectiveSpecies.map((sp, i) => (
+                        <Bar
+                          key={sp}
+                          dataKey={sp}
+                          fill={SPECIES_PALETTE[i % SPECIES_PALETTE.length]}
+                          radius={[4, 4, 0, 0]}
+                          name={sp}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Totals summary sidebar */}
+                <div className="flex flex-col justify-center gap-3 w-full lg:w-44 shrink-0">
+                  {effectiveZoneDist.map((row) => {
+                    const total = effectiveSpecies.reduce((s, sp) => s + (row[sp] || 0), 0);
+                    const color = ZONE_COLORS[row.zone] || '#6B7280';
+                    return (
+                      <div key={row.zone} className="rounded-xl p-3 border" style={{ borderColor: `${color}30`, background: `${color}08` }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold" style={{ color }}>
+                            {row.zone === 'Baybay-Highway' ? 'Baybay-Hwy' : row.zone}
+                          </span>
+                          <span className="text-sm font-black text-slate-800">{total}</span>
+                        </div>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {effectiveSpecies.map((sp, i) => row[sp] ? (
+                            <span key={sp} className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold text-white"
+                              style={{ background: SPECIES_PALETTE[i % SPECIES_PALETTE.length] }}>
+                              {sp} {row[sp]}
+                            </span>
+                          ) : null)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Species legend */}
+                  <div className="mt-1 pt-3 border-t border-slate-100 flex flex-col gap-1.5">
+                    {effectiveSpecies.map((sp, i) => (
+                      <div key={sp} className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: SPECIES_PALETTE[i % SPECIES_PALETTE.length] }} />
+                        <span className="text-xs text-slate-600 font-medium">{sp}</span>
+                        <span className="ml-auto text-xs font-bold text-slate-700">
+                          {effectiveZoneDist.reduce((s, r) => s + (r[sp] || 0), 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Active Disease Alerts */}
             <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-sm">

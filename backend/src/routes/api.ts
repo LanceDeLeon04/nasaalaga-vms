@@ -1868,6 +1868,44 @@ router.get('/dashboard/medicine-usage-analytics', authenticate, async (req: Auth
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
 
+// ── Dashboard - pet distribution by zone and species ───────────────────────
+router.get('/dashboard/pet-zone-distribution', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT
+        b.zone,
+        p.species,
+        COUNT(*) AS count
+      FROM pets p
+      JOIN barangays b ON LOWER(b.name) = LOWER(p.barangay)
+      WHERE b.zone IS NOT NULL
+      GROUP BY b.zone, p.species
+      ORDER BY b.zone, p.species
+    `);
+
+    // Pivot into { zone, Dog, Cat, Bird, ... } per zone
+    const zones: Record<string, Record<string, number>> = {};
+    for (const row of result.rows) {
+      if (!zones[row.zone]) zones[row.zone] = {};
+      zones[row.zone][row.species] = parseInt(row.count);
+    }
+
+    const zoneOrder = ['East', 'West', 'North', 'Baybay-Highway'];
+    const data = zoneOrder
+      .filter(z => zones[z])
+      .map(z => ({ zone: z, ...zones[z] }));
+
+    // Collect all species that appear
+    const species = Array.from(
+      new Set(result.rows.map((r: any) => r.species as string))
+    ).sort();
+
+    return res.json({ data, species });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Dashboard - real animal population data ────────────────────────────────
 router.get('/dashboard/animal-population', authenticate, async (req: AuthRequest, res: Response) => {
   try {
