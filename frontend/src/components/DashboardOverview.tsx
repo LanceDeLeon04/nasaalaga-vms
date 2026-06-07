@@ -824,7 +824,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
                 {/* Grouped bar chart — X = species, groups = zones */}
                 <div className="flex-1 min-w-0">
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={effectiveZoneDist} barSize={28} barGap={3} barCategoryGap="20%">
+                    <BarChart data={effectiveZoneDist} barSize={16} barGap={2} barCategoryGap="30%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis
                         dataKey="species"

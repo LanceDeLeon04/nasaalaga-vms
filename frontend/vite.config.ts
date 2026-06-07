@@ -25,18 +25,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 4000,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'chart-vendor': ['recharts'],
-          'ui-vendor': ['lucide-react', 'sonner'],
-        },
-      },
-    },
-  },
-  esbuild: {
-    target: 'es2020',
   },
 })
