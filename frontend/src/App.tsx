@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { router } from './routes';
 import { Toaster } from './components/ui/sonner';
+import { useSessionTimeout } from './hooks/useSessionTimeout';
+import { SessionWarningModal, SessionExpiredModal } from './components/SessionTimeoutModals';
 
 export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | 'both' | 'cvoStaff' | null;
 
@@ -168,6 +171,46 @@ function MaintenancePage({ onBypass }: { onBypass: () => void }) {
   );
 }
 
+// ── Session-timeout wrapper ──────────────────────────────────────────────────
+// Only active when a user is actually logged in (nasaalaga_user in sessionStorage).
+// Renders nothing extra during the login / signup / maintenance screens.
+
+function SessionTimeoutWrapper({ children }: { children: ReactNode }) {
+  const { phase, secondsLeft, extendSession, acknowledgeExpiry } = useSessionTimeout();
+
+  const isLoggedIn = !!sessionStorage.getItem('nasaalaga_user');
+
+  const handleExpiredOk = useCallback(() => {
+    // Clear session data and redirect to login
+    sessionStorage.removeItem('nasaalaga_user');
+    sessionStorage.removeItem('nasaalaga_token');
+    acknowledgeExpiry();
+    window.location.href = '/';
+  }, [acknowledgeExpiry]);
+
+  const handleLogoutNow = useCallback(() => {
+    sessionStorage.removeItem('nasaalaga_user');
+    sessionStorage.removeItem('nasaalaga_token');
+    window.location.href = '/';
+  }, []);
+
+  return (
+    <>
+      {children}
+      {isLoggedIn && phase === 'warning' && (
+        <SessionWarningModal
+          secondsLeft={secondsLeft}
+          onExtend={extendSession}
+          onLogout={handleLogoutNow}
+        />
+      )}
+      {isLoggedIn && phase === 'expired' && (
+        <SessionExpiredModal onAcknowledge={handleExpiredOk} />
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [maintenance, setMaintenance]       = useState(false);
@@ -217,9 +260,9 @@ export default function App() {
   }
 
   return (
-    <>
+    <SessionTimeoutWrapper>
       <RouterProvider router={router} />
       <Toaster />
-    </>
+    </SessionTimeoutWrapper>
   );
 }
