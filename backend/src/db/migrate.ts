@@ -184,6 +184,24 @@ export const createTables = async () => {
          OR pet_tag_id LIKE 'TAG-%';
     `);
 
+    // ── Migrate old XXX-000-NNNNN tag IDs to new XXX-0000-NNNNN format ─────
+    // Matches tags like BLU-000-00001 and rewrites to BLU-0000-00001.
+    // Also fixes the primary pet id if it matches the old tag format.
+    await client.query(`
+      UPDATE pets
+      SET pet_tag_id = REGEXP_REPLACE(pet_tag_id, '^(BLU|PRP|GRY|RED)-000-', '\\1-0000-')
+      WHERE pet_tag_id ~ '^(BLU|PRP|GRY|RED)-000-[0-9]+$';
+    `);
+    await client.query(`
+      UPDATE pets
+      SET id = REGEXP_REPLACE(id, '^(BLU|PRP|GRY|RED)-000-', '\\1-0000-')
+      WHERE id ~ '^(BLU|PRP|GRY|RED)-000-[0-9]+$'
+        AND NOT EXISTS (
+          SELECT 1 FROM pets p2
+          WHERE p2.id = REGEXP_REPLACE(pets.id, '^(BLU|PRP|GRY|RED)-000-', '\\1-0000-')
+        );
+    `);
+
     // Re-generate tag IDs from barangay zone for rows that still lack one.
     await client.query(`
       WITH ranked AS (
@@ -211,7 +229,7 @@ export const createTables = async () => {
         WHERE p.pet_tag_id IS NULL
       )
       UPDATE pets p
-      SET pet_tag_id = r.prefix || '-' || LPAD(r.rn::TEXT, 4, '0')
+      SET pet_tag_id = r.prefix || '-0000-' || LPAD(r.rn::TEXT, 5, '0')
       FROM ranked r
       WHERE p.id = r.id;
     `);

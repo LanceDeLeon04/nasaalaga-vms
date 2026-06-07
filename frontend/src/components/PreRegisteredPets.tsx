@@ -152,7 +152,8 @@ export function PreRegisteredPets() {
   const [submitting, setSubmitting] = useState(false);
 
   const [valPhoto, setValPhoto]     = useState('');
-  const [petTagId, setPetTagId]     = useState('');
+  const [petTagId, setPetTagId]     = useState('');  // final tag returned from backend
+  const [tagNumber, setTagNumber]   = useState(''); // numeric part entered by user
   const [denyReason, setDenyReason] = useState('');
   const [denyMode, setDenyMode]     = useState(false);
   const [valDone, setValDone]       = useState(false);
@@ -185,6 +186,7 @@ export function PreRegisteredPets() {
     setValStep('details');
     setValPhoto('');
     setPetTagId('');
+    setTagNumber('');
     setDenyReason('');
     setDenyMode(false);
     setValDone(false);
@@ -206,11 +208,13 @@ export function PreRegisteredPets() {
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ action: 'approve', photo: valPhoto || selected.photo, petTagId }),
+        body: JSON.stringify({ action: 'approve', photo: valPhoto || selected.photo, tagNumber: tagNumber.replace(/\D/g,'') }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Validation failed');
-      toast.success(`${selected.pet_name} validated and registered! Tag: ${petTagId}`);
+      const assigned = data.petTagId || data.pet?.pet_tag_id || petTagId;
+      setPetTagId(assigned);
+      toast.success(`${selected.pet_name} validated and registered! Tag: ${assigned}`);
       setValDone(true);
       fetchList();
     } catch (err: any) {
@@ -517,23 +521,48 @@ export function PreRegisteredPets() {
                     </>
                   )}
 
-                  {/* STEP 3: Pet Tag ID */}
-                  {valStep === 'tag' && (
-                    <>
-                      <p className="modal-section">Assign Pet Tag ID</p>
-                      <div className="modal-alert info">Enter the official Pet Tag ID from the physical tag that will be attached to the animal.</div>
-                      <div className="modal-field">
-                        <label className="modal-label">Pet Tag ID *</label>
-                        <input className="modal-input" placeholder="e.g. TAG-2024-00123" value={petTagId} onChange={e => setPetTagId(e.target.value)} />
-                      </div>
-                      <div className="modal-actions">
-                        <button className="modal-btn-secondary" onClick={() => setValStep('photo')}>← Back</button>
-                        <button className="modal-btn-primary" onClick={() => { if (!petTagId.trim()) { toast.error('Please enter a Pet Tag ID'); return; } setValStep('confirm'); }}>
-                          Next: Confirm →
-                        </button>
-                      </div>
-                    </>
-                  )}
+                  {/* STEP 3: Pet Tag ID — color-coded by owner's barangay zone */}
+                  {valStep === 'tag' && (() => {
+                    const pfx   = selected ? getPrefix(selected.barangay) : 'BLU';
+                    const clr   = ZONE_COLOR[pfx] || '#2B5EA6';
+                    const lbl   = ZONE_LABEL[pfx] || 'East Zone';
+                    const num   = tagNumber.replace(/\D/g, '').padStart(5, '0');
+                    const preview = tagNumber.replace(/\D/g,'') ? `${pfx}-0000-${num}` : `${pfx}-0000-?????`;
+                    return (
+                      <>
+                        <p className="modal-section">Assign Pet Tag ID</p>
+                        <div style={{ background: `${clr}12`, border: `1.5px solid ${clr}`, borderRadius: 12, padding: 14, marginBottom: 14, display:'flex', alignItems:'center', gap:12 }}>
+                          <div style={{ width:40, height:40, borderRadius:10, background:clr, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:900, fontSize:13, flexShrink:0 }}>{pfx}</div>
+                          <div>
+                            <p style={{ margin:0, fontWeight:800, fontSize:13, color:clr }}>{lbl}</p>
+                            <p style={{ margin:0, fontSize:11, color:'#6b7280' }}>
+                              Barangay: <strong>{selected?.barangay}</strong> · Format: <strong>{pfx}-0000-NNNNN</strong>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="modal-alert info">Enter the 5-digit number from the physical tag. The color prefix is auto-assigned based on the owner's barangay zone.</div>
+                        <div className="modal-field">
+                          <label className="modal-label">Tag Number (5 digits)</label>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ padding:'0 14px', height:44, display:'flex', alignItems:'center', background:clr, color:'#fff', borderRadius:10, fontFamily:'monospace', fontWeight:900, fontSize:16, flexShrink:0 }}>{pfx}-0000-</span>
+                            <input className="modal-input" style={{ flex:1, fontFamily:'monospace', fontSize:18, fontWeight:800 }}
+                              inputMode="numeric" placeholder="00001"
+                              value={tagNumber} onChange={e => setTagNumber(e.target.value.replace(/\D/g,'').slice(0,5))} />
+                          </div>
+                          <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:11, color:'#9ca3af' }}>Preview:</span>
+                            <span style={{ fontFamily:'monospace', fontWeight:900, color:'#fff', background:clr, padding:'4px 14px', borderRadius:8, fontSize:15 }}>{preview}</span>
+                          </div>
+                        </div>
+                        <div className="modal-actions">
+                          <button className="modal-btn-secondary" onClick={() => setValStep('photo')}>← Back</button>
+                          <button className="modal-btn-primary" onClick={() => setValStep('confirm')}>
+                            Next: Confirm →
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* STEP 4: Confirm */}
                   {valStep === 'confirm' && (

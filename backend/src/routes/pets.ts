@@ -7,11 +7,12 @@ import { v4 as uuidv4 } from 'uuid';
 const router = Router();
 
 // ── Zone → color prefix mapping (single source of truth) ─────────────────
+// Zone names must exactly match what is stored in the barangays table.
 const ZONE_PREFIX: Record<string, string> = {
-  'East':  'BLU',
-  'West':  'PRP',
-  'North': 'GRY',
-  'Red':   'RED',
+  'East':           'BLU',
+  'West':           'PRP',
+  'North':          'GRY',
+  'Baybay-Highway': 'RED',  // ← correct zone name (not 'Red')
 };
 
 // Fetch zone for a barangay from DB
@@ -34,44 +35,73 @@ async function getBarangayPrefix(barangayName: string): Promise<string> {
 }
 
 /**
+ * Resolve the correct barangay to use for tag assignment.
+ *
+ * Priority:
+ *  1. The owner's registered barangay (from users table, via owner_id)
+ *  2. The barangay supplied in the request / pre-registration form
+ *
+ * This ensures the color prefix always reflects the owner's actual zone,
+ * not whatever the form might have submitted.
+ */
+async function resolveTagBarangay(ownerIdOrNull: string | null, fallbackBarangay: string): Promise<string> {
+  if (ownerIdOrNull) {
+    try {
+      const r = await query(
+        'SELECT barangay FROM users WHERE owner_id = $1 LIMIT 1',
+        [ownerIdOrNull]
+      );
+      const ownerBrgy = r.rows[0]?.barangay;
+      if (ownerBrgy) return ownerBrgy;
+    } catch { /* fall through */ }
+  }
+  return fallbackBarangay;
+}
+
+/**
  * Build the color-coded tag ID.
  *
- * If `manualNumber` is given (e.g. "0001"), use it directly.
- * Otherwise auto-increment based on how many pets already have that prefix.
+ * Format: PREFIX-0000-00000  (e.g. BLU-0000-00001, RED-0000-00042)
+ *  - PREFIX  : 3-letter color code derived from owner's barangay zone
+ *  - 0000    : zone-wide batch block (always 0000 for sequential numbering)
+ *  - 00000   : 5-digit sequential number, unique per prefix
  *
- * Format: PREFIX-NNNN  (e.g. BLU-0001, PRP-0042, GRY-0003, RED-0010)
- *
- * Uniqueness is enforced by the UNIQUE constraint on `pet_tag_id`.
- * If the caller-supplied number already exists this will throw a DB error,
- * which the route catches and returns as a 409.
+ * Uniqueness is enforced by the UNIQUE constraint on pet_tag_id.
  */
-async function buildTagId(barangayName: string, manualNumber?: string): Promise<string> {
-  const prefix = await getBarangayPrefix(barangayName);
+async function buildTagId(barangayName: string, manualNumber?: string, ownerIdOrNull?: string | null): Promise<string> {
+  const resolvedBarangay = await resolveTagBarangay(ownerIdOrNull ?? null, barangayName);
+  const prefix = await getBarangayPrefix(resolvedBarangay);
 
   if (manualNumber) {
     const num = manualNumber.replace(/\D/g, ''); // strip non-digits
     if (!num) throw new Error('Invalid tag number');
-    const padded = num.padStart(4, '0');
-    return `${prefix}-${padded}`;
+    const padded = num.padStart(5, '0');
+    return `${prefix}-0000-${padded}`;
   }
 
-  // Auto: count existing tags with this prefix and use next sequence
+  // Auto: find the highest existing sequential number for this prefix and increment
   const result = await query(
-    `SELECT COUNT(*) AS count FROM pets WHERE pet_tag_id LIKE $1`,
-    [`${prefix}-%`]
+    `SELECT pet_tag_id FROM pets WHERE pet_tag_id LIKE $1 ORDER BY pet_tag_id DESC LIMIT 1`,
+    [`${prefix}-____-%`]
   );
-  const next = parseInt(result.rows[0]?.count || '0') + 1;
-  return `${prefix}-${String(next).padStart(4, '0')}`;
+  let next = 1;
+  if (result.rows[0]?.pet_tag_id) {
+    const parts = result.rows[0].pet_tag_id.split('-');
+    const last = parseInt(parts[parts.length - 1] || '0');
+    if (!isNaN(last)) next = last + 1;
+  }
+  return `${prefix}-0000-${String(next).padStart(5, '0')}`;
 }
 
 // ── Helper: expose zone+prefix info for a barangay (used by frontend) ─────
 router.get('/barangay-prefix', async (req: AuthRequest, res: Response) => {
   try {
-    const { barangay } = req.query;
+    const { barangay, ownerId } = req.query;
     if (!barangay) return res.status(400).json({ error: 'barangay required' });
-    const zone = await getBarangayZone(barangay as string);
+    const resolvedBarangay = await resolveTagBarangay((ownerId as string) || null, barangay as string);
+    const zone = await getBarangayZone(resolvedBarangay);
     const prefix = ZONE_PREFIX[zone] || 'BLU';
-    return res.json({ zone, prefix });
+    return res.json({ zone, prefix, resolvedBarangay, format: `${prefix}-0000-NNNNN` });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -221,16 +251,19 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
     if (!preReg) return res.status(404).json({ error: 'Pre-registration not found' });
 
     if (action === 'approve') {
-      // Build color-coded tag: explicit override > auto from barangay
+      // Build color-coded tag from owner's barangay zone (CLR-0000-NNNNN format)
+      // petTagId from frontend may be a raw number or a full tag string;
+      // always re-derive from the owner's barangay to guarantee correct color prefix.
       let tagId: string | null = null;
-      if (petTagId) {
-        tagId = petTagId; // admin supplied full tag
-      } else if (preReg.barangay) {
-        try {
-          tagId = await buildTagId(preReg.barangay, tagNumber || undefined);
-        } catch (e: any) {
-          return res.status(409).json({ error: e.message });
-        }
+      try {
+        const rawNum = petTagId ? petTagId.replace(/[^0-9]/g, '') : undefined;
+        tagId = await buildTagId(
+          preReg.barangay,
+          rawNum && rawNum.length > 0 ? rawNum : (tagNumber || undefined),
+          preReg.owner_id || null
+        );
+      } catch (e: any) {
+        return res.status(409).json({ error: e.message });
       }
       // Use color-zoning ID as primary ID (no PET-### fallback)
       const newPetId = petId || tagId || `GEN-000-${String(Date.now()).slice(-5)}`;
@@ -317,7 +350,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     let autoTagId: string | null = null;
     if (d.barangay) {
       try {
-        autoTagId = await buildTagId(d.barangay, d.tagNumber || undefined);
+        autoTagId = await buildTagId(d.barangay, d.tagNumber || undefined, resolvedOwnerId || null);
       } catch (e: any) {
         return res.status(409).json({ error: e.message, tagConflict: true });
       }

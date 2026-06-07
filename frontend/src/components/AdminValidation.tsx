@@ -110,8 +110,8 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
 
   // Derived
   const prefix = selected ? getPrefix(selected.barangay) : 'BLU';
-  const numPadded = tagNumber.replace(/\D/g, '').padStart(4, '0');
-  const previewTagId = tagNumber ? `${prefix}-${numPadded}` : '';
+  const numPadded = tagNumber.replace(/\D/g, '').padStart(5, '0');
+  const previewTagId = tagNumber ? `${prefix}-0000-${numPadded}` : '';
 
   const filtered = list.filter(p => {
     if (p.status !== tabFilter) return false;
@@ -146,7 +146,7 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
   const handleConfirmTag = () => {
     const digits = tagNumber.replace(/\D/g, '');
     if (!digits) { setTagError('Tag number is required'); return; }
-    if (digits.length > 6) { setTagError('Number too long (max 6 digits)'); return; }
+    if (digits.length > 5) { setTagError('Number too long (max 5 digits)'); return; }
     setTagError('');
     handleApprove();
   };
@@ -155,15 +155,19 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
     if (!selected) return;
     setSubmitting(true);
     try {
-      const pfx = getPrefix(selected.barangay);
-      const tag = `${pfx}-${tagNumber.replace(/\D/g, '').padStart(4, '0')}`;
+      // Send numeric portion only — backend always derives the full CLR-0000-NNNNN tag
+      // from the owner's registered barangay zone to guarantee correct color prefix.
+      const numericPart = tagNumber.replace(/\D/g, '');
       const res = await fetch(`/api/pets/validate/${selected.pre_reg_number}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionStorage.getItem('nasaalaga_token')}` },
-        body: JSON.stringify({ action: 'approve', petTagId: tag, photo: valPhoto || selected.photo, notes }),
+        body: JSON.stringify({ action: 'approve', tagNumber: numericPart, photo: valPhoto || selected.photo, notes }),
       });
       if (!res.ok) throw new Error('Validation failed');
-      setFinalTagId(tag);
+      const respData = await res.json();
+      // Use the tag the backend actually assigned (correct prefix + CLR-0000-NNNNN format)
+      const assignedTag = respData.petTagId || respData.pet?.pet_tag_id || previewTagId;
+      setFinalTagId(assignedTag);
       setValStep('done');
       await fetchList();
       toast.success('Pet successfully validated and registered!');
@@ -422,21 +426,21 @@ export function AdminValidation({ adminUserId }: AdminValidationProps) {
               <div>
                 <p className="font-bold text-sm" style={{ color: pfxColor }}>{ZONE_LABEL[pfx]}</p>
                 <p className="text-xs text-gray-500">
-                  All pets from <strong>{selected.barangay}</strong> use the <strong>{pfx}-</strong> prefix.
+                  All pets from <strong>{selected.barangay}</strong> will be tagged <strong>{pfx}-0000-NNNNN</strong>.
                 </p>
               </div>
             </div>
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Tag Number <span className="text-red-500">*</span>
-                <span className="text-xs font-normal text-gray-400 ml-2">(numeric part only, e.g. 0001)</span>
+                <span className="text-xs font-normal text-gray-400 ml-2">(5-digit number — tag will be auto-formatted as {prefix}-0000-NNNNN)</span>
               </label>
               <div className="flex items-center gap-2">
                 <span className="px-3 py-3 rounded-xl font-mono font-black text-white text-lg flex-shrink-0"
                   style={{ background: pfxColor }}>{pfx}-</span>
                 <input type="text" inputMode="numeric" value={tagNumber}
-                  onChange={e => { setTagNumber(e.target.value.replace(/\D/g, '').slice(0,6)); setTagError(''); }}
-                  placeholder="0001"
+                  onChange={e => { setTagNumber(e.target.value.replace(/\D/g, '').slice(0,5)); setTagError(''); }}
+                  placeholder="00001"
                   className={`flex-1 px-4 py-3 border rounded-xl font-mono text-xl focus:outline-none focus:ring-2 focus:ring-[#2B5EA6] ${tagError ? 'border-red-400' : 'border-gray-300'}`} />
               </div>
               {tagError && <p className="text-red-500 text-xs mt-1">{tagError}</p>}
