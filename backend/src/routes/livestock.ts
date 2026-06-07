@@ -66,9 +66,11 @@ router.get('/owner-search', authenticate, async (req: AuthRequest, res: Response
     const { q } = req.query;
     if (!q) return res.json({ users: [] });
     const result = await query(
-      `SELECT id, username, owner_id, email, barangay, address
+      `SELECT id, username, owner_id, email, phone, barangay, address
        FROM users
-       WHERE LOWER(username) LIKE LOWER($1) OR LOWER(owner_id) LIKE LOWER($1)
+       WHERE LOWER(username) LIKE LOWER($1)
+          OR LOWER(owner_id) LIKE LOWER($1)
+          OR phone LIKE $1
        ORDER BY username LIMIT 10`,
       [`%${q}%`]
     );

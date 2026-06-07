@@ -122,7 +122,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
   const [saving, setSaving] = useState(false);
 
   // Owner lookup state
-  const [ownerSuggestions, setOwnerSuggestions] = useState<{id:string;username:string;owner_id:string;email:string;barangay:string;address:string}[]>([]);
+  const [ownerSuggestions, setOwnerSuggestions] = useState<{id:string;username:string;owner_id:string;email:string;phone:string;barangay:string;address:string}[]>([]);
   const [showOwnerSugg, setShowOwnerSugg]     = useState(false);
   const [ownerLookupTimer, setOwnerLookupTimer] = useState<any>(null);
   const [selectedOwnerId, setSelectedOwnerId]   = useState<string|null>(null);
@@ -255,7 +255,13 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
                       <div
                         key={u.id}
                         onClick={()=>{
-                          setF(p=>({...p, ownerName:u.username, contactNumber:'', farmAddress:u.address||'', barangay:u.barangay||p.barangay}));
+                          setF(p=>({
+                            ...p,
+                            ownerName: u.username,
+                            contactNumber: u.phone || '',
+                            farmAddress: u.address || '',
+                            barangay: u.barangay || p.barangay,
+                          }));
                           setSelectedOwnerId(u.owner_id);
                           setShowOwnerSugg(false); setOwnerSuggestions([]);
                         }}
@@ -263,7 +269,7 @@ function RegisterModal({ onClose, onSave }: { onClose:()=>void; onSave:(d:any)=>
                         onMouseEnter={e=>(e.currentTarget.style.background='#f0f7ff')}
                         onMouseLeave={e=>(e.currentTarget.style.background='')}>
                         <div style={{fontWeight:700,color:'#1f2937'}}>{u.username}</div>
-                        <div style={{fontSize:11,color:'#9ca3af'}}>{u.email} · {u.barangay||'—'} · ID: {u.owner_id}</div>
+                        <div style={{fontSize:11,color:'#9ca3af'}}>{u.email} · {u.phone||'—'} · {u.barangay||'—'} · ID: {u.owner_id}</div>
                       </div>
                     ))}
                     <div
