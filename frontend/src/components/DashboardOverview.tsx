@@ -306,7 +306,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
     goats: "#f59e0b",
   };
 
-  // Zone badge colors matching the tag color system
+  // Zone base colors (matching tag color system)
   const ZONE_COLORS: Record<string, string> = {
     East: '#2B5EA6',
     West: '#8B5CF6',
@@ -314,8 +314,15 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
     'Baybay-Highway': '#E85D3B',
   };
 
-  // Species color palette for the zone distribution chart
-  const SPECIES_PALETTE = ['#2B5EA6','#E85D3B','#10b981','#f59e0b','#8B5CF6','#ec4899','#14b8a6','#f97316'];
+  // Per-zone shades for each species index (darkest → lightest)
+  const ZONE_SHADES: Record<string, string[]> = {
+    East:            ['#1a3d6e', '#2B5EA6', '#4a7ec4', '#7aaad8', '#aecde9'],
+    West:            ['#5b21b6', '#8B5CF6', '#a78bfa', '#c4b5fd', '#ddd6fe'],
+    North:           ['#374151', '#6B7280', '#9ca3af', '#c4c9cf', '#e2e4e7'],
+    'Baybay-Highway':['#b83a1a', '#E85D3B', '#f07d5f', '#f5a08a', '#f9c4b3'],
+  };
+
+  const ZONE_ORDER = ['East', 'West', 'North', 'Baybay-Highway'];
 
   // Fallback data when DB hasn't loaded yet
   const fallbackZoneDist = [
@@ -325,8 +332,25 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
     { zone: 'Baybay-Highway', Dog: 10, Cat: 6 },
   ];
   const fallbackSpecies = ['Dog', 'Cat'];
-  const effectiveZoneDist = petZoneDist.data.length > 0 ? petZoneDist.data : fallbackZoneDist;
-  const effectiveSpecies  = petZoneDist.species.length > 0 ? petZoneDist.species : fallbackSpecies;
+  const rawZoneDist   = petZoneDist.data.length > 0 ? petZoneDist.data : fallbackZoneDist;
+  const effectiveSpecies = petZoneDist.species.length > 0 ? petZoneDist.species : fallbackSpecies;
+
+  // Pivot data: chart X-axis = species, one dataKey per zone
+  // e.g. [{ species: 'Dog', East: 8, West: 6, North: 9, 'Baybay-Highway': 10 }, ...]
+  const effectiveZoneDist = effectiveSpecies.map(sp => {
+    const row: Record<string, any> = { species: sp };
+    ZONE_ORDER.forEach(z => {
+      const zoneRow = rawZoneDist.find((r: any) => r.zone === z);
+      row[z] = zoneRow ? (zoneRow[sp] || 0) : 0;
+    });
+    return row;
+  });
+
+  // Get shade for a zone+species combo (species index drives shade depth)
+  const getZoneShade = (zone: string, speciesIdx: number): string => {
+    const shades = ZONE_SHADES[zone] || ZONE_SHADES['North'];
+    return shades[Math.min(speciesIdx, shades.length - 1)];
+  };
 
   const tabs = [
     {
@@ -780,84 +804,119 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
                     Pet Distribution by Zone &amp; Type
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Dogs, cats &amp; other pets · grouped by color-coded zone
+                    Each zone shown in its own color · shaded per species
                   </p>
                 </div>
                 {/* Zone legend */}
                 <div className="flex flex-wrap gap-3">
-                  {Object.entries(ZONE_COLORS).map(([zone, color]) => (
+                  {ZONE_ORDER.map(zone => (
                     <div key={zone} className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-sm" style={{ background: color }} />
-                      <span className="text-xs text-slate-500 font-medium">{zone}</span>
+                      <span className="w-3 h-3 rounded-sm" style={{ background: ZONE_COLORS[zone] }} />
+                      <span className="text-xs text-slate-500 font-medium">
+                        {zone === 'Baybay-Highway' ? 'Baybay-Hwy' : zone}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="flex gap-6 flex-wrap lg:flex-nowrap">
-                {/* Grouped bar chart */}
+                {/* Grouped bar chart — X = species, groups = zones */}
                 <div className="flex-1 min-w-0">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={effectiveZoneDist} barSize={18} barGap={3}>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={effectiveZoneDist} barSize={16} barGap={2} barCategoryGap="30%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis
-                        dataKey="zone"
-                        tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 600 }}
+                        dataKey="species"
+                        tick={{ fontSize: 12, fill: '#64748b', fontWeight: 700 }}
                         axisLine={false}
                         tickLine={false}
-                        tickFormatter={(v) => v === 'Baybay-Highway' ? 'Baybay-Hwy' : v}
                       />
                       <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} cursor={{ fill: '#f8fafc' }} />
-                      {effectiveSpecies.map((sp, i) => (
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div className="bg-[#0f1b2d] border border-white/10 rounded-xl px-4 py-3 shadow-2xl">
+                              <p className="text-xs text-slate-400 mb-2 font-medium uppercase tracking-wider">{label}</p>
+                              {payload.map((p: any) => (
+                                <div key={p.dataKey} className="flex items-center gap-2 text-sm">
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.fill }} />
+                                  <span className="text-slate-300">{p.dataKey === 'Baybay-Highway' ? 'Baybay-Hwy' : p.dataKey}:</span>
+                                  <span className="text-white font-semibold">{p.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        }}
+                        cursor={{ fill: '#f8fafc' }}
+                      />
+                      {ZONE_ORDER.map((zone, zi) => (
                         <Bar
-                          key={sp}
-                          dataKey={sp}
-                          fill={SPECIES_PALETTE[i % SPECIES_PALETTE.length]}
+                          key={zone}
+                          dataKey={zone}
+                          fill={getZoneShade(zone, zi)}
                           radius={[4, 4, 0, 0]}
-                          name={sp}
+                          name={zone === 'Baybay-Highway' ? 'Baybay-Hwy' : zone}
                         />
                       ))}
                     </BarChart>
                   </ResponsiveContainer>
+
+                  {/* Species row legend under chart */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 px-1">
+                    {effectiveSpecies.map((sp, i) => {
+                      const total = ZONE_ORDER.reduce((s, z) => {
+                        const row = rawZoneDist.find((r: any) => r.zone === z);
+                        return s + (row ? (row[sp] || 0) : 0);
+                      }, 0);
+                      return (
+                        <div key={sp} className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-slate-600">{sp}</span>
+                          <span className="text-xs text-slate-400">({total})</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Totals summary sidebar */}
-                <div className="flex flex-col justify-center gap-3 w-full lg:w-44 shrink-0">
-                  {effectiveZoneDist.map((row) => {
-                    const total = effectiveSpecies.reduce((s, sp) => s + (row[sp] || 0), 0);
-                    const color = ZONE_COLORS[row.zone] || '#6B7280';
+                {/* Sidebar — per-zone breakdown in zone color */}
+                <div className="flex flex-col gap-3 w-full lg:w-48 shrink-0 justify-center">
+                  {ZONE_ORDER.filter(z => rawZoneDist.find((r: any) => r.zone === z)).map(zone => {
+                    const row = rawZoneDist.find((r: any) => r.zone === z) || {};
+                    const total = effectiveSpecies.reduce((s, sp) => s + ((row as any)[sp] || 0), 0);
+                    const base  = ZONE_COLORS[zone];
+                    const shades = ZONE_SHADES[zone];
                     return (
-                      <div key={row.zone} className="rounded-xl p-3 border" style={{ borderColor: `${color}30`, background: `${color}08` }}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold" style={{ color }}>
-                            {row.zone === 'Baybay-Highway' ? 'Baybay-Hwy' : row.zone}
+                      <div key={zone} className="rounded-xl p-3 border"
+                        style={{ borderColor: `${base}35`, background: `${base}0a` }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-black" style={{ color: base }}>
+                            {zone === 'Baybay-Highway' ? 'Baybay-Hwy' : zone}
                           </span>
-                          <span className="text-sm font-black text-slate-800">{total}</span>
+                          <span className="text-sm font-black text-slate-800">{total} pets</span>
                         </div>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {effectiveSpecies.map((sp, i) => row[sp] ? (
-                            <span key={sp} className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold text-white"
-                              style={{ background: SPECIES_PALETTE[i % SPECIES_PALETTE.length] }}>
-                              {sp} {row[sp]}
-                            </span>
-                          ) : null)}
+                        <div className="flex flex-col gap-1">
+                          {effectiveSpecies.map((sp, i) => {
+                            const cnt = (row as any)[sp] || 0;
+                            if (!cnt) return null;
+                            const pct = total > 0 ? Math.round((cnt / total) * 100) : 0;
+                            return (
+                              <div key={sp}>
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="text-[10px] font-semibold" style={{ color: shades[Math.min(i, shades.length-1)] }}>{sp}</span>
+                                  <span className="text-[10px] font-bold text-slate-600">{cnt} <span className="text-slate-400 font-normal">({pct}%)</span></span>
+                                </div>
+                                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: shades[Math.min(i, shades.length-1)] }} />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
                   })}
-                  {/* Species legend */}
-                  <div className="mt-1 pt-3 border-t border-slate-100 flex flex-col gap-1.5">
-                    {effectiveSpecies.map((sp, i) => (
-                      <div key={sp} className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: SPECIES_PALETTE[i % SPECIES_PALETTE.length] }} />
-                        <span className="text-xs text-slate-600 font-medium">{sp}</span>
-                        <span className="ml-auto text-xs font-bold text-slate-700">
-                          {effectiveZoneDist.reduce((s, r) => s + (r[sp] || 0), 0)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
