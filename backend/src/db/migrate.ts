@@ -202,6 +202,23 @@ export const createTables = async () => {
         );
     `);
 
+    // ── Delete pets with malformed IDs (no valid color-zone prefix + format) ─
+    // Valid format: (BLU|PRP|GRY|RED)-0000-NNNNN  e.g. BLU-0000-00025
+    // Anything that doesn't match is a dirty/test record — purge it entirely.
+    await client.query(`
+      DELETE FROM vaccination_history
+      WHERE pet_id NOT SIMILAR TO '(BLU|PRP|GRY|RED)-[0-9]{4}-[0-9]{5}';
+    `);
+    await client.query(`
+      DELETE FROM lost_found_reports
+      WHERE pet_id NOT SIMILAR TO '(BLU|PRP|GRY|RED)-[0-9]{4}-[0-9]{5}'
+        AND pet_id != 'UNKNOWN';
+    `);
+    await client.query(`
+      DELETE FROM pets
+      WHERE id NOT SIMILAR TO '(BLU|PRP|GRY|RED)-[0-9]{4}-[0-9]{5}';
+    `);
+
     // Re-generate tag IDs from barangay zone for rows that still lack one.
     await client.query(`
       WITH ranked AS (

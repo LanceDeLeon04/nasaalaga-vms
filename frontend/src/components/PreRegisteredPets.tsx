@@ -36,6 +36,31 @@ interface PreReg {
 
 type ValStep = 'details' | 'photo' | 'tag' | 'confirm';
 
+// ── Zone → color prefix (mirrors AdminValidation.tsx) ────────────────────────
+const BARANGAY_ZONE_MAP: Record<string, string> = {
+  'Caluangan':'East','Coral Ni Bacal':'East','Dila':'East','Lumbang Na Bata':'East',
+  'Lumbang Na Matanda':'East','Poblacion 1':'East','Poblacion 2':'East','Poblacion 3':'East',
+  'Poblacion 4':'East','Poblacion 6':'East',
+  'Bagong Tubig':'West','Cahil':'West','Calantas':'West','Coral Ni Lopez':'West',
+  'Dacanlao':'West','Loma':'West','Makina':'West','Pantay':'West','Taklang Anak':'West','Timbain':'West',
+  'Baclas':'North','Balimbing':'North','Bambang':'North','Bisaya':'North',
+  'Madalunot':'North','Matipok':'North','Munting Coral':'North','Niyugan':'North','Tamayo':'North',
+  'Camastilisan':'Baybay-Highway','Lumbang Calzada':'Baybay-Highway','Poblacion 5':'Baybay-Highway',
+  'Puting Bato East':'Baybay-Highway','Puting Bato West':'Baybay-Highway','Quisumbing':'Baybay-Highway',
+  'Salong':'Baybay-Highway','San Rafael':'Baybay-Highway','Sinisian':'Baybay-Highway','Talisay':'Baybay-Highway',
+};
+const ZONE_COLOR: Record<string, string> = {
+  BLU: '#2B5EA6', PRP: '#8B5CF6', GRY: '#6B7280', RED: '#E85D3B',
+};
+const ZONE_LABEL: Record<string, string> = {
+  BLU: 'East Zone', PRP: 'West Zone', GRY: 'North Zone', RED: 'Baybay-Highway Zone',
+};
+function getPrefix(barangay: string): string {
+  const zone = BARANGAY_ZONE_MAP[barangay] || 'East';
+  const prefixMap: Record<string,string> = { East:'BLU', West:'PRP', North:'GRY', 'Baybay-Highway':'RED' };
+  return prefixMap[zone] || 'BLU';
+}
+
 const STYLES = `
   @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
   @keyframes spin   { to{transform:rotate(360deg)} }

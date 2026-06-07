@@ -1984,12 +1984,15 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
       "Puting Bato West":"Baybay-Highway","Quisumbing":"Baybay-Highway","Salong":"Baybay-Highway","San Rafael":"Baybay-Highway",
       "Sinisian":"Baybay-Highway","Talisay":"Baybay-Highway",
     };
-    const ZONE_BG: Record<string,string> = { North:"#6B7280", West:"#8B5CF6", East:"#2B5EA6", Red:"#E85D3B" };
-    const ZONE_LABEL: Record<string,string> = { North:"North", West:"West", East:"East", Red:"Red" };
+    const ZONE_BG: Record<string,string> = { North:"#6B7280", West:"#8B5CF6", East:"#2B5EA6", "Baybay-Highway":"#E85D3B" };
+    const ZONE_LABEL: Record<string,string> = { North:"North", West:"West", East:"East", "Baybay-Highway":"Baybay-Hwy" };
     const petBarangay = brgy(pet);
     const zone = BARANGAY_ZONES[petBarangay] || "East";
     const zoneBg = ZONE_BG[zone] || "#6B7280";
     const tag = pet.pet_tag_id || pet.petTagId || pet.id || "";
+    // Validate tag format: must match CLR-0000-00000 (3 letters, dash, 4 digits, dash, 5 digits)
+    const validTag = /^[A-Z]{3}-\d{4}-\d{5}$/.test(tag);
+    if (!validTag) return null;
     return (<>
       <p className="text-xs font-bold text-gray-600 font-mono">{tag}</p>
       <span style={{display:'inline-block',marginTop:2,padding:'1px 6px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:zoneBg,letterSpacing:'0.04em'}}>{ZONE_LABEL[zone]} Zone</span>
