@@ -1552,7 +1552,32 @@ export function InventoryPage({ userRole, currentUser }: Props) {
               {dosesByItem.length>0&&(
                 <div className="bg-teal-50/60 rounded-2xl p-5 border border-teal-100 lg:col-span-2">
                   <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Syringe className="w-4 h-4 text-teal-600"/>Doses / Tablets Available by Medicine</h3>
-                  <div className="space-y-2">{dosesByItem.map((d,i)=>{const max=dosesByItem[0]?.doses||1;const pct=Math.round((d.doses/max)*100);const barColor=COLORS[i%COLORS.length]+'cc';return(<div key={i} className="flex items-center gap-3"><span className="text-xs text-gray-600 w-36 truncate shrink-0">{d.name}</span><div className="flex-1 bg-white rounded-full h-5 overflow-hidden border border-teal-100"><div className="h-full rounded-full flex items-center px-2" style={{width:`${Math.max(pct,4)}%`,backgroundColor:barColor}}><span className="text-[10px] font-bold text-white whitespace-nowrap">{d.doses.toLocaleString()} {d.unit}</span></div></div><span className="text-[10px] text-gray-400 w-20 text-right shrink-0">{d.qty} {`${d.unitType?.toLowerCase()}s`}</span></div>);}}</div>
+                  <div className="space-y-2">
+                    {dosesByItem.map((d, i) => {
+                      const max = dosesByItem[0]?.doses || 1;
+                      const pct = Math.round((d.doses / max) * 100);
+                      const barColor = COLORS[i % COLORS.length] + 'cc';
+                      const unitLabel = (d.unitType?.toLowerCase() ?? '') + 's';
+                      return (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-600 w-36 truncate shrink-0">{d.name}</span>
+                          <div className="flex-1 bg-white rounded-full h-5 overflow-hidden border border-teal-100">
+                            <div
+                              className="h-full rounded-full flex items-center px-2"
+                              style={{ width: `${Math.max(pct, 4)}%`, backgroundColor: barColor }}
+                            >
+                              <span className="text-[10px] font-bold text-white whitespace-nowrap">
+                                {d.doses.toLocaleString()} {d.unit}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-gray-400 w-20 text-right shrink-0">
+                            {d.qty} {unitLabel}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
