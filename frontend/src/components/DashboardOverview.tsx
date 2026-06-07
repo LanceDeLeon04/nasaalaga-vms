@@ -824,7 +824,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
                 {/* Grouped bar chart — X = species, groups = zones */}
                 <div className="flex-1 min-w-0">
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={effectiveZoneDist} barSize={16} barGap={2} barCategoryGap="30%">
+                    <BarChart data={effectiveZoneDist} barSize={28} barGap={3} barCategoryGap="20%">
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                       <XAxis
                         dataKey="species"
@@ -882,8 +882,8 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
 
                 {/* Sidebar — per-zone breakdown in zone color */}
                 <div className="flex flex-col gap-3 w-full lg:w-48 shrink-0 justify-center">
-                  {ZONE_ORDER.filter(z => rawZoneDist.find((r: any) => r.zone === z)).map(zone => {
-                    const row = rawZoneDist.find((r: any) => r.zone === z) || {};
+                  {ZONE_ORDER.filter(zone => rawZoneDist.find((r: any) => r.zone === zone)).map(zone => {
+                    const row = rawZoneDist.find((r: any) => r.zone === zone) || {};
                     const total = effectiveSpecies.reduce((s, sp) => s + ((row as any)[sp] || 0), 0);
                     const base  = ZONE_COLORS[zone];
                     const shades = ZONE_SHADES[zone];
