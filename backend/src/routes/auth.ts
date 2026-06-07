@@ -71,6 +71,7 @@ router.post('/login', async (req: Request, res: Response) => {
       barangay: user.barangay || null,
       address: user.address || null,
       phone: user.phone || null,
+      avatar: user.avatar || null,
     };
 
     // Log successful login

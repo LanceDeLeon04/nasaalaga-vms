@@ -91,7 +91,7 @@ export function MyProfile({ user, onUserUpdate }: MyProfileProps) {
     try {
       const updated = await api.updateMyProfile(form);
       toast.success('Profile updated successfully!');
-      if (onUserUpdate) onUserUpdate({ username: form.username, email: form.email });
+      if (onUserUpdate) onUserUpdate({ username: form.username, email: form.email, avatar: form.avatar || undefined });
       setProfileData(updated);
       // Update sessionStorage so Header avatar refreshes immediately
       const stored = sessionStorage.getItem('nasaalaga_user');

@@ -12,6 +12,7 @@ export interface User {
   ownerId?: string;
   email?: string;
   barangay?: string;
+  avatar?: string;
 }
 
 // ── Secret bypass: Shift + Alt + S  A  (typed while holding Shift+Alt, press S then A)

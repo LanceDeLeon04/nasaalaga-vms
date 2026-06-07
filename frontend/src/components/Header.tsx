@@ -20,25 +20,15 @@ interface HeaderProps {
 
 export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderProps) {
   const [dropOpen, setDropOpen] = useState(false);
-  const [avatar, setAvatar] = useState<string>('');
   const dropRef = useRef<HTMLDivElement>(null);
 
-  // Load avatar from sessionStorage on mount and on profile update events
-  const refreshAvatar = () => {
+  // Derive avatar: prefer user prop (always fresh from React state), fall back to sessionStorage
+  const avatar = user.avatar || (() => {
     try {
       const stored = sessionStorage.getItem('nasaalaga_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setAvatar(parsed.avatar || '');
-      }
-    } catch {}
-  };
-
-  useEffect(() => {
-    refreshAvatar();
-    window.addEventListener('nasaalaga_profile_updated', refreshAvatar);
-    return () => window.removeEventListener('nasaalaga_profile_updated', refreshAvatar);
-  }, []);
+      return stored ? JSON.parse(stored).avatar || '' : '';
+    } catch { return ''; }
+  })();
 
   // Close dropdown on outside click
   useEffect(() => {

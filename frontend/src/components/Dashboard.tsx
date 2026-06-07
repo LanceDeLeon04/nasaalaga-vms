@@ -52,13 +52,20 @@ export function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadUserFromStorage = () => {
     const storedUser = sessionStorage.getItem('nasaalaga_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
       navigate('/');
     }
+  };
+
+  useEffect(() => {
+    loadUserFromStorage();
+    // Re-sync React state whenever MyProfile saves — covers avatar, username, etc.
+    window.addEventListener('nasaalaga_profile_updated', loadUserFromStorage);
+    return () => window.removeEventListener('nasaalaga_profile_updated', loadUserFromStorage);
   }, [navigate]);
 
   const handleLogout = () => {
