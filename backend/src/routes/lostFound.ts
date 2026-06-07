@@ -35,9 +35,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
-    const countResult = await query('SELECT COUNT(*) FROM lost_found_reports');
-    const count = parseInt(countResult.rows[0].count);
-    const newId = `LF-${String(count + 1).padStart(3, '0')}`;
+    const maxResult = await query(
+      `SELECT MAX(CAST(SUBSTRING(id FROM 4) AS INTEGER)) AS max_num FROM lost_found_reports WHERE id ~ '^LF-[0-9]+$'`
+    );
+    const maxNum = parseInt(maxResult.rows[0].max_num ?? '0') || 0;
+    const newId = `LF-${String(maxNum + 1).padStart(3, '0')}`;
 
     await query(
       `INSERT INTO lost_found_reports (id, pet_id, pet_name, species, breed, color, type, reported_by, reported_by_role, owner_id, contact_number, last_seen_location, barangay, description, status, impound_location, impound_date, impound_officer)
