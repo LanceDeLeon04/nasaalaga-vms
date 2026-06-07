@@ -62,7 +62,8 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // ── Regular user path: done ────────────────────────────────────────────
-    const payload = {
+    // JWT token — keep lean, never include avatar (base64 would exceed header size limits → HTTP 431)
+    const tokenPayload = {
       id: user.id,
       username: user.username,
       role: user.role,
@@ -71,6 +72,11 @@ router.post('/login', async (req: Request, res: Response) => {
       barangay: user.barangay || null,
       address: user.address || null,
       phone: user.phone || null,
+    };
+
+    // Full user object returned to client (stored in sessionStorage, never in JWT)
+    const payload = {
+      ...tokenPayload,
       avatar: user.avatar || null,
     };
 
@@ -80,7 +86,7 @@ router.post('/login', async (req: Request, res: Response) => {
       [user.id, user.username, JSON.stringify({ role: user.role, email: user.email }), req.ip]
     ).catch(() => {});
 
-    return res.json({ user: payload, token: signToken(payload) });
+    return res.json({ user: payload, token: signToken(tokenPayload) });
   } catch (err: any) {
     console.error('[Login]', err);
     return res.status(500).json({ error: err.message });
