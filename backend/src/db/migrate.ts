@@ -120,6 +120,15 @@ export const createTables = async () => {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Drop duplicates before enforcing uniqueness (keeps the lowest id per group)
+    await client.query(`
+      DELETE FROM livestock_mortality
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM livestock_mortality
+        GROUP BY animal_type, owner_name, barangay, cause, date_reported
+      )
+    `);
     // Add unique constraint to prevent duplicate mortality submissions
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_mortality_unique
