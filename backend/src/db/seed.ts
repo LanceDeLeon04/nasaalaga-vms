@@ -290,13 +290,27 @@ const seed = async () => {
     console.log(`  ✓ Disease events seeded (${diseaseEvents.length})`);
 
     // ── Livestock Mortality ─────────────────────────────────────────────────
+    // First, clean up any duplicate mortality records from prior runs
+    await client.query(`
+      DELETE FROM livestock_mortality
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM livestock_mortality
+        GROUP BY animal_type, owner_name, barangay, cause, date_reported
+      )
+    `);
+
     const mortality = [
-      { livestock_id:'LS-009', animal_type:'Swine', breed:'Duroc', owner_name:'Carlos Mendoza', barangay:'Loma', quantity:2, cause:'Respiratory infection (suspected PED)', date_reported:'2025-02-02', investigation_status:'Ongoing', notes:'Two pigs found dead. Samples collected for lab.', created_by:'Dr. Amalia Vergara' },
+      { livestock_id:'LS-009', animal_type:'Swine',   breed:'Duroc',        owner_name:'Carlos Mendoza',  barangay:'Loma',        quantity:2, cause:'Respiratory infection (suspected PED)',  date_reported:'2025-02-02', investigation_status:'Ongoing',  notes:'Two pigs found dead. Samples collected for lab.',              created_by:'Dr. Amalia Vergara' },
+      { livestock_id:null,     animal_type:'Poultry', breed:'Native Chicken',owner_name:'Lina Santos',    barangay:'Balimbing',   quantity:5, cause:'Newcastle Disease (suspected)',          date_reported:'2025-01-15', investigation_status:'Closed',   notes:'Mass death in backyard flock. Vaccinated remaining birds.',    created_by:'Dr. Amalia Vergara' },
+      { livestock_id:null,     animal_type:'Goat',    breed:'Boer',          owner_name:'Ramon Dela Cruz', barangay:'Bambang',     quantity:1, cause:'Pneumonia',                             date_reported:'2025-01-28', investigation_status:'Closed',   notes:'Single goat mortality. Treated others as precaution.',         created_by:'BAHW Miguel Sanchez' },
+      { livestock_id:null,     animal_type:'Cattle',  breed:'Native',        owner_name:'Mario Bautista',  barangay:'Dacanlao',    quantity:1, cause:'Heat stroke',                           date_reported:'2025-02-10', investigation_status:'Closed',   notes:'Sudden heat wave. Animal collapsed in field.',                 created_by:'Dr. Amalia Vergara' },
+      { livestock_id:null,     animal_type:'Swine',   breed:'Landrace',      owner_name:'Sofia Reyes',     barangay:'Bisaya',      quantity:3, cause:'African Swine Fever (suspected)',       date_reported:'2025-02-18', investigation_status:'Ongoing',  notes:'Three growers dead overnight. ASF test pending at NRL.',      created_by:'Dr. Amalia Vergara' },
     ];
     for (const m of mortality) {
       await client.query(
         `INSERT INTO livestock_mortality (livestock_id, animal_type, breed, owner_name, barangay, quantity, cause, date_reported, investigation_status, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (animal_type, owner_name, barangay, cause, date_reported) DO NOTHING`,
         [m.livestock_id, m.animal_type, m.breed, m.owner_name, m.barangay, m.quantity, m.cause, m.date_reported, m.investigation_status, m.notes, m.created_by]
       );
     }
@@ -846,23 +860,8 @@ const seed = async () => {
     console.log(`  ✓ Inventory transactions seeded (${inventoryTxns.length})`);
 
     // ── Audit Logs (seed real initial entries) ─────────────────────────────
-    const auditEntries = [
-      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Login', resource: 'Authentication', details: JSON.stringify({ role: 'admin' }), ip_address: '192.168.1.100' },
-      { user_id: 'USER-002', username: 'BAHW Miguel Sanchez', action: 'Login', resource: 'Authentication', details: JSON.stringify({ role: 'bahw' }), ip_address: '192.168.1.105' },
-      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Create', resource: 'Livestock', resource_id: 'LS-001', details: JSON.stringify({ animal_type: 'Cattle', barangay: 'Poblacion 5' }), ip_address: '192.168.1.100' },
-      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Create', resource: 'Disease Event', resource_id: 'DE-001', details: JSON.stringify({ disease: 'ASF', barangay: 'Bisaya' }), ip_address: '192.168.1.100' },
-      { user_id: 'USER-002', username: 'BAHW Miguel Sanchez', action: 'Update', resource: 'Vaccination Schedule', resource_id: 'SCH-001', details: JSON.stringify({ action: 'Updated attendance' }), ip_address: '192.168.1.105' },
-      { user_id: 'USER-001', username: 'Dr. Amalia Vergara', action: 'Upload', resource: 'CVO Form', resource_id: 'FORM-001', details: JSON.stringify({ title: 'Pet Registration Form' }), ip_address: '192.168.1.100' },
-      { user_id: null, username: 'unknown@test.com', action: 'Login Failed', resource: 'Authentication', details: JSON.stringify({ reason: 'User not found' }), ip_address: '203.125.45.78' },
-    ];
-    for (const e of auditEntries) {
-      await client.query(
-        `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [e.user_id, e.username, e.action, e.resource, (e as any).resource_id || null, e.details, e.ip_address]
-      );
-    }
-    console.log(`  ✓ Audit logs seeded (${auditEntries.length})`);
+    // Audit logs are populated in real-time by system activity — no seed data needed.
+    console.log(`  ✓ Audit logs: real-time only (no dummy data seeded)`);
 
     // ── CVO Forms ──────────────────────────────────────────────────────────
     const cvoForms = [

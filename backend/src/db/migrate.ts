@@ -116,8 +116,14 @@ export const createTables = async () => {
         investigation_status VARCHAR(50) DEFAULT 'Pending',
         notes TEXT,
         created_by VARCHAR(255),
-        created_at TIMESTAMPTZ DEFAULT NOW()
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
       )
+    `);
+    // Add unique constraint to prevent duplicate mortality submissions
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mortality_unique
+      ON livestock_mortality (animal_type, owner_name, barangay, cause, date_reported)
     `);
 
     // ── Livestock disease alerts table ─────────────────────────────────────
@@ -452,6 +458,16 @@ export const createTables = async () => {
         ip_address VARCHAR(50),
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    // Add user_role column to audit_logs if not present (for display in UI)
+    await client.query(`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_role VARCHAR(50)`);
+
+    // Purge known dummy seed entries so the log only contains real activity
+    await client.query(`
+      DELETE FROM audit_logs
+      WHERE username IN ('Dr. Amalia Vergara','BAHW Miguel Sanchez','unknown@test.com')
+        AND ip_address IN ('192.168.1.100','192.168.1.105','203.125.45.78')
     `);
 
     // Feedback table

@@ -53,7 +53,14 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await query('SELECT * FROM lost_found_reports WHERE id=$1', [newId]);
-    return res.json({ report: result.rows[0] });
+    const report = result.rows[0];
+    query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [(req as any).user?.id, d.reportedBy, (req as any).user?.role || d.reportedByRole, 'Create', 'Lost/Found Report', newId,
+        JSON.stringify({ type: d.type, petName: d.petName, species: d.species, barangay: d.barangay }),
+        req.ip]
+    ).catch(() => {});
+    return res.json({ report });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -97,6 +104,13 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     if (updates.status === 'Resolved' && report.type === 'Lost' && report.pet_id && report.pet_id !== 'UNKNOWN') {
       await query(`UPDATE pets SET status='Found' WHERE id=$1`, [report.pet_id]);
     }
+
+    query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [(req as any).user?.id, (req as any).user?.username, (req as any).user?.role, 'Update', 'Lost/Found Report', id,
+        JSON.stringify({ updatedFields: Object.keys(updates), newStatus: updates.status }),
+        req.ip]
+    ).catch(() => {});
 
     return res.json({ report });
   } catch (err: any) {

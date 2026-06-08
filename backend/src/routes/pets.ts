@@ -384,7 +384,14 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
        d.vaccinationStatus || 'Not Vaccinated', d.isSpayed || false, d.isNeutered || false,
        d.impoundStatus || 'None', autoTagId, tempId]
     );
-    return res.json({ pet: result.rows[0], success: true, tempId, petTagId: autoTagId });
+    const pet = result.rows[0];
+    query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [(req as AuthRequest).user?.id, (req as AuthRequest).user?.username, (req as AuthRequest).user?.role, 'Create', 'Pet', pet.id,
+        JSON.stringify({ petName: d.petName, species: d.species, breed: d.breed, barangay: d.barangay, ownerName: d.ownerName, petTagId: autoTagId }),
+        req.ip]
+    ).catch(() => {});
+    return res.json({ pet, success: true, tempId, petTagId: autoTagId });
   } catch (err: any) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'That tag ID already exists. Choose a different number.', tagConflict: true });
@@ -435,7 +442,14 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       values
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Pet not found' });
-    return res.json({ pet: result.rows[0], success: true });
+    const pet = result.rows[0];
+    query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [(req as AuthRequest).user?.id, (req as AuthRequest).user?.username, (req as AuthRequest).user?.role, 'Update', 'Pet', id,
+        JSON.stringify({ updatedFields: Object.keys(updates).filter(k => k !== 'photo' && k !== 'photoUrl') }),
+        req.ip]
+    ).catch(() => {});
+    return res.json({ pet, success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -443,7 +457,17 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    await query('DELETE FROM pets WHERE id=$1', [req.params.id]);
+    const { id } = req.params;
+    // Grab pet name before deleting for the audit record
+    const petRow = await query('SELECT pet_name, species, barangay FROM pets WHERE id=$1', [id]);
+    await query('DELETE FROM pets WHERE id=$1', [id]);
+    const pet = petRow.rows[0];
+    query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id, req.user?.username, req.user?.role, 'Delete', 'Pet', id,
+        JSON.stringify(pet ? { petName: pet.pet_name, species: pet.species, barangay: pet.barangay } : {}),
+        req.ip]
+    ).catch(() => {});
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

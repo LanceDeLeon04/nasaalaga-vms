@@ -692,11 +692,24 @@ export function LivestockManagement() {
   };
 
   const handleAddMortality = async()=>{
-    if(!mf.animalType||!mf.ownerName||!mf.barangay||!mf.cause) return;
+    if(!mf.animalType||!mf.ownerName||!mf.barangay||!mf.cause||saving) return;
     setSaving(true);
-    try { await api.addMortality({...mf,quantity:parseInt(mf.quantity)||1}); await loadAll(); setShowMF(false); setMf({animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:''}); }
-    catch(e:any){ alert('Error: '+e.message); }
-    setSaving(false);
+    try {
+      await api.addMortality({...mf,quantity:parseInt(mf.quantity)||1});
+      await loadAll();
+      setShowMF(false);
+      setMf({animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:''});
+    } catch(e:any){ alert('Error: '+e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteMortality = async(id:number)=>{
+    if(!confirm('Delete this mortality record?')) return;
+    try { await api.deleteMortality(id); await loadAll(); } catch(e:any){ alert('Error: '+e.message); }
+  };
+
+  const handleUpdateMortalityStatus = async(id:number, status:string, notes:string)=>{
+    try { await api.updateMortality(id,{investigationStatus:status,notes}); await loadAll(); } catch(e:any){ alert('Error: '+e.message); }
   };
 
   const handleAddDisease = async()=>{
@@ -831,7 +844,7 @@ export function LivestockManagement() {
           ['records',  `Records (${livestock.length})`, <ClipboardList className="w-4 h-4"/>],
           ['health',   'Health Records', <Stethoscope className="w-4 h-4"/>],
           ['disease',  `Disease (${activeDisease})`, <Shield className="w-4 h-4"/>],
-          ['mortality',`Mortality (${mortality.length})`, <Skull className="w-4 h-4"/>],
+          ['mortality',`Mortality (${mortality.reduce((s,m)=>s+(m.quantity||1),0)})`, <Skull className="w-4 h-4"/>],
         ] as [MainTab,string,any][]).map(([key,label,icon])=>(
           <button key={key} onClick={()=>mt(key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${tab===key?'bg-[#2B5EA6] text-white shadow-sm':'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
@@ -1135,8 +1148,9 @@ export function LivestockManagement() {
           )}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {mortality.length===0?<div className="py-10 text-center"><Skull className="w-8 h-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">No mortality records</p></div>
-            :<table className="w-full text-sm">
-              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Type','Breed','Owner','Barangay','Qty Dead','Cause','Date','Status'].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
+            :<>
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Type','Breed','Owner','Barangay','Qty Dead','Cause','Date','Status',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
                 {mortality.map(m=>(
                   <tr key={m.id} className="hover:bg-red-50/20">
@@ -1147,11 +1161,33 @@ export function LivestockManagement() {
                     <td className="py-3 px-3 font-black text-red-600 text-base">{m.quantity}</td>
                     <td className="py-3 px-3 text-xs text-gray-700 max-w-[160px] truncate">{m.cause}</td>
                     <td className="py-3 px-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(m.date_reported)}</td>
-                    <td className="py-3 px-3"><span className={`px-2 py-0.5 text-xs font-bold rounded-full ${m.investigation_status==='Ongoing'?'bg-amber-100 text-amber-700':m.investigation_status==='Closed'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>{m.investigation_status}</span></td>
+                    <td className="py-3 px-3">
+                      <select
+                        value={m.investigation_status}
+                        onChange={e=>handleUpdateMortalityStatus(m.id,e.target.value,m.notes||'')}
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full border-0 cursor-pointer outline-none ${m.investigation_status==='Ongoing'?'bg-amber-100 text-amber-700':m.investigation_status==='Closed'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>
+                        <option value="Pending">Pending</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </td>
+                    <td className="py-3 px-3">
+                      <button onClick={()=>handleDeleteMortality(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete record">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
-            </table>}
+              <tfoot>
+                <tr className="bg-red-50 border-t-2 border-red-100">
+                  <td colSpan={4} className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wide">Total Deaths ({mortality.length} incident{mortality.length!==1?'s':''})</td>
+                  <td className="py-3 px-3 font-black text-red-700 text-base">{mortality.reduce((s,m)=>s+(m.quantity||1),0)}</td>
+                  <td colSpan={4}/>
+                </tr>
+              </tfoot>
+            </table>
+            </>}
           </div>
         </div>
       )}

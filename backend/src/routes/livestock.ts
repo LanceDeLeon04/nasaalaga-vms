@@ -209,7 +209,10 @@ router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) 
       `INSERT INTO livestock_mortality
         (livestock_id, animal_type, breed, owner_name, barangay, quantity,
          cause, date_reported, investigation_status, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (animal_type, owner_name, barangay, cause, date_reported)
+       DO UPDATE SET quantity = EXCLUDED.quantity, notes = EXCLUDED.notes, updated_at = NOW()
+       RETURNING *`,
       [d.livestockId || null, d.animalType, d.breed || null, d.ownerName, d.barangay,
        d.quantity || 1, d.cause, d.dateReported || new Date().toISOString().split('T')[0],
        d.investigationStatus || 'Pending', d.notes || null, d.createdBy || 'Admin']
@@ -220,6 +223,45 @@ router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) 
         ['Dead', d.livestockId]);
     }
     return res.json({ record: result.rows[0], success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/mortality/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM livestock_mortality WHERE id=$1', [req.params.id]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/mortality/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const d = req.body;
+    const result = await query(
+      `UPDATE livestock_mortality SET investigation_status=$1, notes=$2, updated_at=NOW()
+       WHERE id=$3 RETURNING *`,
+      [d.investigationStatus, d.notes || null, req.params.id]
+    );
+    return res.json({ record: result.rows[0], success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Cleanup duplicate mortality records — keeps only the earliest per unique (animal_type, owner_name, barangay, cause, date_reported)
+router.delete('/mortality/cleanup/duplicates', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(`
+      DELETE FROM livestock_mortality
+      WHERE id NOT IN (
+        SELECT MIN(id) FROM livestock_mortality
+        GROUP BY animal_type, owner_name, barangay, cause, date_reported
+      )
+    `);
+    return res.json({ success: true, deleted: result.rowCount });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

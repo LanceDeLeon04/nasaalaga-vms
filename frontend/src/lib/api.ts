@@ -89,6 +89,12 @@ export const api = {
   getMortality: () => request('/livestock/mortality/all'),
   addMortality: (data: any) =>
     request('/livestock/mortality', { method: 'POST', body: JSON.stringify(data) }),
+  deleteMortality: (id: number) =>
+    request('/livestock/mortality/' + id, { method: 'DELETE' }),
+  updateMortality: (id: number, data: any) =>
+    request('/livestock/mortality/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  cleanupDuplicateMortality: () =>
+    request('/livestock/mortality/cleanup/duplicates', { method: 'DELETE' }),
   getDiseaseEvents: () => request('/livestock/disease-events/all'),
   addDiseaseEvent: (data: any) =>
     request('/livestock/disease-events', { method: 'POST', body: JSON.stringify(data) }),

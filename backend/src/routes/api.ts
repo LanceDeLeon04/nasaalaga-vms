@@ -9,10 +9,143 @@ const router = Router();
 // ── Audit log helper ───────────────────────────────────────────────────────
 const logAudit = (req: AuthRequest, action: string, resource: string, resourceId?: string, details?: object) => {
   query(
-    `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [req.user?.id, req.user?.username, action, resource, resourceId || null, JSON.stringify(details || {}), req.ip]
+    `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [req.user?.id, req.user?.username, req.user?.role, action, resource, resourceId || null, JSON.stringify(details || {}), req.ip]
   ).catch(() => {});
 };
+
+// ── Global auto-audit middleware ───────────────────────────────────────────
+// Intercepts all mutating responses and writes an audit entry automatically.
+// Manual logAudit() calls for specific routes still work and are preserved
+// for richer details — this middleware fires for everything else.
+const ROUTE_AUDIT_MAP: Record<string, { action: string; resource: string }> = {
+  'POST /schedules':                          { action: 'Create', resource: 'Vaccination Schedule' },
+  'PUT /schedules':                           { action: 'Update', resource: 'Vaccination Schedule' },
+  'POST /statistics/disease-alerts':          { action: 'Create', resource: 'Disease Alert' },
+  'POST /statistics/outbreak-data':           { action: 'Create', resource: 'Outbreak Data' },
+  'DELETE /users':                            { action: 'Delete', resource: 'User' },
+  'PUT /admin/settings':                      { action: 'Update', resource: 'System Settings' },
+  'PUT /admin/thresholds':                    { action: 'Update', resource: 'System Thresholds' },
+  'POST /admin/recommendations':              { action: 'Create', resource: 'Recommendation' },
+  'PUT /admin/recommendations':               { action: 'Update', resource: 'Recommendation' },
+  'DELETE /admin/recommendations':            { action: 'Delete', resource: 'Recommendation' },
+  'PUT /rules':                               { action: 'Update', resource: 'Rule' },
+  'POST /deployments':                        { action: 'Create', resource: 'Deployment' },
+  'PUT /deployments':                         { action: 'Update', resource: 'Deployment' },
+  'DELETE /deployments':                      { action: 'Delete', resource: 'Deployment' },
+  'POST /inventory/medicines':                { action: 'Create', resource: 'Medicine Inventory' },
+  'DELETE /inventory/medicines':              { action: 'Delete', resource: 'Medicine Inventory' },
+  'POST /inventory/supplies':                 { action: 'Create', resource: 'Supplies Inventory' },
+  'DELETE /inventory/supplies':               { action: 'Delete', resource: 'Supplies Inventory' },
+  'POST /inventory/outbreak-dispatch':        { action: 'Dispatch', resource: 'Outbreak Inventory' },
+  'POST /inventory/suppliers':                { action: 'Create', resource: 'Supplier' },
+  'PUT /inventory/suppliers':                 { action: 'Update', resource: 'Supplier' },
+  'DELETE /inventory/suppliers':              { action: 'Delete', resource: 'Supplier' },
+  'POST /inventory/office-supplies':          { action: 'Create', resource: 'Office Supplies' },
+  'DELETE /inventory/office-supplies':        { action: 'Delete', resource: 'Office Supplies' },
+  'POST /inventory/pending-orders':           { action: 'Create', resource: 'Pending Order' },
+  'PUT /inventory/pending-orders':            { action: 'Update', resource: 'Pending Order' },
+  'DELETE /inventory/pending-orders':         { action: 'Delete', resource: 'Pending Order' },
+  'POST /inventory/pending-orders/:id/receive': { action: 'Receive', resource: 'Pending Order' },
+  'POST /feedback':                           { action: 'Create', resource: 'Feedback' },
+  'PUT /feedback':                            { action: 'Update', resource: 'Feedback' },
+  'POST /biting-incidents':                   { action: 'Create', resource: 'Biting Incident' },
+  'PUT /biting-incidents':                    { action: 'Update', resource: 'Biting Incident' },
+  'DELETE /biting-incidents':                 { action: 'Delete', resource: 'Biting Incident' },
+  'POST /outbreaks':                          { action: 'Create', resource: 'Outbreak' },
+  'PUT /outbreaks':                           { action: 'Update', resource: 'Outbreak' },
+  'PATCH /outbreaks':                         { action: 'Update', resource: 'Outbreak' },
+  'DELETE /outbreaks':                        { action: 'Delete', resource: 'Outbreak' },
+  'DELETE /outbreaks/by-incident':            { action: 'Delete', resource: 'Outbreak' },
+  'PATCH /outbreaks/by-incident':             { action: 'Update', resource: 'Outbreak' },
+  'POST /vaccination-history':                { action: 'Create', resource: 'Vaccination Record' },
+  'PUT /cvo-forms':                           { action: 'Update', resource: 'CVO Form' },
+  'DELETE /cvo-forms':                        { action: 'Delete', resource: 'CVO Form' },
+  'POST /lost-found':                         { action: 'Create', resource: 'Lost/Found Report' },
+  'PUT /lost-found':                          { action: 'Update', resource: 'Lost/Found Report' },
+  'POST /budget/programs':                    { action: 'Create', resource: 'Budget Program' },
+  'PUT /budget/programs':                     { action: 'Update', resource: 'Budget Program' },
+  'DELETE /budget/programs':                  { action: 'Delete', resource: 'Budget Program' },
+  'POST /budget/line-items':                  { action: 'Create', resource: 'Budget Line Item' },
+  'PUT /budget/line-items':                   { action: 'Update', resource: 'Budget Line Item' },
+  'DELETE /budget/line-items':                { action: 'Delete', resource: 'Budget Line Item' },
+  'POST /budget/expenditures':                { action: 'Create', resource: 'Budget Expenditure' },
+  'DELETE /budget/expenditures':              { action: 'Delete', resource: 'Budget Expenditure' },
+  'POST /budget/ai-recommendations':          { action: 'Create', resource: 'Budget AI Recommendation' },
+  'PUT /budget/ai-recommendations':           { action: 'Update', resource: 'Budget AI Recommendation' },
+  'POST /budget/link-inventory':              { action: 'Link', resource: 'Budget Inventory' },
+  'DELETE /budget/unlink-inventory':          { action: 'Unlink', resource: 'Budget Inventory' },
+  'POST /interventions':                      { action: 'Create', resource: 'Intervention' },
+  'PUT /interventions':                       { action: 'Update', resource: 'Intervention' },
+  'DELETE /interventions':                    { action: 'Delete', resource: 'Intervention' },
+  'POST /appointment-schedules':              { action: 'Create', resource: 'Appointment Schedule' },
+  'PUT /appointment-schedules':               { action: 'Update', resource: 'Appointment Schedule' },
+  'DELETE /appointment-schedules':            { action: 'Delete', resource: 'Appointment Schedule' },
+  'POST /unavailable-blocks':                 { action: 'Create', resource: 'Unavailable Block' },
+  'DELETE /unavailable-blocks':               { action: 'Delete', resource: 'Unavailable Block' },
+  'PUT /system/maintenance':                  { action: 'Update', resource: 'System Maintenance' },
+  'POST /livestock-pre-registrations':        { action: 'Create', resource: 'Livestock Pre-Registration' },
+};
+
+// Skip paths that handle their own audit logging already
+const AUDIT_MANUAL_PATHS = new Set([
+  '/users/create-admin', '/users/create-bahw', '/users/:id',
+  '/inventory/medicines/:id', '/inventory/supplies/:id', '/inventory/movement',
+  '/inventory/office-supplies/:id', '/cvo-forms',
+  '/feedback/:id/respond', '/biting-incidents/:id',
+  '/profile/me', '/profile/change-password',
+  '/livestock-pre-registrations/:id',
+  '/superadmin/clear-records', '/audit-logs',
+]);
+
+router.use((req: AuthRequest, res: Response, next: any) => {
+  const method = req.method.toUpperCase();
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return next();
+
+  const originalJson = res.json.bind(res);
+  res.json = function (body: any) {
+    // Only log successful responses (2xx)
+    if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {
+      // Build a normalised path key: strip trailing slash, remove UUIDs and IDs
+      const rawPath = req.path.replace(/\/$/, '');
+      // Try exact match first, then progressively strip the last segment
+      const segments = rawPath.split('/').filter(Boolean);
+      let matched: { action: string; resource: string } | undefined;
+      let matchedKey = '';
+      // Try from most-specific to least-specific
+      for (let i = segments.length; i >= 1; i--) {
+        const candidate = `${method} /${segments.slice(0, i).join('/')}`;
+        if (ROUTE_AUDIT_MAP[candidate]) {
+          matched = ROUTE_AUDIT_MAP[candidate];
+          matchedKey = candidate;
+          break;
+        }
+      }
+      if (matched) {
+        // Extract resource_id from body or params
+        const resourceId = (body?.id || body?.report?.id || body?.pet?.id ||
+          body?.record?.id || body?.incident?.id || body?.outbreak?.id ||
+          body?.schedule?.id || body?.program?.id || body?.item?.id ||
+          req.params?.id || null) as string | null;
+
+        const details: Record<string, any> = {};
+        if (req.body && typeof req.body === 'object') {
+          const safe = { ...req.body };
+          delete safe.password; delete safe.photo; delete safe.photoUrl; delete safe.photoBase64;
+          Object.assign(details, safe);
+        }
+
+        query(
+          `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [req.user.id, req.user.username, req.user.role, matched.action, matched.resource,
+            resourceId, JSON.stringify(details), req.ip]
+        ).catch(() => {});
+      }
+    }
+    return originalJson(body);
+  };
+  next();
+});
 
 // ── Health ─────────────────────────────────────────────────────────────────
 router.get('/health', (req, res) => {
