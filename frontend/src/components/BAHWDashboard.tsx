@@ -101,7 +101,7 @@ function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
   );
 
   return (
-    <div style={{ gap: '20px' }}>
+    <div style={{ space: '20px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>

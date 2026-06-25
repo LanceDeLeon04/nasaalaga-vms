@@ -431,7 +431,7 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
   // Modals
   const [barangayModal, setBarangayModal]   = useState<BarangayRank|null>(null);
   const [fastMoverModal, setFastMoverModal] = useState<FastMover|null>(null);
-  const [resupplyModal, setResupplyModal]   = useState<{name:string;currentQty:number;unit:string;category?:string;stockItem?:StockItem}|null>(null);
+  const [resupplyModal, setResupplyModal]   = useState<{name:string;qty:number;unit:string;category?:string;stockItem?:StockItem}|null>(null);
 
   // Notifs
   const [notifs, setNotifs] = useState<Notif[]>([]);
@@ -488,7 +488,7 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
           item={fastMoverModal} stock={stock}
           onClose={()=>setFastMoverModal(null)}
           onInvestigate={()=>push("Investigation Dispatched",`Field team assigned to ${fastMoverModal.barangay} for ${fastMoverModal.medicine_name}.`,"info")}
-          onResupply={()=>setResupplyModal({name:fastMoverModal.medicine_name, currentQty:fastMoverModal.barangay_qty, unit:"doses"})}
+          onResupply={()=>setResupplyModal({name:fastMoverModal.medicine_name, qty:fastMoverModal.barangay_qty, unit:"doses"})}
         />
       )}
       {resupplyModal && (
@@ -716,7 +716,7 @@ export function MedicineIntelligence({ onOrderFromIntel }: { onOrderFromIntel?: 
                               {/* ── Sentiment indicator ── */}
                               <SentimentBadge name={m.name} category={m.category} sources={[]} compact />
                             </div>
-                            <button onClick={()=>setResupplyModal({name:m.name,currentQty:m.quantity,unit:m.unit})}
+                            <button onClick={()=>setResupplyModal({name:m.name,qty:m.quantity,unit:m.unit})}
                               className="px-3 py-2 bg-green-600 text-white text-xs font-bold rounded-xl hover:bg-green-700 flex items-center gap-1.5 shrink-0">
                               <Truck className="w-3.5 h-3.5"/> Resupply
                             </button>

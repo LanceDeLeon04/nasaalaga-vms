@@ -64,7 +64,7 @@ function blankItemForm(overrides?: any) {
 }
 
 // ── Inline new-supplier form (used inside item/order modals) ─────────────────
-function InlineSupplierForm({ onSave, onCancel }: { onSave:(d:any)=>Promise<string|void>; onCancel:()=>void }) {
+function InlineSupplierForm({ onSave, onCancel }: { onSave:(d:any)=>Promise<string>; onCancel:()=>void }) {
   const [form,setForm] = useState({name:'',contactPerson:'',phone:'',email:'',address:'',category:'General',notes:''});
   const [saving,setSaving] = useState(false);
   const set = (k:string,v:string)=>setForm(f=>({...f,[k]:v}));
@@ -98,9 +98,9 @@ function InlineSupplierForm({ onSave, onCancel }: { onSave:(d:any)=>Promise<stri
     </div>
   );
 }
-function SupplierSelector({ supplierId, suppliers, onSelect, onNewSupplier }:{supplierId:string;suppliers:any[];onSelect:(id:string)=>void;onNewSupplier:(data:any)=>Promise<string|void>;}) {
+function SupplierSelector({ supplierId, suppliers, onSelect, onNewSupplier }:{supplierId:string;suppliers:any[];onSelect:(id:string)=>void;onNewSupplier:(data:any)=>Promise<string>;}) {
   const [showAdd,setShowAdd] = useState(false);
-  const handleNewSave = async(data:any)=>{const newId=await onNewSupplier(data);if(newId)onSelect(newId);setShowAdd(false);toast.success('New supplier added and selected');};
+  const handleNewSave = async(data:any)=>{const newId=await onNewSupplier(data);onSelect(newId);setShowAdd(false);toast.success('New supplier added and selected');};
   return(
     <div>
       {!showAdd&&(
@@ -126,7 +126,7 @@ function SupplierSelector({ supplierId, suppliers, onSelect, onNewSupplier }:{su
 // ── Shared item detail fields ─────────────────────────────────────────────────
 function ItemDetailFields({ form, setField, suppliers, programs, onNewSupplier, showQty=true, showPurpose=true }:{
   form:any; setField:(k:string,v:any)=>void; suppliers:any[]; programs:any[];
-  onNewSupplier:(data:any)=>Promise<string|void>; showQty?:boolean; showPurpose?:boolean;
+  onNewSupplier:(data:any)=>Promise<string>; showQty?:boolean; showPurpose?:boolean;
 }) {
   const { isContainer, isBox, isMultiDose, totalDoses, unitLabel } = computeDosage(form.unitType,form.doseType,form.dosesPerContainer,form.quantity);
   const lineItems = programs.find((p:any)=>p.id===form.programId)?.line_items||[];
@@ -293,7 +293,7 @@ function ItemDetailFields({ form, setField, suppliers, programs, onNewSupplier, 
 
 // ── Catalogue-only Add Modals (NO qty on new) ─────────────────────────────────
 function MedicineModal({ item, programs, suppliers, onClose, onSave, onNewSupplier }:{
-  item?:any; programs:any[]; suppliers:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string|void>;
+  item?:any; programs:any[]; suppliers:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string>;
 }) {
   const [form,setForm] = useState(item?{
     name:item.name,genericName:item.generic_name||'',category:item.category,type:item.type||'',
@@ -336,7 +336,7 @@ function MedicineModal({ item, programs, suppliers, onClose, onSave, onNewSuppli
 }
 
 function SupplyModal({ item, programs, suppliers, onClose, onSave, onNewSupplier }:{
-  item?:any; programs:any[]; suppliers:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string|void>;
+  item?:any; programs:any[]; suppliers:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string>;
 }) {
   const [form,setForm] = useState(item?{
     name:item.name,category:item.category,type:item.type||'',quantity:item.quantity,unit:item.unit||'pieces',
@@ -404,7 +404,7 @@ function SupplyModal({ item, programs, suppliers, onClose, onSave, onNewSupplier
 }
 
 function OfficeSupplyModal({ item, suppliers, programs, onClose, onSave, onNewSupplier }:{
-  item?:any; suppliers:any[]; programs:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string|void>;
+  item?:any; suppliers:any[]; programs:any[]; onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string>;
 }) {
   const [form,setForm]=useState(item?{name:item.name,category:item.category||'General',quantity:item.quantity,unit:item.unit||'pieces',reorderLevel:item.reorder_level||5,unitCost:item.unit_cost||0,supplierId:item.supplier_id||'',description:item.description||'',barcode:item.barcode||'',status:item.status||'Active',purpose:item.purpose||'office',programId:item.program_id||'',lineItemId:item.line_item_id||'',fiscalYear:item.fiscal_year||new Date().getFullYear()}:{name:'',category:'Paper & Stationery',quantity:0,unit:'pieces',reorderLevel:5,unitCost:0,supplierId:'',description:'',barcode:'',status:'Active',purpose:'office',programId:'',lineItemId:'',fiscalYear:new Date().getFullYear()});
   const set=(k:string,v:any)=>setForm(f=>({...f,[k]:v}));
@@ -500,7 +500,7 @@ function BudgetCheck({ programs, programId, lineItemId, orderCost }:{programs:an
 // ── Order Creation Modal ──────────────────────────────────────────────────────
 function AddOrderModal({ prefill, medicines, officeSupplies, supplies, suppliers, programs, onClose, onSave, onNewSupplier }:{
   prefill?:any; medicines:any[]; officeSupplies:any[]; supplies:any[]; suppliers:any[]; programs:any[];
-  onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string|void>;
+  onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string>;
 }) {
   const [productMode,setProductMode]=useState<'existing'|'new'>(prefill?.itemName?'existing':'existing');
   const [selectedExisting,setSelectedExisting]=useState<any>(null);
@@ -808,7 +808,7 @@ function ReceiveOrderModal({ order, medicines, supplies, officeSupplies, onClose
 // ── Add Old Stocks Modal (Admin only — direct inventory migration) ─────────────
 function AddOldStocksModal({ medicines, supplies, officeSupplies, suppliers, programs, onClose, onSave, onNewSupplier }:{
   medicines:any[]; supplies:any[]; officeSupplies:any[]; suppliers:any[]; programs:any[];
-  onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string|void>;
+  onClose:()=>void; onSave:(d:any)=>void; onNewSupplier:(data:any)=>Promise<string>;
 }) {
   const [productMode,setProductMode]=useState<'existing'|'new'>('existing');
   const [selectedExisting,setSelectedExisting]=useState<any>(null);
@@ -1222,93 +1222,6 @@ function LogbookModal({ transactions, itemName, onClose }:{transactions:any[];it
   );
 }
 
-// ── Batch Detail Modal (grouped items by name) ────────────────────────────────
-function BatchDetailModal({ group, suppliers, programs, onClose, onEdit, onDelete, canEdit }: {
-  group: any[]; suppliers: any[]; programs: any[]; onClose: () => void;
-  onEdit: (item: any) => void; onDelete: (item: any) => void; canEdit: boolean;
-}) {
-  const rep = group[0];
-  const totalQty = group.reduce((s, m) => s + (m.quantity || 0), 0);
-  const totalValue = group.reduce((s, m) => s + (m.quantity || 0) * (parseFloat(m.unit_cost) || 0), 0);
-  const sup = suppliers.find(s => s.id === rep.supplier_id);
-  return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] flex flex-col">
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-2xl">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-black text-gray-900 leading-tight">{rep.name}</h2>
-              {rep.generic_name && <p className="text-sm text-gray-400 mt-0.5">{rep.generic_name}</p>}
-              <div className="flex flex-wrap gap-2 mt-2">
-                {rep.barcode && <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-mono"><Barcode className="w-3 h-3"/>{rep.barcode}</span>}
-                {rep.category && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">{rep.category}</span>}
-                {rep.manufacturer && <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">{rep.manufacturer}</span>}
-                {rep.storage_condition && <span className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">🌡 {rep.storage_condition}</span>}
-              </div>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"><X className="w-5 h-5"/></button>
-          </div>
-          {sup && <p className="text-xs text-gray-400 mt-2 flex items-center gap-1"><Truck className="w-3 h-3"/>Supplier: <span className="font-semibold text-gray-600">{sup.name}</span></p>}
-          <div className="flex gap-4 mt-3 pt-3 border-t border-gray-50">
-            <div className="text-center"><p className="text-xs text-gray-400">Batches</p><p className="text-xl font-black text-[#2B5EA6]">{group.length}</p></div>
-            <div className="text-center"><p className="text-xs text-gray-400">Total Qty</p><p className="text-xl font-black text-gray-900">{totalQty} <span className="text-xs font-normal text-gray-400">{rep.unit}</span></p></div>
-            <div className="text-center"><p className="text-xs text-gray-400">Total Value</p><p className="text-xl font-black text-green-700">₱{totalValue.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p></div>
-          </div>
-        </div>
-        {/* Supplies list */}
-        <div className="overflow-y-auto flex-1 p-4 space-y-2">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 mb-3">Supplies / Batches</p>
-          {group.map((m, i) => {
-            const days = m.expiry_date ? Math.ceil((new Date(m.expiry_date).getTime() - Date.now()) / 86400000) : null;
-            const expired = days !== null && days < 0;
-            const nearExp = days !== null && days >= 0 && days <= 90;
-            return (
-              <div key={m.id} className={`rounded-xl border p-4 transition-colors ${expired ? 'bg-red-50 border-red-200' : nearExp ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-100'}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <span className="text-xs font-black text-gray-400">#{i + 1}</span>
-                      {m.lot_number ? <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Lot: {m.lot_number}</span> : <span className="text-xs text-gray-300 italic">No lot #</span>}
-                      <StatusBadge qty={m.quantity} reorder={m.reorder_level} />
-                      {expired && <span className="text-xs font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">EXPIRED</span>}
-                      {nearExp && !expired && <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Exp in {days}d</span>}
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                      <div>
-                        <p className="text-gray-400 font-semibold">Purchase Date</p>
-                        <p className="text-gray-700 font-bold">{m.created_at ? new Date(m.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold">Expiry Date</p>
-                        <p className={`font-bold ${expired ? 'text-red-600' : nearExp ? 'text-orange-600' : 'text-gray-700'}`}>{m.expiry_date ? new Date(m.expiry_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold">Qty</p>
-                        <p className="text-gray-900 font-black">{m.quantity} <span className="text-gray-400 font-normal">{m.unit}</span></p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold">Unit Cost</p>
-                        <p className="text-gray-700 font-bold">₱{Number(m.unit_cost || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })}</p>
-                      </div>
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => onEdit(m)} className="p-1.5 hover:bg-white rounded-lg text-gray-500 border border-transparent hover:border-gray-200" title="Edit"><Edit2 className="w-3.5 h-3.5"/></button>
-                      <button onClick={() => onDelete(m)} className="p-1.5 hover:bg-red-100 rounded-lg text-red-400 border border-transparent hover:border-red-200" title="Delete"><Trash2 className="w-3.5 h-3.5"/></button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export function InventoryPage({ userRole, currentUser }: Props) {
   const canEdit=['admin','superadmin','cvoStaff'].includes(userRole);
@@ -1339,7 +1252,6 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const [showMoveModal,setShowMoveModal]=useState<{item:any;type:string}|null>(null);
   const [showLogbook,setShowLogbook]=useState<{item:any;txs:any[]}|null>(null);
   const [showDispatchModal,setShowDispatchModal]=useState(false);
-  const [showBatchModal,setShowBatchModal]=useState<any[]|null>(null);
   const [editItem,setEditItem]=useState<any>(null);
   const [addOrderPrefill,setAddOrderPrefill]=useState<any>(null);
   const [error,setError]=useState('');
@@ -1488,9 +1400,6 @@ export function InventoryPage({ userRole, currentUser }: Props) {
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const filteredMeds=medicines.filter(m=>{const q=search.toLowerCase();return(!q||m.name?.toLowerCase().includes(q)||m.barcode?.includes(q)||m.generic_name?.toLowerCase().includes(q))&&(catFilter==='All'||m.category===catFilter)&&(programFilter==='All'||m.program_id===programFilter)&&(lineItemFilter==='All'||m.line_item_id===lineItemFilter);});
-  // Group medicines by name so duplicates (same product, different lots) collapse into one row
-  const groupedMeds:(()=>Map<string,any[]>)=()=>{const map=new Map<string,any[]>();filteredMeds.forEach(m=>{const key=m.name?.trim().toLowerCase()||m.id;if(!map.has(key))map.set(key,[]);map.get(key)!.push(m);});return map;};
-  const groupedMedsMap=groupedMeds();
   const filteredSups=supplies.filter(s=>{const q=search.toLowerCase();return(!q||s.name?.toLowerCase().includes(q)||s.barcode?.includes(q))&&(catFilter==='All'||s.category===catFilter)&&(programFilter==='All'||s.program_id===programFilter)&&(lineItemFilter==='All'||s.line_item_id===lineItemFilter);});
   const filteredOffice=officeSupplies.filter(o=>{const q=search.toLowerCase();return(!q||o.name?.toLowerCase().includes(q)||o.barcode?.includes(q))&&(catFilter==='All'||o.category===catFilter)&&(programFilter==='All'||o.program_id===programFilter)&&(lineItemFilter==='All'||o.line_item_id===lineItemFilter);});
   const filteredOrders=pendingOrders.filter(o=>(orderFilter==='all'||o.status===orderFilter)&&(!search||o.item_name?.toLowerCase().includes(search.toLowerCase())||o.supplier_name?.toLowerCase().includes(search.toLowerCase())));
@@ -1692,45 +1601,35 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {loading?<tr><td colSpan={10} className="text-center py-8 text-gray-400">Loading...</td></tr>
-                  :groupedMedsMap.size===0?<tr><td colSpan={10} className="text-center py-8 text-gray-400">No medicines found.</td></tr>
-                  :Array.from(groupedMedsMap.entries()).map(([,group])=>{
-                    const m=group[0];
-                    const totalQty=group.reduce((s,x)=>s+(x.quantity||0),0);
-                    const totalValue=group.reduce((s,x)=>s+(x.quantity||0)*(parseFloat(x.unit_cost)||0),0);
-                    const batchCount=group.length;
+                  :filteredMeds.length===0?<tr><td colSpan={10} className="text-center py-8 text-gray-400">No medicines found.</td></tr>
+                  :filteredMeds.map(m=>{
                     const sup=suppliers.find(s=>s.id===m.supplier_id);
                     const prog=programs.find((p:any)=>p.id===m.program_id);
                     const lineItem=prog?.line_items?.find((li:any)=>li.id===m.line_item_id);
-                    const nearestExpiry=group.map(x=>x.expiry_date).filter(Boolean).sort()[0];
-                    return(<tr key={m.id} onClick={()=>setShowBatchModal(group)} className="hover:bg-blue-50/50 transition-colors cursor-pointer group">
+                    return(<tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 group-hover:text-[#2B5EA6] transition-colors">{m.name}</p>
-                            {m.generic_name&&<p className="text-xs text-gray-400">{m.generic_name}</p>}
-                            <div className="flex flex-wrap gap-1 mt-0.5">
-                              {m.unit_type&&m.unit_type!=='Other'&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{m.unit_type}</span>}
-                              {m.dose_type==='multi'&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-600">{m.doses_per_container}×dose</span>}
-                              {m.concentration_value&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{m.concentration_value}{m.concentration_unit}</span>}
-                              {batchCount>1&&<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">{batchCount} batches · click to view</span>}
-                            </div>
-                            {m.barcode&&<p className="text-xs text-gray-300 flex items-center gap-1"><Barcode className="w-3 h-3"/>{m.barcode}</p>}
-                          </div>
-                          <Info className="w-4 h-4 text-gray-300 group-hover:text-[#2B5EA6] flex-shrink-0 mt-0.5 transition-colors"/>
+                        <p className="font-semibold text-gray-900">{m.name}</p>
+                        {m.generic_name&&<p className="text-xs text-gray-400">{m.generic_name}</p>}
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {m.unit_type&&m.unit_type!=='Other'&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{m.unit_type}</span>}
+                          {m.dose_type==='multi'&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-teal-100 text-teal-600">{m.doses_per_container}×dose</span>}
+                          {m.concentration_value&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">{m.concentration_value}{m.concentration_unit}</span>}
                         </div>
+                        {m.barcode&&<p className="text-xs text-gray-300 flex items-center gap-1"><Barcode className="w-3 h-3"/>{m.barcode}</p>}
+                        {m.lot_number&&<p className="text-xs text-gray-300">Lot: {m.lot_number}</p>}
                       </td>
                       <td className="px-4 py-3 text-gray-600">{m.category}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{sup?.name||'—'}</td>
                       <td className="px-4 py-3">{prog?(<div><span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{backgroundColor:(prog.color||'#2B5EA6')+'18',color:prog.color||'#2B5EA6'}}>{prog.name}</span>{lineItem&&<p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[160px]">{lineItem.name}</p>}</div>):<span className="text-xs text-gray-300">—</span>}</td>
                       <td className="px-4 py-3 text-right font-bold text-gray-900">
-                        <span>{totalQty} <span className="text-xs text-gray-400">{m.unit}</span></span>
-                        {['Vial','Bottle','Ampoule','Box'].includes(m.unit_type)&&group.reduce((s,x)=>s+(x.total_doses||x.quantity*(x.doses_per_container||1)),0)>0?(<span className="block text-xs font-semibold text-teal-600 mt-0.5">{group.reduce((s,x)=>s+(x.total_doses||x.quantity*(x.doses_per_container||1)),0).toLocaleString()} {m.unit_type==='Box'?'tablets':'doses'}</span>):null}
+                        <span>{m.quantity} <span className="text-xs text-gray-400">{m.unit}</span></span>
+                        {['Vial','Bottle','Ampoule','Box'].includes(m.unit_type)&&(m.total_doses||m.doses_per_container>1)?(<span className="block text-xs font-semibold text-teal-600 mt-0.5">{(m.total_doses||m.quantity*(m.doses_per_container||1)).toLocaleString()} {m.unit_type==='Box'?'tablets':'doses'}</span>):null}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-600">₱{Number(m.unit_cost||0).toLocaleString('en-PH',{maximumFractionDigits:2})}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{totalValue.toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
-                      <td className="px-4 py-3"><ExpiryBadge date={nearestExpiry}/></td>
-                      <td className="px-4 py-3"><StatusBadge qty={totalQty} reorder={m.reorder_level}/></td>
-                      <td className="px-4 py-3" onClick={e=>e.stopPropagation()}><div className="flex items-center justify-center gap-1">
+                      <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((m.quantity||0)*(parseFloat(m.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
+                      <td className="px-4 py-3"><ExpiryBadge date={m.expiry_date}/></td>
+                      <td className="px-4 py-3"><StatusBadge qty={m.quantity} reorder={m.reorder_level}/></td>
+                      <td className="px-4 py-3"><div className="flex items-center justify-center gap-1">
                         <button onClick={()=>openLogbook(m,'medicine')} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-500" title="Logbook"><BookOpen className="w-4 h-4"/></button>
                         {canEdit&&<><button onClick={()=>setShowMoveModal({item:m,type:'medicine'})} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500" title="Movement"><Activity className="w-4 h-4"/></button>
                         <button onClick={()=>{setEditItem(m);setShowMedModal(true);}} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Edit2 className="w-4 h-4"/></button>
@@ -1920,7 +1819,6 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       {showReceiveModal&&<ReceiveOrderModal order={showReceiveModal} medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} onClose={()=>setShowReceiveModal(null)} onReceive={receiveOrder}/>}
       {showMoveModal&&<MovementModal item={showMoveModal.item} itemType={showMoveModal.type} onClose={()=>setShowMoveModal(null)} onSave={handleMovement}/>}
       {showLogbook&&<LogbookModal transactions={showLogbook.txs} itemName={showLogbook.item.name} onClose={()=>setShowLogbook(null)}/>}
-      {showBatchModal&&<BatchDetailModal group={showBatchModal} suppliers={suppliers} programs={programs} canEdit={canEdit} onClose={()=>setShowBatchModal(null)} onEdit={item=>{setShowBatchModal(null);setEditItem(item);setShowMedModal(true);}} onDelete={async item=>{if(confirm('Delete this batch entry?')){await api.deleteMedicine(item.id);const updated=showBatchModal.filter(x=>x.id!==item.id);if(updated.length===0){setShowBatchModal(null);}else{setShowBatchModal(updated);}loadData();}}}/>}
       {showDispatchModal&&<DispatchModal medicines={medicines} supplies={supplies} officeSupplies={officeSupplies} currentUser={currentUser} onClose={()=>setShowDispatchModal(false)} onSave={handleDispatch}/>}
     </div>
   );
