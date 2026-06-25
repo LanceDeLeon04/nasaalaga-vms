@@ -235,6 +235,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: `${dbSummary?.livestock?.records ?? 0} records`,
       changeType: "neutral",
       sub: "All species · Calaca",
+      navigateTo: "livestock",
     },
     {
       label: "Registered Pets",
@@ -244,6 +245,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: `${dbSummary?.pets?.active ?? 0} active`,
       changeType: "positive",
       sub: "Dogs, cats · all barangays",
+      navigateTo: "rabies",
     },
     {
       label: "Vaccination Coverage",
@@ -253,6 +255,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: vaxRate >= 80 ? "On target" : "Below target",
       changeType: vaxRate >= 80 ? "positive" : "negative",
       sub: "Livestock + pets combined",
+      navigateTo: "vaccination",
     },
     {
       label: "Budget Allocated",
@@ -262,6 +265,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: budgetAmt > 0 ? "FY 2025" : "Not set",
       changeType: "neutral",
       sub: "Total allocation",
+      navigateTo: "budget",
     },
     {
       label: "Active Disease Alerts",
@@ -271,6 +275,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: alertCount > 0 ? "Urgent" : "Clear",
       changeType: alertCount > 0 ? "negative" : "positive",
       sub: "Requires immediate action",
+      navigateTo: "outbreak",
     },
     {
       label: "Pending Pre-Registrations",
@@ -280,6 +285,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: pendingApps > 0 ? "For review" : "All reviewed",
       changeType: pendingApps > 0 ? "neutral" : "positive",
       sub: "Awaiting admin validation",
+      navigateTo: "preregistered",
     },
     {
       label: "Lost & Found Open",
@@ -289,6 +295,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: lostFoundOpen > 0 ? "Open cases" : "All resolved",
       changeType: lostFoundOpen > 0 ? "neutral" : "positive",
       sub: "Active lost/found reports",
+      navigateTo: "services",
     },
     {
       label: "Low Stock Alerts",
@@ -298,6 +305,7 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
       change: lowStock > 0 ? "Reorder needed" : "Stock OK",
       changeType: lowStock > 0 ? "negative" : "positive",
       sub: "Medicines + supplies",
+      navigateTo: "inventory",
     },
   ];
 
@@ -472,7 +480,9 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
               return (
                 <div
                   key={i}
-                  className="group relative bg-white border border-slate-200/80 rounded-2xl p-5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 overflow-hidden"
+                  onClick={() => stat.navigateTo && onNavigate?.(stat.navigateTo)}
+                  className={`group relative bg-white border border-slate-200/80 rounded-2xl p-5 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-100 transition-all duration-300 overflow-hidden ${stat.navigateTo && onNavigate ? 'cursor-pointer' : ''}`}
+                  title={stat.navigateTo && onNavigate ? `Go to ${stat.label}` : undefined}
                 >
                   {/* Subtle top accent bar */}
                   <div
@@ -516,6 +526,12 @@ export function DashboardOverview({ onNavigate }: { onNavigate?: (view: any) => 
                   <p className="text-xs text-slate-400 mt-0.5">
                     {stat.sub}
                   </p>
+                  {stat.navigateTo && onNavigate && (
+                    <div className="flex items-center gap-1 mt-3 text-xs text-slate-400 group-hover:text-slate-600 transition-colors">
+                      <ChevronRight className="w-3 h-3" />
+                      <span>View module</span>
+                    </div>
+                  )}
                 </div>
               );
             })}

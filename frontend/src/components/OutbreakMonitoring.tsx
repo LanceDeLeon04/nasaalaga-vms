@@ -307,7 +307,7 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
 }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    status: record.status as string,
+    status: record.status as 'Pending' | 'Resolved' | 'Active' | 'On-Going' | 'Monitoring' | 'Contained',
     severity: record.severity,
     assigned_to: record.assigned_to || '',
     resolve_date: record.resolve_date || '',
@@ -380,7 +380,7 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Record Status</label>
-              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value, close_record: false }))}
+              <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as 'Pending' | 'Resolved' | 'Active' | 'On-Going' | 'Monitoring' | 'Contained', close_record: false }))}
                 style={{ width: '100%', height: 40, border: '1.5px solid #e5e7eb', borderRadius: 9, padding: '0 10px', fontSize: 13.5, background: '#f9fafb', outline: 'none' }}>
                 <option value="Pending">⏳ Pending</option>
                 <option value="On-Going">🔵 On-Going</option>
