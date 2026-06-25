@@ -126,6 +126,8 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
     // Compare barcode against stored hash
     const barcodeValid = await bcrypt.compare(barcode.trim(), user.barcode_hash);
     if (!barcodeValid) {
+      query(`INSERT INTO audit_logs (user_id, username, user_role, action, resource, details, ip_address) VALUES ($1,$2,$3,'Login Failed','Authentication',$4,$5)`,
+        [user.id, user.username, user.role, JSON.stringify({ reason: 'Invalid barcode' }), req.ip]).catch(() => {});
       return res.status(401).json({ error: 'Invalid ID barcode' });
     }
 
@@ -136,6 +138,10 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
       role: user.role,
       email: user.email,
     };
+
+    // Log successful superadmin login
+    query(`INSERT INTO audit_logs (user_id, username, user_role, action, resource, details, ip_address) VALUES ($1,$2,$3,'Login','Authentication',$4,$5)`,
+      [user.id, user.username, user.role, JSON.stringify({ role: user.role, email: user.email, method: 'barcode-2fa' }), req.ip]).catch(() => {});
 
     return res.json({
       success: true,

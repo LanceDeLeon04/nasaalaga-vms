@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../lib/api';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
@@ -41,69 +42,72 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Mock data for livestock owner's animals
-  const [livestock] = useState<Livestock[]>([
-    {
-      id: 'LS-001',
-      type: 'Cattle',
-      count: 15,
-      barangay: 'Barangay 1',
-      registrationDate: '2024-01-15',
-      lastInspection: '2024-12-10',
-      nextInspection: '2025-03-10',
-      healthStatus: 'Healthy',
-      vaccinationStatus: 'Up to Date',
-    },
-    {
-      id: 'LS-002',
-      type: 'Swine',
-      count: 45,
-      barangay: 'Barangay 1',
-      registrationDate: '2024-03-20',
-      lastInspection: '2024-12-12',
-      nextInspection: '2025-02-25',
-      healthStatus: 'Healthy',
-      vaccinationStatus: 'Due Soon',
-    },
-    {
-      id: 'LS-003',
-      type: 'Poultry',
-      count: 500,
-      barangay: 'Barangay 1',
-      registrationDate: '2024-02-10',
-      lastInspection: '2024-12-08',
-      nextInspection: '2025-02-20',
-      healthStatus: 'Healthy',
-      vaccinationStatus: 'Up to Date',
-    },
-  ]);
+  const [livestock, setLivestock] = useState<Livestock[]>([]);
+  const [livestockLoading, setLivestockLoading] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const [notifications] = useState<Notification[]>([
-    {
-      id: 'N-001',
-      livestockId: 'LS-002',
-      type: 'vaccination',
-      message: 'Swine vaccination due on February 25, 2025',
-      date: '2025-02-17',
-      read: false,
-    },
-    {
-      id: 'N-002',
-      livestockId: 'LS-003',
-      type: 'inspection',
-      message: 'Poultry inspection scheduled for February 20, 2025',
-      date: '2025-02-15',
-      read: false,
-    },
-    {
-      id: 'N-003',
-      livestockId: 'LS-001',
-      type: 'alert',
-      message: 'Health certificate renewal reminder',
-      date: '2025-02-10',
-      read: true,
-    },
-  ]);
+  useEffect(() => {
+    const fetchLivestock = async () => {
+      try {
+        const data = await api.getLivestock({ ownerId: user.ownerId });
+        const rows: any[] = Array.isArray(data) ? data : (data as any).livestock ?? [];
+        const mapped: Livestock[] = rows.map((r: any) => ({
+          id: r.id,
+          type: r.animal_type ?? r.type ?? '',
+          count: r.quantity ?? r.count ?? 0,
+          barangay: r.barangay ?? '',
+          registrationDate: r.registration_date ?? r.registrationDate ?? '',
+          lastInspection: r.last_inspection ?? r.lastInspection ?? '',
+          nextInspection: r.next_inspection ?? r.nextInspection ?? '',
+          healthStatus: r.health_status ?? r.healthStatus ?? 'Healthy',
+          vaccinationStatus: r.vaccination_status ?? r.vaccinationStatus ?? 'Up to Date',
+        }));
+        setLivestock(mapped);
+
+        // Derive notifications from real records (due-soon vaccinations / upcoming inspections)
+        const derived: Notification[] = [];
+        mapped.forEach((item) => {
+          if (item.vaccinationStatus === 'Due Soon' || item.vaccinationStatus === 'Overdue') {
+            derived.push({
+              id: `notif-vax-${item.id}`,
+              livestockId: item.id,
+              type: 'vaccination',
+              message: `${item.type} vaccination is ${item.vaccinationStatus.toLowerCase()}.`,
+              date: item.nextInspection || new Date().toISOString().split('T')[0],
+              read: false,
+            });
+          }
+          if (item.nextInspection) {
+            const daysUntil = Math.ceil(
+              (new Date(item.nextInspection).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+            );
+            if (daysUntil >= 0 && daysUntil <= 30) {
+              derived.push({
+                id: `notif-insp-${item.id}`,
+                livestockId: item.id,
+                type: 'inspection',
+                message: `${item.type} inspection scheduled on ${item.nextInspection}.`,
+                date: item.nextInspection,
+                read: false,
+              });
+            }
+          }
+        });
+        setNotifications(derived);
+      } catch (err: any) {
+        console.error('[LivestockOwnerDashboard] Failed to load livestock:', err);
+        toast.error('Failed to load livestock records.');
+      } finally {
+        setLivestockLoading(false);
+      }
+    };
+
+    if (user?.ownerId) {
+      fetchLivestock();
+    } else {
+      setLivestockLoading(false);
+    }
+  }, [user?.ownerId]);
 
   const handleDownloadCertificate = async (livestockItem: Livestock) => {
     try {
@@ -205,6 +209,12 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
           <p className="text-gray-600">Manage your livestock and stay updated on inspections</p>
         </div>
       </div>
+      {livestockLoading && (
+        <div className="flex items-center justify-center py-10 text-gray-400 text-sm gap-2">
+          <Activity className="w-4 h-4 animate-pulse" />
+          Loading your livestock records…
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -309,6 +319,17 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
         </div>
       </div>
 
+      {livestockLoading ? (
+        <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
+          <Activity className="w-4 h-4 animate-pulse" />
+          Loading your livestock records…
+        </div>
+      ) : livestock.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+          <Beef className="w-12 h-12 opacity-30" />
+          <p className="text-sm">No livestock records yet. Use Pre-Registration to get started.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {livestock.map(item => (
           <div key={item.id} className="bg-white rounded-lg shadow overflow-hidden">
@@ -384,6 +405,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 

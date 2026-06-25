@@ -87,16 +87,25 @@ const ROUTE_AUDIT_MAP: Record<string, { action: string; resource: string }> = {
   'POST /livestock-pre-registrations':        { action: 'Create', resource: 'Livestock Pre-Registration' },
 };
 
-// Skip paths that handle their own audit logging already
-const AUDIT_MANUAL_PATHS = new Set([
-  '/users/create-admin', '/users/create-bahw', '/users/:id',
-  '/inventory/medicines/:id', '/inventory/supplies/:id', '/inventory/movement',
-  '/inventory/office-supplies/:id', '/cvo-forms',
-  '/feedback/:id/respond', '/biting-incidents/:id',
-  '/profile/me', '/profile/change-password',
-  '/livestock-pre-registrations/:id',
-  '/superadmin/clear-records', '/audit-logs',
-]);
+// Skip paths that handle their own audit logging already.
+// These are regex patterns matched against the actual request path.
+const AUDIT_MANUAL_REGEXES: RegExp[] = [
+  /^\/users\/create-admin$/,
+  /^\/users\/create-bahw$/,
+  /^\/users\/[^/]+$/,                        // PUT /users/:id
+  /^\/inventory\/medicines\/[^/]+$/,          // PUT /inventory/medicines/:id
+  /^\/inventory\/supplies\/[^/]+$/,           // PUT /inventory/supplies/:id
+  /^\/inventory\/movement$/,
+  /^\/inventory\/office-supplies\/[^/]+$/,    // PUT /inventory/office-supplies/:id
+  /^\/cvo-forms(\/[^/]+)?$/,                 // POST+PUT+DELETE /cvo-forms and /cvo-forms/:id
+  /^\/feedback\/[^/]+\/respond$/,             // PUT /feedback/:id/respond
+  /^\/biting-incidents\/[^/]+$/,              // DELETE /biting-incidents/:id
+  /^\/profile\/me$/,
+  /^\/profile\/change-password$/,
+  /^\/livestock-pre-registrations\/[^/]+$/,   // PUT /livestock-pre-registrations/:id
+  /^\/superadmin\/clear-records$/,
+  /^\/audit-logs(\/.*)?$/,                    // never auto-log viewing/posting audit logs
+];
 
 router.use((req: AuthRequest, res: Response, next: any) => {
   const method = req.method.toUpperCase();
@@ -104,25 +113,28 @@ router.use((req: AuthRequest, res: Response, next: any) => {
 
   const originalJson = res.json.bind(res);
   res.json = function (body: any) {
-    // Only log successful responses (2xx)
+    // Only log successful responses (2xx) from authenticated users
     if (res.statusCode >= 200 && res.statusCode < 300 && req.user) {
-      // Build a normalised path key: strip trailing slash, remove UUIDs and IDs
       const rawPath = req.path.replace(/\/$/, '');
-      // Try exact match first, then progressively strip the last segment
+
+      // Skip if this path has its own manual audit logging
+      const isManual = AUDIT_MANUAL_REGEXES.some(re => re.test(rawPath));
+      if (isManual) return originalJson(body);
+
+      // Try to find a matching entry in ROUTE_AUDIT_MAP.
+      // Walk from most-specific path to least-specific so e.g.
+      // DELETE /inventory/pending-orders/123/receive → tries full path first.
       const segments = rawPath.split('/').filter(Boolean);
       let matched: { action: string; resource: string } | undefined;
-      let matchedKey = '';
-      // Try from most-specific to least-specific
       for (let i = segments.length; i >= 1; i--) {
         const candidate = `${method} /${segments.slice(0, i).join('/')}`;
         if (ROUTE_AUDIT_MAP[candidate]) {
           matched = ROUTE_AUDIT_MAP[candidate];
-          matchedKey = candidate;
           break;
         }
       }
+
       if (matched) {
-        // Extract resource_id from body or params
         const resourceId = (body?.id || body?.report?.id || body?.pet?.id ||
           body?.record?.id || body?.incident?.id || body?.outbreak?.id ||
           body?.schedule?.id || body?.program?.id || body?.item?.id ||
@@ -832,8 +844,8 @@ router.delete('/superadmin/clear-records', authenticate, async (req: AuthRequest
       await query('DELETE FROM livestock');
     }
     await query(
-      `INSERT INTO audit_logs (user_id, username, action, resource, details) VALUES ($1,$2,$3,$4,$5)`,
-      [req.user?.id, req.user?.username, `CLEAR_RECORDS_${type.toUpperCase()}`, 'records', JSON.stringify({ type, clearedAt: new Date() })]
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [req.user?.id, req.user?.username, req.user?.role, `Clear_Records_${type.toUpperCase()}`, 'Records', JSON.stringify({ type, clearedAt: new Date() }), req.ip]
     );
     return res.json({ success: true, message: `${type} records cleared` });
   } catch (err: any) {
@@ -1156,9 +1168,9 @@ router.post('/audit-logs', authenticate, async (req: AuthRequest, res: Response)
   try {
     const d = req.body;
     await query(
-      `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.user?.id, req.user?.username, d.action, d.resource, d.resourceId, JSON.stringify(d.details || {}), req.ip]
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id, req.user?.username, req.user?.role, d.action, d.resource, d.resourceId, JSON.stringify(d.details || {}), req.ip]
     );
     return res.json({ success: true });
   } catch (err: any) {
@@ -1279,15 +1291,13 @@ router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, re
   try {
     const { justification } = req.body || {};
     await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
-    // Audit log the deletion with justification
-    if (justification) {
-      await query(
-        `INSERT INTO audit_logs (user_id, username, action, resource, resource_id, details, ip_address)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [req.user?.id||'', req.user?.username||'', 'DELETE', 'biting_incident', req.params.id,
-         JSON.stringify({ justification }), req.ip]
-      ).catch(() => {});
-    }
+    // Always audit log deletions; include justification when provided
+    await query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id||'', req.user?.username||'', req.user?.role||'', 'Delete', 'Biting Incident', req.params.id,
+       JSON.stringify(justification ? { justification } : { note: 'No justification provided' }), req.ip]
+    ).catch(() => {});
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1600,8 +1610,8 @@ router.post('/cvo-forms', authenticate, async (req: AuthRequest, res: Response) 
        JSON.stringify(d.procedureSteps||[]), d.processingFee||0, d.sortOrder||0,
        true, req.user?.username, d.fileName||null, d.fileData||null, d.fileType||null]
     );
-    await query(`INSERT INTO audit_logs (user_id,username,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.user?.id, req.user?.username, 'Upload', 'CVO Form', id, JSON.stringify({title:d.title}), req.ip]);
+    await query(`INSERT INTO audit_logs (user_id,username,user_role,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id, req.user?.username, req.user?.role, 'Upload', 'CVO Form', id, JSON.stringify({title:d.title}), req.ip]);
     return res.json({ success: true, form: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -1625,6 +1635,10 @@ router.delete('/cvo-forms/:id', authenticate, async (req: AuthRequest, res: Resp
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     await query(`DELETE FROM cvo_forms WHERE id=$1`, [req.params.id]);
+    await query(
+      `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id, req.user?.username, req.user?.role, 'Delete', 'CVO Form', req.params.id, JSON.stringify({}), req.ip]
+    ).catch(() => {});
     return res.json({ success: true });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -1638,8 +1652,8 @@ router.put('/feedback/:id/respond', authenticate, async (req: AuthRequest, res: 
       `UPDATE feedback SET admin_response=$1, responded_by=$2, responded_at=NOW(), status=$3 WHERE id=$4 RETURNING *`,
       [response, req.user?.username, status||'Resolved', req.params.id]
     );
-    await query(`INSERT INTO audit_logs (user_id,username,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.user?.id, req.user?.username, 'Respond', 'Feedback', req.params.id, JSON.stringify({status}), req.ip]);
+    await query(`INSERT INTO audit_logs (user_id,username,user_role,action,resource,resource_id,details,ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user?.id, req.user?.username, req.user?.role, 'Respond', 'Feedback', req.params.id, JSON.stringify({status}), req.ip]);
     return res.json({ success: true, feedback: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -1757,9 +1771,9 @@ router.get('/audit-logs/stats', authenticate, async (req: AuthRequest, res: Resp
     const today = new Date().toISOString().split('T')[0];
     const [total, failed, mods, alerts] = await Promise.all([
       query(`SELECT COUNT(*) as count FROM audit_logs WHERE created_at::date=$1`, [today]),
-      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action='Login Failed' AND created_at::date=$1`, [today]),
-      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action IN ('Create','Update','Delete') AND created_at::date=$1`, [today]),
-      query(`SELECT COUNT(*) as count FROM audit_logs WHERE action='Login Failed' AND created_at > NOW()-INTERVAL '1 hour'`),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE LOWER(action)='login failed' AND created_at::date=$1`, [today]),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE LOWER(action) IN ('create','update','delete') AND created_at::date=$1`, [today]),
+      query(`SELECT COUNT(*) as count FROM audit_logs WHERE LOWER(action)='login failed' AND created_at > NOW()-INTERVAL '1 hour'`),
     ]);
     return res.json({
       success: true,
@@ -1778,7 +1792,7 @@ router.get('/audit-logs', authenticate, async (req: AuthRequest, res: Response) 
     let q = `SELECT al.*, u.role as user_role FROM audit_logs al LEFT JOIN users u ON al.user_id=u.id`;
     const params: any[] = [];
     const conds: string[] = [];
-    if (action && action!=='all') { params.push(action); conds.push(`al.action=$${params.length}`); }
+    if (action && action!=='all') { params.push(action.toLowerCase()); conds.push(`LOWER(al.action)=$${params.length}`); }
     if (search) { params.push(`%${search}%`); conds.push(`(al.username ILIKE $${params.length} OR al.action ILIKE $${params.length} OR al.resource ILIKE $${params.length} OR al.details::text ILIKE $${params.length})`); }
     if (conds.length) q += ` WHERE ${conds.join(' AND ')}`;
     q += ` ORDER BY al.created_at DESC LIMIT ${parseInt(limit)||300}`;
