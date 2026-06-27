@@ -1003,7 +1003,9 @@ function DispatchModal({ medicines, supplies, officeSupplies, currentUser, onClo
   const [notFound,setNotFound]=useState(false);
   const searchInputRef=useRef<HTMLInputElement>(null);
   const [itemType,setItemType]=useState<'medicine'|'supply'|'office'|null>(null);
-  const [form,setForm]=useState({itemId:'',itemName:'',genericName:'',lotNumber:'',unit:'',stockQty:0,quantity:1,toName:'',toUserId:'',purpose:'',animalId:'',animalLabel:'',barangay:isAdmin?'':userBarangay,notes:''});
+  const [dispatchUnit,setDispatchUnit]=useState<'vial'|'dose'>('vial');
+  const [doseQty,setDoseQty]=useState(1);
+  const [form,setForm]=useState({itemId:'',itemName:'',genericName:'',lotNumber:'',unit:'',stockQty:0,dosesPerContainer:1,quantity:1,toName:'',toUserId:'',purpose:'',animalId:'',animalLabel:'',barangay:isAdmin?'':userBarangay,notes:''});
   const set=(k:string,v:any)=>setForm(f=>({...f,[k]:v}));
   const allItems=[...medicines.map(m=>({...m,_type:'medicine'})),...supplies.map(s=>({...s,_type:'supply'})),...officeSupplies.map(o=>({...o,_type:'office'}))];
   useEffect(()=>{
@@ -1019,9 +1021,10 @@ function DispatchModal({ medicines, supplies, officeSupplies, currentUser, onClo
   },[searchQuery,medicines,supplies,officeSupplies]);
   const selectItem=(item:any)=>{
     setItemType(item._type);setSearchQuery(item.name);setShowSearchDrop(false);setNotFound(false);
-    setForm(f=>({...f,itemId:item.id,itemName:item.name,genericName:item.generic_name||'',lotNumber:item.lot_number||'',unit:item.unit||'',stockQty:item.quantity||0,quantity:1}));
+    setDispatchUnit('vial');setDoseQty(1);
+    setForm(f=>({...f,itemId:item.id,itemName:item.name,genericName:item.generic_name||'',lotNumber:item.lot_number||'',unit:item.unit||'',stockQty:item.quantity||0,dosesPerContainer:item.doses_per_container||1,quantity:1}));
   };
-  const clearItem=()=>{setItemType(null);setSearchQuery('');setSearchResults([]);setShowSearchDrop(false);setNotFound(false);setForm(f=>({...f,itemId:'',itemName:'',genericName:'',lotNumber:'',unit:'',stockQty:0,quantity:1}));setTimeout(()=>searchInputRef.current?.focus(),50);};
+  const clearItem=()=>{setItemType(null);setSearchQuery('');setSearchResults([]);setShowSearchDrop(false);setNotFound(false);setDispatchUnit('vial');setDoseQty(1);setForm(f=>({...f,itemId:'',itemName:'',genericName:'',lotNumber:'',unit:'',stockQty:0,dosesPerContainer:1,quantity:1}));setTimeout(()=>searchInputRef.current?.focus(),50);}; 
   const handleRecipientSelect=async(u:any)=>{
     set('toName',u.name||u.username);set('toUserId',u.id);set('barangay',u.barangay||(isAdmin?form.barangay:userBarangay));set('animalId','');set('animalLabel','');
     setRecipientSearch(u.name||u.username);setShowRecipientDropdown(false);
@@ -1040,7 +1043,18 @@ function DispatchModal({ medicines, supplies, officeSupplies, currentUser, onClo
   const typeColor=!itemType?'#6b7280':itemType==='medicine'?'#2B5EA6':itemType==='supply'?'#60A85C':'#f59e0b';
   const typeLabel=!itemType?'Item':itemType==='medicine'?'Medicine':itemType==='supply'?'Supply':'Office Supply';
   const typeBadgeCls=!itemType?'bg-gray-100 text-gray-500':itemType==='medicine'?'bg-blue-100 text-blue-700':itemType==='supply'?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700';
-  const canSubmit=!!form.itemId&&form.toName.trim()!==''&&form.purpose.trim()!==''&&form.quantity>=1&&(!isMedicine||form.barangay!=='');
+  // derived: vials to deduct and available doses
+  const dpc = form.dosesPerContainer||1;
+  const isMedMultiDose = isMedicine && dpc > 1 && ['Vial','Bottle','Ampoule'].some(t=>form.unit?.toLowerCase().includes(t.toLowerCase())||true);
+  const canDispatchByDose = isMedicine && dpc > 1;
+  const vialsToDeduct = dispatchUnit==='dose' ? doseQty / dpc : form.quantity;
+  const availDoses = form.stockQty * dpc;
+  const dispatchedDoses = dispatchUnit==='dose' ? doseQty : form.quantity * dpc;
+  const remainingVials = form.stockQty - vialsToDeduct;
+  const remainingDoses = remainingVials * dpc;
+  const canSubmit=!!form.itemId&&form.toName.trim()!==''&&form.purpose.trim()!==''&&
+    (dispatchUnit==='dose' ? doseQty>=1 && vialsToDeduct<=form.stockQty : form.quantity>=1 && form.quantity<=form.stockQty)&&
+    (!isMedicine||form.barangay!=='');
   return(
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
@@ -1086,9 +1100,53 @@ function DispatchModal({ medicines, supplies, officeSupplies, currentUser, onClo
             )}
           </div>
           {form.itemId&&(<>
-            <div><label className="block text-xs font-semibold text-gray-600 mb-1">Quantity to Dispatch *{form.stockQty>0&&<span className="ml-2 text-gray-400 font-normal">({form.stockQty} {form.unit} available)</span>}</label>
-              <input type="number" min={1} max={form.stockQty||undefined} value={form.quantity} onChange={e=>set('quantity',parseInt(e.target.value)||1)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"/>
-              {form.quantity>form.stockQty&&form.stockQty>0&&<p className="mt-1 text-xs text-red-500">⚠ Exceeds available stock ({form.stockQty})</p>}
+            <div className="space-y-3">
+              {canDispatchByDose&&(
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Dispatch By</label>
+                  <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
+                    {([{v:'vial',l:`By ${form.unit||'Vial'}`},{v:'dose',l:'By Dose'}] as const).map(opt=>(
+                      <button key={opt.v} type="button" onClick={()=>{setDispatchUnit(opt.v);setDoseQty(1);set('quantity',1);}}
+                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${dispatchUnit===opt.v?'bg-[#2B5EA6] text-white shadow':'text-gray-500 hover:text-gray-700'}`}>
+                        {opt.v==='dose'?'💉':dispatchUnit==='vial'?'🧪':''} {opt.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {dispatchUnit==='dose'&&canDispatchByDose?(
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Doses to Dispatch *
+                    <span className="ml-2 text-gray-400 font-normal">({availDoses.toLocaleString()} doses / {form.stockQty} {form.unit} available · {dpc} doses/{form.unit})</span>
+                  </label>
+                  <input type="number" min={1} value={doseQty} onChange={e=>setDoseQty(parseInt(e.target.value)||1)} className="w-full border-2 border-[#2B5EA6] rounded-lg px-3 py-2 text-sm outline-none font-bold"/>
+                  {doseQty>0&&(
+                    <div className="mt-2 bg-teal-50 border border-teal-200 rounded-xl p-3 grid grid-cols-2 gap-3 text-xs">
+                      <div className="text-center">
+                        <p className="text-[10px] text-teal-600 font-semibold uppercase">Vials Used</p>
+                        <p className="text-lg font-black text-teal-700">{Number(vialsToDeduct).toLocaleString('en-PH',{maximumFractionDigits:4})}</p>
+                        <p className="text-[10px] text-teal-400">{dpc} doses = 1 {form.unit}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] text-gray-500 font-semibold uppercase">Remaining</p>
+                        <p className="text-lg font-black text-gray-800">{Number(remainingVials).toLocaleString('en-PH',{maximumFractionDigits:4})} {form.unit}s</p>
+                        <p className="text-[10px] text-gray-400">{Number(remainingDoses).toLocaleString('en-PH',{maximumFractionDigits:1})} doses left</p>
+                      </div>
+                    </div>
+                  )}
+                  {doseQty>availDoses&&<p className="mt-1 text-xs text-red-500">⚠ Exceeds available doses ({availDoses.toLocaleString()})</p>}
+                </div>
+              ):(
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    {canDispatchByDose?`${form.unit}s`:'Quantity'} to Dispatch *
+                    {form.stockQty>0&&<span className="ml-2 text-gray-400 font-normal">({form.stockQty} {form.unit} available{canDispatchByDose?` · ${availDoses} doses`:''})</span>}
+                  </label>
+                  <input type="number" min={1} max={form.stockQty||undefined} value={form.quantity} onChange={e=>set('quantity',parseInt(e.target.value)||1)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"/>
+                  {form.quantity>form.stockQty&&form.stockQty>0&&<p className="mt-1 text-xs text-red-500">⚠ Exceeds available stock ({form.stockQty})</p>}
+                </div>
+              )}
             </div>
             <div><label className="block text-xs font-semibold text-gray-600 mb-1">TO: Recipient *</label>
               <div className="relative">
@@ -1139,7 +1197,7 @@ function DispatchModal({ medicines, supplies, officeSupplies, currentUser, onClo
         </div>
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-5 py-4 flex gap-3 justify-end rounded-b-2xl">
           <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
-          <button onClick={()=>{if(!form.itemId||!itemType)return;onSave({item_id:form.itemId,item_type:itemType,transaction_type:'OUT',quantity:form.quantity,lot_number:form.lotNumber,reference_person:form.toName,to_user_id:form.toUserId||undefined,reason:form.purpose+(form.animalLabel?` [Animal: ${form.animalLabel}]`:''),barangay:form.barangay,notes:form.notes,dispatch_type:'dispatch'});}} disabled={!canSubmit}
+          <button onClick={()=>{if(!form.itemId||!itemType)return;onSave({item_id:form.itemId,item_type:itemType,transaction_type:'OUT',quantity:dispatchUnit==='dose'?vialsToDeduct:form.quantity,quantity_doses:dispatchedDoses,dispatch_unit:dispatchUnit,lot_number:form.lotNumber,reference_person:form.toName,to_user_id:form.toUserId||undefined,reason:form.purpose+(form.animalLabel?` [Animal: ${form.animalLabel}]`:'')+(dispatchUnit==='dose'?` [${doseQty} doses / ${Number(vialsToDeduct).toLocaleString('en-PH',{maximumFractionDigits:4})} ${form.unit}]`:''),barangay:form.barangay,notes:form.notes,dispatch_type:'dispatch'});}} disabled={!canSubmit}
             className={`px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${canSubmit?'text-white hover:opacity-90':'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
             style={canSubmit?{backgroundColor:typeColor}:{}}><SendHorizonal className="w-4 h-4"/>Dispatch {typeLabel}</button>
         </div>
@@ -1277,7 +1335,9 @@ function MedicineDetailModal({ medicine, suppliers, programs, transactions, onCl
   };
 
   const totalQty = medicine.quantity || 0;
-  const totalDoses = medicine.total_doses || totalQty * (medicine.doses_per_container || 1);
+  const dpcMed = medicine.doses_per_container || 1;
+  // Always recompute from current qty so fractional vials are reflected correctly
+  const totalDoses = totalQty * dpcMed;
   const totalValue = totalQty * (parseFloat(medicine.unit_cost) || 0);
 
   return (
@@ -1327,17 +1387,17 @@ function MedicineDetailModal({ medicine, suppliers, programs, transactions, onCl
           {/* Stock summary */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-[#2B5EA6]/5 rounded-2xl p-4 border border-[#2B5EA6]/10 text-center">
-              <p className="text-[10px] text-[#2B5EA6] font-bold uppercase tracking-wide mb-1">Stock</p>
-              <p className="text-2xl font-black text-gray-900">{totalQty.toLocaleString()}</p>
+              <p className="text-[10px] text-[#2B5EA6] font-bold uppercase tracking-wide mb-1">Stock ({medicine.unit_type || 'Unit'}s)</p>
+              <p className="text-2xl font-black text-gray-900">{typeof totalQty === 'number' ? totalQty.toLocaleString('en-PH',{maximumFractionDigits:4}) : totalQty}</p>
               <p className="text-xs text-gray-400">{medicine.unit || 'units'}</p>
             </div>
-            {['Vial','Bottle','Ampoule','Box'].includes(medicine.unit_type) && (
-              <div className="bg-teal-50 rounded-2xl p-4 border border-teal-100 text-center">
-                <p className="text-[10px] text-teal-600 font-bold uppercase tracking-wide mb-1">{medicine.unit_type === 'Box' ? 'Tablets' : 'Doses'}</p>
-                <p className="text-2xl font-black text-teal-700">{totalDoses.toLocaleString()}</p>
-                <p className="text-xs text-teal-400">{medicine.doses_per_container > 1 ? `${medicine.doses_per_container}×/unit` : '1/unit'}</p>
-              </div>
-            )}
+            <div className="bg-teal-50 rounded-2xl p-4 border border-teal-100 text-center">
+              <p className="text-[10px] text-teal-600 font-bold uppercase tracking-wide mb-1">{medicine.unit_type === 'Box' ? 'Tablets' : 'Total Doses'}</p>
+              <p className="text-2xl font-black text-teal-700">{typeof totalDoses === 'number' ? totalDoses.toLocaleString('en-PH',{maximumFractionDigits:1}) : totalDoses}</p>
+              <p className="text-xs text-teal-400">
+                {dpcMed > 1 ? `${totalQty.toLocaleString('en-PH',{maximumFractionDigits:4})} × ${dpcMed} doses` : `${totalQty} × 1 dose`}
+              </p>
+            </div>
             <div className="bg-green-50 rounded-2xl p-4 border border-green-100 text-center">
               <p className="text-[10px] text-green-600 font-bold uppercase tracking-wide mb-1">Value</p>
               <p className="text-lg font-black text-green-700">₱{totalValue.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p>
@@ -1666,13 +1726,25 @@ export function InventoryPage({ userRole, currentUser }: Props) {
       else if(data.item_type==='supply')item=supplies.find(s=>s.id===data.item_id);
       else if(data.item_type==='office')item=officeSupplies.find(o=>o.id===data.item_id);
       if(!item){toast.error('Item not found');return;}
-      if(data.quantity<1){toast.error('Enter a valid quantity');return;}
-      if(data.quantity>item.quantity){toast.error(`Cannot dispatch ${data.quantity} — only ${item.quantity} in stock`);return;}
+      // For dose-based dispatch: convert doses → fractional vials for deduction
+      const dpc = item.doses_per_container||1;
+      const dispatchQty = data.dispatch_unit==='dose' ? data.quantity_doses / dpc : data.quantity;
+      if(dispatchQty<=0){toast.error('Enter a valid quantity');return;}
+      if(dispatchQty>item.quantity){
+        const availDoses = item.quantity * dpc;
+        toast.error(data.dispatch_unit==='dose'
+          ? `Cannot dispatch ${data.quantity_doses} doses — only ${availDoses} doses (${item.quantity} ${item.unit_type?.toLowerCase()+'s'||'units'}) in stock`
+          : `Cannot dispatch ${data.quantity} — only ${item.quantity} in stock`);
+        return;
+      }
       if(!data.reference_person?.trim()){toast.error('Enter recipient name');return;}
       if(!data.reason?.trim()){toast.error('Enter a purpose');return;}
       if(data.item_type==='medicine'&&!data.barangay?.trim()){toast.error('Select a barangay');return;}
-      await api.inventoryMovement({...data,source:'dispatch'});
-      toast.success(`Dispatched ${data.quantity} unit(s) of ${item.name} to ${data.reference_person}${data.barangay?' ('+data.barangay+')':''}`);
+      const label = data.dispatch_unit==='dose'
+        ? `${data.quantity_doses} dose(s) (${Number(dispatchQty).toLocaleString('en-PH',{maximumFractionDigits:4})} ${item.unit_type?.toLowerCase()+'s'||'units'}) of ${item.name}`
+        : `${data.quantity} ${item.unit_type?.toLowerCase()+'s'||'unit(s)'} of ${item.name}`;
+      await api.inventoryMovement({...data, quantity: dispatchQty, source:'dispatch'});
+      toast.success(`Dispatched ${label} to ${data.reference_person}${data.barangay?' ('+data.barangay+')':''}`);
       setShowDispatchModal(false);await loadData();
     }catch(e:any){setError(e.message);}
   };
