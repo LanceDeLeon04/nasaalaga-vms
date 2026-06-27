@@ -2992,7 +2992,7 @@ router.get('/budget/unlinked-inventory', authenticate, async (req: AuthRequest, 
       ORDER BY created_at DESC
     `);
     const office = await query(`
-      SELECT id, name, category, 'office_supply' as item_type, quantity, unit_cost,
+      SELECT id, name, category, 'office' as item_type, quantity, unit_cost,
              (quantity * unit_cost) as total_cost, barcode, purpose,
              line_item_id, program_id, fiscal_year,
              created_at
@@ -3012,7 +3012,7 @@ router.post('/budget/link-inventory', authenticate, async (req: AuthRequest, res
     const { item_id, item_type, line_item_id, program_id, fiscal_year, override_amount } = req.body;
     if (!item_id || !line_item_id) return res.status(400).json({ error: 'item_id and line_item_id required' });
 
-    const table = item_type === 'office_supply' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const table = item_type === 'office' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
     const item = await query(`SELECT * FROM ${table} WHERE id=$1`, [item_id]);
     if (!item.rows.length) return res.status(404).json({ error: 'Item not found' });
     const inv = item.rows[0];
@@ -3059,7 +3059,7 @@ router.delete('/budget/unlink-inventory/:itemId', authenticate, async (req: Auth
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     const { item_type } = req.body;
-    const table = item_type === 'office_supply' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const table = item_type === 'office' ? 'office_supplies' : item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
     const item = await query(`SELECT line_item_id FROM ${table} WHERE id=$1`, [req.params.itemId]);
     if (!item.rows.length) return res.status(404).json({ error: 'Not found' });
     const lineItemId = item.rows[0].line_item_id;
