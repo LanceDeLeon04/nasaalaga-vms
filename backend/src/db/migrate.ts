@@ -1253,6 +1253,7 @@ if (isMain) {
     .then(() => migrateDispatch())
     .then(() => migrateOfficeBudgetColumns())
     .then(() => migrateInventoryDosage())
+    .then(() => migrateInventoryLotColumns())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1330,5 +1331,19 @@ export async function migrateProfileColumns() {
     console.error('❌ intervention_tickets column migration failed:', err);
   } finally {
     client2.release();
+  }
+}
+
+// ── Lot/Expiry columns on inventory_transactions for lot-detail view ──────────
+export async function migrateInventoryLotColumns() {
+  const client = await pool.connect();
+  try {
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS lot_number VARCHAR(100)`);
+    await client.query(`ALTER TABLE inventory_transactions ADD COLUMN IF NOT EXISTS expiry_date DATE`);
+    console.log('✅ inventory_transactions lot_number + expiry_date columns added');
+  } catch (err) {
+    console.error('❌ Inventory lot columns migration failed:', err);
+  } finally {
+    client.release();
   }
 }

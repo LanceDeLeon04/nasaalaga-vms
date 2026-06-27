@@ -1095,9 +1095,9 @@ router.get('/inventory/transactions', authenticate, async (req: AuthRequest, res
 router.post('/inventory/movement', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const { item_id, item_type, transaction_type, quantity, reason, reference_person, notes, source_type, source_id, barangay, to_user_id, dispatch_type, lot_number } = req.body;
+    const { item_id, item_type, transaction_type, quantity, reason, reference_person, notes, source_type, source_id, barangay, to_user_id, dispatch_type, lot_number, expiry_date } = req.body;
     if (!item_id || !transaction_type || !quantity) return res.status(400).json({ error: 'Missing required fields' });
-    const table = item_type === 'supply' ? 'supplies_inventory' : 'medicine_inventory';
+    const table = item_type === 'supply' ? 'supplies_inventory' : item_type === 'office' ? 'office_supplies' : 'medicine_inventory';
     const prev = await query(`SELECT quantity, name, unit_cost FROM ${table} WHERE id=$1`, [item_id]);
     if (!prev.rows.length) return res.status(404).json({ error: 'Item not found' });
     const prevQty = prev.rows[0].quantity;
@@ -1115,12 +1115,12 @@ router.post('/inventory/movement', authenticate, async (req: AuthRequest, res: R
     await query(
       `INSERT INTO inventory_transactions
         (item_id, item_type, transaction_type, quantity, previous_qty, new_qty, reason, performed_by,
-         source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes, barangay, to_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+         source_type, source_id, item_name, unit_cost, total_cost, reference_person, notes, barangay, to_user_id, lot_number, expiry_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::date)`,
       [item_id, item_type || 'medicine', transaction_type, parseInt(quantity), prevQty, newQty,
        reason || '', req.user?.username, effectiveSourceType, source_id || null,
        itemName, unitCost, totalCost, reference_person || '', notes || '',
-       barangay || null, to_user_id || null]
+       barangay || null, to_user_id || null, lot_number || null, expiry_date || null]
     );
     logAudit(req, 'DISPATCH', 'inventory', item_id, { itemName, quantity, barangay, reference_person, transaction_type });
     return res.json({ success: true, new_quantity: newQty });
@@ -2441,9 +2441,9 @@ router.post('/inventory/pending-orders/:id/receive', authenticate, async (req: A
         await query(`UPDATE medicine_inventory SET quantity=$1, lot_number=COALESCE($2, lot_number), expiry_date=COALESCE($3::date, expiry_date), updated_at=NOW() WHERE id=$4`,
           [newQty, d.lotNumber||null, d.expiryDate||null, existingId]);
         await query(
-          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
-           VALUES ($1,'medicine','IN',$2,$3,$4,'Received from PO: '||$5,$6,'purchase',$7,$8,$9,$10,$11)`,
-          [existingId,qty,prevQty,newQty,orderId,req.user?.username,orderId,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person,lot_number,expiry_date)
+           VALUES ($1,'medicine','IN',$2,$3,$4,'Received from PO: '||$5,$6,'purchase',$7,$8,$9,$10,$11,$12,$13::date)`,
+          [existingId,qty,prevQty,newQty,orderId,req.user?.username,orderId,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username,d.lotNumber||null,d.expiryDate||null]
         );
       } else {
         // Create new medicine item
@@ -2456,9 +2456,9 @@ router.post('/inventory/pending-orders/:id/receive', authenticate, async (req: A
            order.program_id||null,order.line_item_id||null,order.fiscal_year,d.receivedBy||req.user?.username,req.user?.username]
         );
         await query(
-          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
-           VALUES ($1,'medicine','IN',$2,0,$2,'Initial stock from PO: '||$3,$4,'purchase',$3,$5,$6,$7,$8)`,
-          [newId,qty,orderId,req.user?.username,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
+          `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person,lot_number,expiry_date)
+           VALUES ($1,'medicine','IN',$2,0,$2,'Initial stock from PO: '||$3,$4,'purchase',$3,$5,$6,$7,$8,$9,$10::date)`,
+          [newId,qty,orderId,req.user?.username,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username,d.lotNumber||null,d.expiryDate||null]
         );
       }
     } else if (order.item_type === 'supply') {

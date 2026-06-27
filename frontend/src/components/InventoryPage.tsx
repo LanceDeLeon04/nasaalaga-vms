@@ -1222,6 +1222,304 @@ function LogbookModal({ transactions, itemName, onClose }:{transactions:any[];it
   );
 }
 
+// ── Medicine Detail Modal (lot/batch breakdown) ───────────────────────────────
+function MedicineDetailModal({ medicine, suppliers, programs, transactions, onClose, onEdit, onMove, canEdit }:{
+  medicine: any; suppliers: any[]; programs: any[]; transactions: any[];
+  onClose: () => void; onEdit: () => void; onMove: () => void; canEdit: boolean;
+}) {
+  const sup = suppliers.find(s => s.id === medicine.supplier_id);
+  const prog = programs.find((p: any) => p.id === medicine.program_id);
+  const lineItem = prog?.line_items?.find((li: any) => li.id === medicine.line_item_id);
+
+  // Build lot cards from IN transactions — group by lot_number (from reason or source_id)
+  // Each IN transaction represents a receiving event. We extract lot from the reason text
+  // or from the item's stored lot_number field on that transaction.
+  // We use individual IN transactions as "lot entries" since each receive creates one tx.
+  const inTxs = transactions.filter(tx => tx.transaction_type === 'IN');
+  const outTxs = transactions.filter(tx => tx.transaction_type !== 'IN');
+
+  // Extract lot number from transaction: try notes, then reason text
+  const extractLot = (tx: any): string => {
+    // Lot can be in: tx.lot_number (if stored), or the reason/notes
+    if (tx.lot_number) return tx.lot_number;
+    // Try to parse "Lot: XXXX" from reason or notes
+    const match = (tx.reason || tx.notes || '').match(/lot[:\s]+([A-Za-z0-9\-_]+)/i);
+    return match ? match[1] : '';
+  };
+  const extractExpiry = (tx: any): string => tx.expiry_date || '';
+
+  // Group IN transactions by lot — transactions without a lot get their own entry
+  type LotGroup = { lot: string; expiry: string; txs: any[] };
+  const lotMap = new Map<string, LotGroup>();
+  inTxs.forEach(tx => {
+    const lot = extractLot(tx);
+    const key = lot || `__notx_${tx.id}`;
+    if (!lotMap.has(key)) lotMap.set(key, { lot, expiry: extractExpiry(tx), txs: [] });
+    lotMap.get(key)!.txs.push(tx);
+  });
+  const lots = Array.from(lotMap.values()).sort((a, b) => {
+    // Sort: lots with expiry first (soonest first), then no-expiry lots
+    if (a.expiry && b.expiry) return new Date(a.expiry).getTime() - new Date(b.expiry).getTime();
+    if (a.expiry) return -1;
+    if (b.expiry) return 1;
+    return 0;
+  });
+
+  const now = new Date();
+  const getLotStatus = (expiry: string) => {
+    if (!expiry) return null;
+    const d = new Date(expiry);
+    const days = Math.ceil((d.getTime() - now.getTime()) / 86400000);
+    if (days < 0) return { label: 'Expired', cls: 'bg-red-100 text-red-700 border-red-200' };
+    if (days <= 30) return { label: `Exp in ${days}d`, cls: 'bg-red-100 text-red-700 border-red-200' };
+    if (days <= 90) return { label: `Exp in ${days}d`, cls: 'bg-orange-100 text-orange-700 border-orange-200' };
+    return { label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }), cls: 'bg-green-100 text-green-700 border-green-200' };
+  };
+
+  const totalQty = medicine.quantity || 0;
+  const totalDoses = medicine.total_doses || totalQty * (medicine.doses_per_container || 1);
+  const totalValue = totalQty * (parseFloat(medicine.unit_cost) || 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
+          <div className="flex-1 min-w-0 pr-3">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase tracking-wide">{medicine.category}</span>
+              {medicine.type && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{medicine.type}</span>}
+              <StatusBadge qty={medicine.quantity} reorder={medicine.reorder_level} />
+            </div>
+            <h2 className="text-xl font-black text-gray-900 leading-tight">{medicine.name}</h2>
+            {medicine.generic_name && <p className="text-sm text-gray-500 mt-0.5">{medicine.generic_name}</p>}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {medicine.barcode && (
+                <span className="flex items-center gap-1 text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1">
+                  <Barcode className="w-3 h-3" />{medicine.barcode}
+                </span>
+              )}
+              {sup && (
+                <span className="flex items-center gap-1 text-xs text-teal-700 bg-teal-50 border border-teal-100 rounded-lg px-2 py-1">
+                  <Building2 className="w-3 h-3" />{sup.name}
+                </span>
+              )}
+              {medicine.manufacturer && (
+                <span className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1">{medicine.manufacturer}</span>
+              )}
+              {medicine.storage_condition && (
+                <span className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">🌡 {medicine.storage_condition}</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {canEdit && (
+              <>
+                <button onClick={onMove} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500" title="Record Movement"><Activity className="w-4 h-4" /></button>
+                <button onClick={onEdit} className="p-2 hover:bg-gray-100 rounded-xl text-gray-500" title="Edit"><Edit2 className="w-4 h-4" /></button>
+              </>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl"><X className="w-5 h-5 text-gray-400" /></button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {/* Stock summary */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-[#2B5EA6]/5 rounded-2xl p-4 border border-[#2B5EA6]/10 text-center">
+              <p className="text-[10px] text-[#2B5EA6] font-bold uppercase tracking-wide mb-1">Stock</p>
+              <p className="text-2xl font-black text-gray-900">{totalQty.toLocaleString()}</p>
+              <p className="text-xs text-gray-400">{medicine.unit || 'units'}</p>
+            </div>
+            {['Vial','Bottle','Ampoule','Box'].includes(medicine.unit_type) && (
+              <div className="bg-teal-50 rounded-2xl p-4 border border-teal-100 text-center">
+                <p className="text-[10px] text-teal-600 font-bold uppercase tracking-wide mb-1">{medicine.unit_type === 'Box' ? 'Tablets' : 'Doses'}</p>
+                <p className="text-2xl font-black text-teal-700">{totalDoses.toLocaleString()}</p>
+                <p className="text-xs text-teal-400">{medicine.doses_per_container > 1 ? `${medicine.doses_per_container}×/unit` : '1/unit'}</p>
+              </div>
+            )}
+            <div className="bg-green-50 rounded-2xl p-4 border border-green-100 text-center">
+              <p className="text-[10px] text-green-600 font-bold uppercase tracking-wide mb-1">Value</p>
+              <p className="text-lg font-black text-green-700">₱{totalValue.toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p>
+              <p className="text-xs text-green-400">₱{Number(medicine.unit_cost || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })}/{(medicine.unit_type || 'unit').toLowerCase()}</p>
+            </div>
+          </div>
+
+          {/* Budget program link */}
+          {prog && (
+            <div className="flex items-center gap-3 bg-blue-50 rounded-xl px-4 py-3 border border-blue-100">
+              <DollarSign className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-blue-800">{prog.name}</p>
+                {lineItem && <p className="text-xs text-blue-500 mt-0.5">{lineItem.name}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Lot / Batch breakdown */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <Hash className="w-4 h-4 text-[#2B5EA6]" />
+              Lot / Batch Records
+              <span className="text-xs font-normal text-gray-400">({lots.length} {lots.length === 1 ? 'lot' : 'lots'})</span>
+            </h3>
+
+            {lots.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <Hash className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                <p className="text-sm text-gray-400">No receiving records found.</p>
+                <p className="text-xs text-gray-300 mt-1">Stock added via New Order or Add Old Stocks will appear here.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {lots.map((lot, idx) => {
+                  const lotStatus = getLotStatus(lot.expiry);
+                  const lotQtyIn = lot.txs.reduce((s: number, tx: any) => s + (tx.quantity || 0), 0);
+                  const firstTx = lot.txs[0];
+                  const lastTx = lot.txs[lot.txs.length - 1];
+                  const receivedDate = lastTx?.created_at ? new Date(lastTx.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+                  const receivedBy = firstTx?.reference_person || firstTx?.performed_by || null;
+                  const unitCostTx = firstTx?.unit_cost;
+                  const totalCostTx = lot.txs.reduce((s: number, tx: any) => s + (tx.total_cost || 0), 0);
+                  const source = firstTx?.source_type || '';
+                  const isMigration = source === 'old_stocks';
+
+                  return (
+                    <div key={idx} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                      {/* Lot header */}
+                      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
+                        <div className="flex-1 flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-black text-gray-800">
+                            {lot.lot ? `Lot ${lot.lot}` : <span className="text-gray-400 font-semibold italic">No Lot #</span>}
+                          </span>
+                          {isMigration && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Migration</span>
+                          )}
+                          {source === 'purchase' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">Purchase Order</span>
+                          )}
+                        </div>
+                        {lotStatus && (
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${lotStatus.cls}`}>
+                            {new Date(lot.expiry) < now ? '⚠️' : '📅'} {lotStatus.label}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Lot details grid */}
+                      <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-xs">
+                        <div>
+                          <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Qty Received</p>
+                          <p className="font-bold text-gray-900 mt-0.5">{lotQtyIn.toLocaleString()} {medicine.unit || 'units'}</p>
+                        </div>
+                        {lot.expiry && (
+                          <div>
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Expiry Date</p>
+                            <p className={`font-bold mt-0.5 ${new Date(lot.expiry) < now ? 'text-red-600' : 'text-gray-900'}`}>
+                              {new Date(lot.expiry).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+                            </p>
+                          </div>
+                        )}
+                        {receivedBy && (
+                          <div>
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Received By</p>
+                            <p className="font-bold text-gray-900 mt-0.5">{receivedBy}</p>
+                          </div>
+                        )}
+                        {receivedDate && (
+                          <div>
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Date Received</p>
+                            <p className="font-semibold text-gray-700 mt-0.5">{receivedDate}</p>
+                          </div>
+                        )}
+                        {unitCostTx > 0 && (
+                          <div>
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Unit Cost</p>
+                            <p className="font-bold text-gray-900 mt-0.5">₱{Number(unitCostTx).toLocaleString('en-PH', { maximumFractionDigits: 2 })}</p>
+                          </div>
+                        )}
+                        {totalCostTx > 0 && (
+                          <div>
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px]">Total Cost</p>
+                            <p className="font-bold text-green-700 mt-0.5">₱{Number(totalCostTx).toLocaleString('en-PH', { maximumFractionDigits: 0 })}</p>
+                          </div>
+                        )}
+                        {/* Multiple receive events for same lot */}
+                        {lot.txs.length > 1 && (
+                          <div className="col-span-2 sm:col-span-3">
+                            <p className="text-gray-400 font-semibold uppercase tracking-wide text-[10px] mb-1">{lot.txs.length} Receiving Events</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {lot.txs.map((tx: any, ti: number) => (
+                                <span key={ti} className="text-[10px] bg-blue-50 border border-blue-100 rounded-lg px-2 py-0.5 text-blue-700 font-semibold">
+                                  +{tx.quantity} · {new Date(tx.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Dispatch / OUT history */}
+          {outTxs.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <LogOut className="w-4 h-4 text-red-500" />
+                Dispatch / Usage History
+                <span className="text-xs font-normal text-gray-400">({outTxs.length} events)</span>
+              </h3>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {outTxs.map((tx: any) => (
+                  <div key={tx.id} className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                    <LogOut className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800">{tx.reason || 'Dispensed'}</p>
+                      <div className="flex gap-3 text-[10px] text-gray-400 mt-0.5 flex-wrap">
+                        {tx.reference_person && <span>👤 {tx.reference_person}</span>}
+                        {tx.barangay && <span>📍 {tx.barangay}</span>}
+                        <span>🖊 {tx.performed_by}</span>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-xs font-black text-red-600">−{tx.quantity}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(tx.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Extra medicine info */}
+          {(medicine.description || medicine.concentration_value) && (
+            <div className="bg-purple-50 rounded-2xl p-4 border border-purple-100">
+              <h3 className="text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Details</h3>
+              <div className="space-y-1 text-xs text-gray-600">
+                {medicine.concentration_value && (
+                  <p><span className="font-semibold text-gray-500">Strength:</span> {medicine.concentration_value} {medicine.concentration_unit}</p>
+                )}
+                {medicine.volume_per_container && (
+                  <p><span className="font-semibold text-gray-500">Volume:</span> {medicine.volume_per_container} {medicine.volume_unit}</p>
+                )}
+                {medicine.description && <p className="text-gray-500 leading-relaxed">{medicine.description}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100 px-6 py-4 flex justify-end flex-shrink-0">
+          <button onClick={onClose} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-semibold text-gray-700">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export function InventoryPage({ userRole, currentUser }: Props) {
   const canEdit=['admin','superadmin','cvoStaff'].includes(userRole);
@@ -1252,6 +1550,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   const [showMoveModal,setShowMoveModal]=useState<{item:any;type:string}|null>(null);
   const [showLogbook,setShowLogbook]=useState<{item:any;txs:any[]}|null>(null);
   const [showDispatchModal,setShowDispatchModal]=useState(false);
+  const [showMedicineDetail,setShowMedicineDetail]=useState<{item:any;txs:any[]}|null>(null);
   const [editItem,setEditItem]=useState<any>(null);
   const [addOrderPrefill,setAddOrderPrefill]=useState<any>(null);
   const [error,setError]=useState('');
@@ -1379,6 +1678,10 @@ export function InventoryPage({ userRole, currentUser }: Props) {
   };
   const openLogbook=async(item:any,itemType:string)=>{
     try{const res=await api.getInventoryTransactions({item_id:item.id,limit:200});setShowLogbook({item,txs:res.transactions||[]});}
+    catch(e:any){setError(e.message);}
+  };
+  const openMedicineDetail=async(item:any)=>{
+    try{const res=await api.getInventoryTransactions({item_id:item.id,limit:500});setShowMedicineDetail({item,txs:res.transactions||[]});}
     catch(e:any){setError(e.message);}
   };
 
@@ -1606,9 +1909,9 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                     const sup=suppliers.find(s=>s.id===m.supplier_id);
                     const prog=programs.find((p:any)=>p.id===m.program_id);
                     const lineItem=prog?.line_items?.find((li:any)=>li.id===m.line_item_id);
-                    return(<tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
+                    return(<tr key={m.id} className="hover:bg-blue-50/30 transition-colors cursor-pointer" onClick={()=>openMedicineDetail(m)}>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{m.name}</p>
+                        <p className="font-semibold text-[#2B5EA6] hover:underline">{m.name}</p>
                         {m.generic_name&&<p className="text-xs text-gray-400">{m.generic_name}</p>}
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {m.unit_type&&m.unit_type!=='Other'&&<span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">{m.unit_type}</span>}
@@ -1629,8 +1932,9 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       <td className="px-4 py-3 text-right font-semibold text-gray-800">₱{((m.quantity||0)*(parseFloat(m.unit_cost)||0)).toLocaleString('en-PH',{maximumFractionDigits:0})}</td>
                       <td className="px-4 py-3"><ExpiryBadge date={m.expiry_date}/></td>
                       <td className="px-4 py-3"><StatusBadge qty={m.quantity} reorder={m.reorder_level}/></td>
-                      <td className="px-4 py-3"><div className="flex items-center justify-center gap-1">
-                        <button onClick={()=>openLogbook(m,'medicine')} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-500" title="Logbook"><BookOpen className="w-4 h-4"/></button>
+                      <td className="px-4 py-3" onClick={e=>e.stopPropagation()}><div className="flex items-center justify-center gap-1">
+                        <button onClick={()=>openMedicineDetail(m)} className="p-1.5 hover:bg-blue-100 rounded-lg text-[#2B5EA6]" title="View Details"><Info className="w-4 h-4"/></button>
+                        <button onClick={()=>openLogbook(m,'medicine')} className="p-1.5 hover:bg-blue-100 rounded-lg text-blue-400" title="Logbook"><BookOpen className="w-4 h-4"/></button>
                         {canEdit&&<><button onClick={()=>setShowMoveModal({item:m,type:'medicine'})} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500" title="Movement"><Activity className="w-4 h-4"/></button>
                         <button onClick={()=>{setEditItem(m);setShowMedModal(true);}} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500"><Edit2 className="w-4 h-4"/></button>
                         <button onClick={async()=>{if(confirm('Delete?')){await api.deleteMedicine(m.id);loadData();}}} className="p-1.5 hover:bg-red-100 rounded-lg text-red-500"><Trash2 className="w-4 h-4"/></button></>}
@@ -1811,6 +2115,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
 
       {/* ── All Modals ── */}
       {showMedModal&&<MedicineModal item={editItem} programs={programs} suppliers={suppliers} onClose={()=>{setShowMedModal(false);setEditItem(null);}} onSave={saveMedicine} onNewSupplier={createSupplierInline}/>}
+      {showMedicineDetail&&<MedicineDetailModal medicine={showMedicineDetail.item} suppliers={suppliers} programs={programs} transactions={showMedicineDetail.txs} canEdit={canEdit} onClose={()=>setShowMedicineDetail(null)} onEdit={()=>{setEditItem(showMedicineDetail.item);setShowMedicineDetail(null);setShowMedModal(true);}} onMove={()=>{setShowMoveModal({item:showMedicineDetail.item,type:'medicine'});setShowMedicineDetail(null);}}/>}
       {showSupModal&&<SupplyModal item={editItem} programs={programs} suppliers={suppliers} onClose={()=>{setShowSupModal(false);setEditItem(null);}} onSave={saveSupply} onNewSupplier={createSupplierInline}/>}
       {showOfficModal&&<OfficeSupplyModal item={editItem} suppliers={suppliers} programs={programs} onClose={()=>{setShowOfficModal(false);setEditItem(null);}} onSave={saveOfficeSupply} onNewSupplier={createSupplierInline}/>}
       {showSupplierModal&&<SupplierModal item={editItem} onClose={()=>{setShowSupplierModal(false);setEditItem(null);}} onSave={saveSupplier}/>}
