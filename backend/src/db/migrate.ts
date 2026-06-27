@@ -1347,3 +1347,30 @@ export async function migrateInventoryLotColumns() {
     client.release();
   }
 }
+
+// ── User Notifications table ──────────────────────────────────────────────────
+export async function migrateNotifications() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_notifications (
+        id            VARCHAR(50) PRIMARY KEY,
+        user_id       VARCHAR(255) NOT NULL,
+        type          VARCHAR(50)  NOT NULL DEFAULT 'schedule',
+        title         VARCHAR(500) NOT NULL,
+        message       TEXT         NOT NULL,
+        barangay      VARCHAR(255),
+        schedule_id   VARCHAR(50),
+        is_read       BOOLEAN      DEFAULT false,
+        created_at    TIMESTAMPTZ  DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notif_user ON user_notifications (user_id, is_read)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_notif_barangay ON user_notifications (barangay)`);
+    console.log('✅ user_notifications table ready');
+  } catch (err) {
+    console.error('❌ Notifications migration failed:', err);
+  } finally {
+    client.release();
+  }
+}

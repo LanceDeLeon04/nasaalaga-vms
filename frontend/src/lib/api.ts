@@ -312,6 +312,14 @@ export const api = {
     request('/unavailable-blocks', { method: 'POST', body: JSON.stringify(data) }),
   deleteUnavailableBlock: (id: string) =>
     request('/unavailable-blocks/' + id, { method: 'DELETE' }),
+
+  // In-app notifications
+  getNotifications: () => request('/notifications'),
+  getUnreadCount: () => request('/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request('/notifications/' + id + '/read', { method: 'PATCH' }),
+  markAllNotificationsRead: () =>
+    request('/notifications/read-all', { method: 'PATCH' }),
 };
 
 export default api;

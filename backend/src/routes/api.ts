@@ -472,11 +472,19 @@ router.get('/pets/survey-data', async (req, res) => {
 
 // ── Users (admin/superadmin) ───────────────────────────────────────────────
 router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
-  if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+  const role = req.user?.role || '';
+  const allowedRoles = ['admin','superadmin','cvoStaff','bahw'];
+  if (!allowedRoles.includes(role)) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const result = await query(
-      'SELECT id, email, username, role, owner_id, barangay, verified, created_at FROM users ORDER BY created_at'
-    );
+    const barangayFilter = req.query.barangay as string | undefined;
+    let sql = 'SELECT id, email, username, role, owner_id, barangay, verified, created_at FROM users';
+    const vals: any[] = [];
+    if (barangayFilter) {
+      sql += ' WHERE LOWER(barangay) = LOWER($1) AND is_active = true';
+      vals.push(barangayFilter);
+    }
+    sql += ' ORDER BY created_at';
+    const result = await query(sql, vals);
     return res.json({ success: true, totalUsers: result.rows.length, users: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3326,16 +3334,17 @@ router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res
     const countResult = await query('SELECT COUNT(*) FROM appointment_schedules');
     const count = parseInt(countResult.rows[0].count || '0');
     const newId = `APPT-${String(count + 1).padStart(4, '0')}`;
+    const scheduleType = d.scheduleType || d.type || 'Vaccination';
+    const title = d.title || `${scheduleType} — ${d.barangay || 'CVO'}`;
+    const barangay: string | null = d.barangay || null;
+    const isAdminCreated: boolean = d.isAdminCreated ?? d.is_admin_created ?? false;
     const result = await query(
       `INSERT INTO appointment_schedules
         (id, schedule_type, title, date, time_slot, status, requested_by, requested_by_name,
          notes, pet_name, pet_id, barangay, venue, capacity, is_admin_created, linked_record_id, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
       [
-        newId,
-        d.scheduleType || d.type || 'Vaccination',
-        d.title || `${d.scheduleType || 'Appointment'} — ${d.barangay || 'CVO'}`,
-        d.date,
+        newId, scheduleType, title, d.date,
         d.timeSlot || d.time_slot || '08:00',
         d.status || 'Pending',
         d.requestedBy || d.requested_by || null,
@@ -3343,15 +3352,54 @@ router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res
         d.notes || null,
         d.petName || d.pet_name || null,
         d.petId || d.pet_id || null,
-        d.barangay || null,
+        barangay,
         d.venue || null,
         d.capacity || null,
-        d.isAdminCreated ?? d.is_admin_created ?? false,
+        isAdminCreated,
         d.linkedRecordId || d.linked_record_id || null,
         req.user?.username || null,
       ]
     );
-    return res.json({ schedule: result.rows[0] });
+    const saved = result.rows[0];
+
+    // ── Barangay-wide notification fanout ────────────────────────────────────
+    // If admin/staff created a schedule with a specific barangay, notify all
+    // users (residents, BAHWs, pet owners, livestock managers) tagged with it.
+    if (isAdminCreated && barangay) {
+      try {
+        // Find users whose barangay matches (case-insensitive). Also catch city-wide (no barangay filter).
+        const targetUsers = await query(
+          `SELECT id FROM users WHERE LOWER(barangay) = LOWER($1) AND is_active = true`,
+          [barangay]
+        );
+        if (targetUsers.rows.length > 0) {
+          const dateStr = d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : d.date;
+          const timeStr = (d.timeSlot || d.time_slot || '08:00').replace(/\s*(AM|PM)$/i, '');
+          const [hh, mm] = timeStr.split(':').map(Number);
+          const ampm = hh >= 12 ? 'PM' : 'AM';
+          const h12 = hh % 12 || 12;
+          const fmtTime = `${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
+          const message = `A ${scheduleType} drive has been scheduled in Barangay ${barangay} on ${dateStr} at ${fmtTime}${d.venue ? ' at ' + d.venue : ''}. Please bring your pets/livestock for vaccination and registration.`;
+          const notifCountRes = await query('SELECT COUNT(*) FROM user_notifications');
+          let notifIdx = parseInt(notifCountRes.rows[0].count || '0');
+          for (const u of targetUsers.rows) {
+            notifIdx++;
+            const nid = `NOTIF-${String(notifIdx).padStart(5,'0')}`;
+            await query(
+              `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, schedule_id, is_read, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,false,NOW())`,
+              [nid, u.id, 'schedule', `📅 ${scheduleType} Drive — ${barangay}`, message, barangay, newId]
+            );
+          }
+          console.log(`✅ Notified ${targetUsers.rows.length} users in ${barangay} for schedule ${newId}`);
+        }
+      } catch (notifErr) {
+        // Non-fatal: schedule was saved, notification fanout failed
+        console.error('⚠ Notification fanout error:', notifErr);
+      }
+    }
+
+    return res.json({ schedule: saved, notifiedBarangay: isAdminCreated ? barangay : null });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3391,6 +3439,56 @@ router.delete('/appointment-schedules/:id', authenticate, async (req: AuthReques
   try {
     await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
     return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── User Notifications ────────────────────────────────────────────────────────
+router.get('/notifications', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const result = await query(
+      `SELECT * FROM user_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      [userId]
+    );
+    const unreadCount = result.rows.filter((r: any) => !r.is_read).length;
+    return res.json({ notifications: result.rows, unreadCount });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/notifications/:id/read', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    await query(
+      `UPDATE user_notifications SET is_read = true WHERE id = $1 AND user_id = $2`,
+      [req.params.id, userId]
+    );
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/notifications/read-all', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    await query(`UPDATE user_notifications SET is_read = true WHERE user_id = $1`, [userId]);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Count unread (lightweight poll endpoint)
+router.get('/notifications/unread-count', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const r = await query(`SELECT COUNT(*) FROM user_notifications WHERE user_id=$1 AND is_read=false`, [userId]);
+    return res.json({ count: parseInt(r.rows[0].count || '0') });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

@@ -389,6 +389,21 @@ function AddAdminScheduleModal({ onClose, onSave }: {
     capacity: '20',
     notes: '',
   });
+  const [notifyCount, setNotifyCount] = React.useState<number|null>(null);
+  const [loadingCount, setLoadingCount] = React.useState(false);
+
+  // When barangay changes, fetch how many users will be notified
+  React.useEffect(() => {
+    if (!form.barangay) { setNotifyCount(null); return; }
+    setLoadingCount(true);
+    fetch(`/api/users?barangay=${encodeURIComponent(form.barangay)}`, {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('nasaalaga_token') || '') }
+    })
+      .then(r => r.json())
+      .then(d => setNotifyCount((d.users || []).length))
+      .catch(() => setNotifyCount(null))
+      .finally(() => setLoadingCount(false));
+  }, [form.barangay]);
 
   const handleSave = () => {
     if (!form.title.trim()) { toast.error('Title is required'); return; }
@@ -406,7 +421,11 @@ function AddAdminScheduleModal({ onClose, onSave }: {
       notes: form.notes,
       requestedByName: 'Admin',
     });
-    toast.success('Schedule added!');
+    if (form.barangay && notifyCount && notifyCount > 0) {
+      toast.success(`Schedule added! Notifying ${notifyCount} resident(s) in ${form.barangay}…`);
+    } else {
+      toast.success('Schedule added!');
+    }
     onClose();
   };
 
@@ -469,6 +488,28 @@ function AddAdminScheduleModal({ onClose, onSave }: {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6]" />
             </div>
           </div>
+          {/* Notify preview */}
+          {form.barangay && (
+            <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border text-sm ${
+              notifyCount && notifyCount > 0
+                ? 'bg-blue-50 border-blue-200 text-blue-800'
+                : 'bg-gray-50 border-gray-200 text-gray-500'
+            }`}>
+              <Bell className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                {loadingCount
+                  ? <p className="text-xs">Checking residents in {form.barangay}…</p>
+                  : notifyCount !== null
+                    ? notifyCount > 0
+                      ? <><p className="font-bold text-xs">🔔 {notifyCount} resident(s) in {form.barangay} will be notified immediately</p>
+                          <p className="text-[11px] mt-0.5 opacity-80">All users (pet owners, livestock managers, BAHWs) tagged with this barangay will receive an in-app notification when you save.</p></>
+                      : <p className="text-xs">No registered users found in {form.barangay} — no notifications will be sent.</p>
+                    : null
+                }
+                {!form.barangay && <p className="text-xs">Select a barangay above to enable targeted notifications.</p>}
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1.5">Venue</label>
             <input value={form.venue} onChange={e => setForm(f => ({...f, venue: e.target.value}))}
@@ -592,9 +633,11 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const [showUnavailableModal, setShowUnavailableModal] = useState(false);
   const [showAdminAddModal, setShowAdminAddModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
 
   // ── Fetch from DB ─────────────────────────────────────────────────────────
-  useEffect(() => { fetchSchedules(); fetchUnavailableBlocks(); }, []);
+  useEffect(() => { fetchSchedules(); fetchUnavailableBlocks(); fetchNotifications(); }, []);
 
   const fetchSchedules = async () => {
     setLoadingSchedules(true);
@@ -629,6 +672,23 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
       const data = await api.getUnavailableBlocks();
       setUnavailableBlocks(data.blocks || []);
     } catch { /* silent */ }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const data = await api.getNotifications();
+      setNotifications(data.notifications || []);
+    } catch { /* silent */ }
+  };
+
+  const markRead = async (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? {...n, is_read: true} : n));
+    try { await api.markNotificationRead(id); } catch { /* silent */ }
+  };
+
+  const markAllRead = async () => {
+    setNotifications(prev => prev.map(n => ({...n, is_read: true})));
+    try { await api.markAllNotificationsRead(); } catch { /* silent */ }
   };
 
   // Non-admins only see their own schedules
@@ -674,6 +734,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
       const data = await api.createAppointmentSchedule(payload);
       const saved = mapDbSchedule(data.schedule || data);
       setSchedules(prev => [...prev, saved]);
+      // If the backend returned notifiedBarangay, show a success message
+      if (data.notifiedBarangay) {
+        toast.success(`📣 All residents in Barangay ${data.notifiedBarangay} have been notified!`);
+      }
     } catch {
       // Optimistic fallback
       const id = `SCH-${String(schedules.length + 1).padStart(3,'0')}`;
@@ -706,6 +770,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const totalUpcoming = upcomingSchedules.length;
   const totalPending  = visibleSchedules.filter(s => s.status === 'Pending').length;
   const totalToday    = visibleSchedules.filter(s => s.date === today).length;
+  const unreadNotifCount = notifications.filter(n => !n.is_read).length;
 
   return (
     <div className="space-y-5">
@@ -722,7 +787,14 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                 : 'Your upcoming appointments and schedule requests (max 1 week ahead)'}
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
+            {/* Notification bell */}
+            <button onClick={() => setShowNotifPanel(v => !v)} className="relative flex items-center gap-1.5 px-3 py-2 bg-white/20 text-white rounded-xl text-sm font-bold hover:bg-white/30 transition-all">
+              <Bell className="w-4 h-4" />
+              {unreadNotifCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1">{unreadNotifCount}</span>
+              )}
+            </button>
             {isNonAdmin && (
               <>
                 <button onClick={() => setShowRequestModal(true)}
@@ -744,6 +816,39 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
           </div>
         </div>
       </div>
+
+      {/* Notification Panel */}
+      {showNotifPanel && (
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-[#1e4080] to-[#2B5EA6]">
+            <p className="font-bold text-white text-sm flex items-center gap-2"><Bell className="w-4 h-4"/>Notifications{unreadNotifCount > 0 && <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{unreadNotifCount} new</span>}</p>
+            <div className="flex items-center gap-2">
+              {unreadNotifCount > 0 && <button onClick={markAllRead} className="text-xs text-white/80 hover:text-white font-semibold">Mark all read</button>}
+              <button onClick={() => setShowNotifPanel(false)} className="text-white/70 hover:text-white"><X className="w-4 h-4"/></button>
+            </div>
+          </div>
+          {notifications.length === 0 ? (
+            <div className="py-10 text-center text-gray-400">
+              <Bell className="w-8 h-8 mx-auto mb-2 opacity-20"/>
+              <p className="text-sm">No notifications yet</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+              {notifications.map(n => (
+                <div key={n.id} onClick={() => markRead(n.id)}
+                  className={`px-5 py-3.5 hover:bg-gray-50 cursor-pointer transition-colors flex gap-3 ${!n.is_read ? 'bg-blue-50/60' : ''}`}>
+                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.is_read ? 'bg-blue-500' : 'bg-gray-200'}`}/>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold ${!n.is_read ? 'text-gray-900' : 'text-gray-600'}`}>{n.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.message}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
