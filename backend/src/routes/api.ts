@@ -2500,21 +2500,35 @@ router.post('/inventory/pending-orders/:id/receive', authenticate, async (req: A
       await query(
         `INSERT INTO office_supplies (id,barcode,name,category,quantity,unit,reorder_level,unit_cost,created_by,status)
          VALUES ($1,$2,$3,$4,$5,$6,5,$7,$8,'Active')
-         ON CONFLICT (barcode) DO UPDATE SET quantity=office_supplies.quantity+$5, updated_at=NOW()`,
+         ON CONFLICT (barcode) DO UPDATE SET quantity=office_supplies.quantity+EXCLUDED.quantity, updated_at=NOW()`,
         [newId,d.barcode||null,order.item_name,order.category||'General',qty,order.unit||'pieces',unitCost,req.user?.username]
+      );
+      // Log transaction for office supplies
+      await query(
+        `INSERT INTO inventory_transactions (item_id,item_type,transaction_type,quantity,previous_qty,new_qty,reason,performed_by,source_type,source_id,item_name,unit_cost,total_cost,reference_person)
+         VALUES ($1,'office','IN',$2,0,$2,'Initial stock from PO: '||$3,$4,'purchase',$3,$5,$6,$7,$8)`,
+        [newId,qty,orderId,req.user?.username,order.item_name,unitCost,totalCost,d.receivedBy||req.user?.username]
       );
     }
 
     // Deduct from budget line item if linked
     if (order.line_item_id && totalCost > 0) {
+      const refId = `EXP-PO-${orderId}`;
+      // Remove any stale record for this PO first (idempotent re-receive)
+      await query(`DELETE FROM budget_expenditures WHERE ref_id=$1`, [refId]);
       await query(
-        `INSERT INTO budget_expenditures (id, line_item_id, amount, description, reference_id, vendor, date_incurred, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-         ON CONFLICT DO NOTHING`,
-        [`EXP-PO-${orderId}`, order.line_item_id, totalCost, `Purchase Order received: ${order.item_name}`,
-         orderId, '', new Date().toISOString().split('T')[0], req.user?.username]
+        `INSERT INTO budget_expenditures (ref_id, line_item_id, amount, expenditure_type, description, reference_no, expenditure_date, recorded_by, source_type, inventory_item_id, inventory_item_name, quantity_used)
+         VALUES ($1,$2,$3,'utilized',$4,$5,$6,$7,'purchase',$8,$9,$10)`,
+        [refId, order.line_item_id, totalCost,
+         `Purchase Order received: ${order.item_name}`,
+         orderId, new Date().toISOString().split('T')[0], req.user?.username,
+         orderId, order.item_name, qty]
       );
-      await query(`UPDATE budget_line_items SET utilized=COALESCE(utilized,0)+$1, updated_at=NOW() WHERE id=$2`, [totalCost, order.line_item_id]);
+      // Recalculate utilized from actual expenditures (accurate even on re-receive)
+      await query(
+        `UPDATE budget_line_items SET utilized=COALESCE((SELECT SUM(amount) FROM budget_expenditures WHERE line_item_id=$1 AND expenditure_type='utilized'),0), updated_at=NOW() WHERE id=$1`,
+        [order.line_item_id]
+      );
     }
 
     // Mark order as received
