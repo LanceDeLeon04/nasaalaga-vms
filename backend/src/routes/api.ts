@@ -2111,7 +2111,7 @@ router.get('/dashboard/disease-intel', authenticate, async (req: AuthRequest, re
 
 router.get('/livestock-pre-registrations', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, barangay } = req.query;
+    const { status, barangay, ownerId } = req.query;
     const conditions: string[] = [];
     const params: any[] = [];
     let idx = 1;
@@ -2119,6 +2119,11 @@ router.get('/livestock-pre-registrations', authenticate, async (req: AuthRequest
     // BAHW scoped to their barangay
     const filterBarangay = barangay || (req.user?.role === 'bahw' ? req.user?.barangay : null);
     if (filterBarangay) { conditions.push(`barangay=$${idx++}`); params.push(filterBarangay); }
+    // Non-reviewer roles (livestock owners/managers) are always scoped to their own owner_id,
+    // regardless of what's passed in query params, so an account can never see another owner's data.
+    const isReviewer = ['bahw', 'admin', 'superadmin'].includes(req.user?.role || '');
+    const scopedOwnerId = isReviewer ? (ownerId || null) : (req.user?.ownerId || null);
+    if (scopedOwnerId) { conditions.push(`owner_id=$${idx++}`); params.push(scopedOwnerId); }
     let sql = 'SELECT * FROM livestock_pre_registrations';
     if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY submitted_date DESC';

@@ -65,7 +65,11 @@ export function LivestockPreRegistration({ ownerId, ownerEmail, userRole, barang
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.getLivestockPreRegistrations(barangay ? { barangay } : {});
+      const res = await api.getLivestockPreRegistrations(
+        canApprove
+          ? (barangay ? { barangay } : {})
+          : (ownerId ? { ownerId } : {})
+      );
       setList(res.preRegistrations || []);
     } catch { toast.error('Failed to load livestock pre-registrations'); }
     finally { setLoading(false); }

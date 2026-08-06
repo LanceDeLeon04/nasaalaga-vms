@@ -55,10 +55,11 @@ export const api = {
   validatePreRegistration: (preRegNumber: string, data: any) =>
     request('/pets/validate/' + preRegNumber, { method: 'POST', body: JSON.stringify(data) }),
   // Livestock pre-registration
-  getLivestockPreRegistrations: (params?: { status?: string; barangay?: string }) => {
+  getLivestockPreRegistrations: (params?: { status?: string; barangay?: string; ownerId?: string }) => {
     const p = new URLSearchParams();
     if (params?.status)    p.set('status',    params.status);
     if (params?.barangay)  p.set('barangay',  params.barangay);
+    if (params?.ownerId)   p.set('ownerId',   params.ownerId);
     return request('/livestock-pre-registrations?' + p.toString());
   },
   createLivestockPreRegistration: (data: any) =>
