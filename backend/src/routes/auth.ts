@@ -132,11 +132,18 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
     }
 
     // All good — issue full session token
-    const payload = {
+    // Keep the JWT itself lean (avatar is base64 and can blow past header size limits → HTTP 431)
+    const tokenPayload = {
       id: user.id,
       username: user.username,
       role: user.role,
       email: user.email,
+    };
+
+    // Full user object returned to the client (stored in sessionStorage, never in the JWT)
+    const payload = {
+      ...tokenPayload,
+      avatar: user.avatar || null,
     };
 
     // Log successful superadmin login
@@ -146,7 +153,7 @@ router.post('/verify-barcode', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       user: payload,
-      token: signToken(payload),
+      token: signToken(tokenPayload),
     });
   } catch (err: any) {
     console.error('[VerifyBarcode]', err);
