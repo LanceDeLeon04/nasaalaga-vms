@@ -1232,9 +1232,15 @@ router.put('/feedback/:id', authenticate, async (req: AuthRequest, res: Response
 });
 
 // ── Biting Incidents ────────────────────────────────────────────────────────
+// BAHW can view and report biting incidents in their own barangay; they cannot
+// change status/investigation fields — that stays with City Health/City Vet (below).
 router.get('/biting-incidents', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(`SELECT * FROM biting_incidents ORDER BY incident_date DESC`);
+    const isBahw = req.user?.role === 'bahw';
+    const sql = isBahw
+      ? `SELECT * FROM biting_incidents WHERE barangay=$1 ORDER BY incident_date DESC`
+      : `SELECT * FROM biting_incidents ORDER BY incident_date DESC`;
+    const result = await query(sql, isBahw ? [req.user?.barangay] : []);
     return res.json({ incidents: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1242,7 +1248,7 @@ router.get('/biting-incidents', authenticate, async (req: AuthRequest, res: Resp
 });
 
 router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Response) => {
-  const allowed = ['admin','superadmin','cityHealth'];
+  const allowed = ['admin','superadmin','cityHealth','bahw'];
   if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     // Ensure human_status column exists
@@ -1251,15 +1257,19 @@ router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Res
     const id = `BITE-${Date.now()}`;
     const obsStart = d.incidentDate || null;
     const obsEnd   = obsStart ? new Date(new Date(obsStart).getTime() + 14*24*60*60*1000).toISOString().split('T')[0] : null;
+    // BAHW reports are always tagged with their own assigned barangay so the
+    // scoped GET above (and BAHW alerts) can find them; other roles may supply one.
+    const barangay = req.user?.role === 'bahw' ? (req.user?.barangay || null) : (d.barangay || null);
     const result = await query(
       `INSERT INTO biting_incidents
          (id, pet_id, pet_name, incident_date, location, bitten_person, owner_name,
           confirmed_rabies, vaccinated, remarks, observation_start, observation_end,
-          status, reported_by, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Open',$13,NOW(),NOW()) RETURNING *`,
+          status, reported_by, barangay, reported_by_role, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Open',$13,$14,$15,NOW(),NOW()) RETURNING *`,
       [id, d.petId||null, d.petName, d.incidentDate, d.location, d.bittenPerson,
        d.ownerName||null, d.confirmedRabies||false, d.vaccinated||false,
-       d.remarks||null, obsStart, obsEnd, d.reportedBy||req.user?.username||'System']
+       d.remarks||null, obsStart, obsEnd, d.reportedBy||req.user?.username||'System',
+       barangay, req.user?.role || null]
     );
     // If registered pet, update vaccination status
     if (d.petId) {
@@ -1271,6 +1281,8 @@ router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Res
   }
 });
 
+// Status/investigation updates remain restricted to City Health / City Vet (admin, superadmin,
+// cityHealth) — a BAHW who reported an incident can view its status but not change it.
 router.put('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: Response) => {
   const allowed = ['admin','superadmin','cityHealth'];
   if (!allowed.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
@@ -2116,8 +2128,9 @@ router.get('/livestock-pre-registrations', authenticate, async (req: AuthRequest
     const params: any[] = [];
     let idx = 1;
     if (status) { conditions.push(`status=$${idx++}`); params.push(status); }
-    // BAHW scoped to their barangay
-    const filterBarangay = barangay || (req.user?.role === 'bahw' ? req.user?.barangay : null);
+    // BAHW scoped to their barangay — server-side value always wins over any
+    // client-supplied ?barangay= so it can't be used to view other barangays.
+    const filterBarangay = req.user?.role === 'bahw' ? req.user?.barangay : barangay;
     if (filterBarangay) { conditions.push(`barangay=$${idx++}`); params.push(filterBarangay); }
     // Non-reviewer roles (livestock owners/managers) are always scoped to their own owner_id,
     // regardless of what's passed in query params, so an account can never see another owner's data.
@@ -2136,13 +2149,15 @@ router.post('/livestock-pre-registrations', authenticate, async (req: AuthReques
   try {
     const d = req.body;
     const id = `LPRE-${uuidv4().slice(0,8).toUpperCase()}`;
+    // BAHW accounts can only submit pre-registrations for their own barangay.
+    const barangayVal = req.user?.role === 'bahw' && req.user?.barangay ? req.user.barangay : d.barangay;
     const result = await query(
       `INSERT INTO livestock_pre_registrations
        (id, owner_id, owner_name, contact_number, owner_email, barangay, address,
         animal_type, breed, quantity, farm_type, farm_address, health_status, vaccination_status, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [id, d.owner_id || req.user?.ownerId || null, d.owner_name, d.contact_number || null,
-       d.owner_email || null, d.barangay, d.address || null,
+       d.owner_email || null, barangayVal, d.address || null,
        d.animal_type, d.breed || null, d.quantity || 1, d.farm_type || 'Backyard',
        d.farm_address || null, d.health_status || 'Healthy', d.vaccination_status || 'Unknown', d.notes || null]
     );

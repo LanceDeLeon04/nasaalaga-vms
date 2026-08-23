@@ -33,12 +33,16 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'pre-registration' as ActiveView, label: 'Pre-Registration', icon: ClipboardList, roles: ['bahw'] },
     { id: 'schedule' as ActiveView, label: 'Schedule',           icon: CalendarClock, roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'wildlife'  as ActiveView, label: 'Wildlife Tracking',icon: Bird,            roles: ['admin', 'superadmin'] },
+    // Outbreak Monitor stays view-only field awareness for BAHW (their own barangay's data only).
     { id: 'outbreak'  as ActiveView, label: 'Outbreak Monitor', icon: AlertTriangle,   roles: ['admin', 'bahw', 'superadmin'] },
-    { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
-    { id: 'inventory' as ActiveView, label: 'Inventory',        icon: FlaskConical,    roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
+    // Inventory, Other CVO Services, Reports/Certificates, and Feedback are CVO-office /
+    // city-level administrative functions — not needed for barangay-level field work, so
+    // BAHW no longer sees them (principle of least privilege).
+    { id: 'services'  as ActiveView, label: 'Other CVO Services',     icon: FileText,        roles: ['admin', 'superadmin', 'cvoStaff'] },
+    { id: 'inventory' as ActiveView, label: 'Inventory',        icon: FlaskConical,    roles: ['admin', 'superadmin', 'cvoStaff'] },
     { id: 'budget'    as ActiveView, label: 'Budget',            icon: DollarSign,      roles: ['admin', 'superadmin'] },
-    { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
-    { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'bahw', 'superadmin'] },
+    { id: 'reports'   as ActiveView, label: 'Reports',          icon: Award,           roles: ['admin', 'superadmin', 'cvoStaff'] },
+    { id: 'feedback'  as ActiveView, label: 'Feedback',         icon: MessageSquare,   roles: ['admin', 'superadmin'] },
     { id: 'my-profile' as ActiveView, label: 'My Profile',      icon: UserCircle,      roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'users'     as ActiveView, label: 'Users',            icon: Users,           roles: ['admin', 'superadmin'] },
     { id: 'audit'     as ActiveView, label: 'Audit Logs',       icon: ScrollText,      roles: ['admin', 'superadmin'] },

@@ -33,6 +33,7 @@ interface MortalityRecord {
   id: number; livestock_id?: string; animal_type: string; breed?: string;
   owner_name: string; barangay: string; quantity: number; cause: string;
   date_reported: string; investigation_status: string; notes?: string;
+  photo_url?: string; record_kind?: 'Livestock' | 'Pet'; pet_id?: string;
 }
 
 interface DiseaseEvent {
@@ -599,7 +600,9 @@ type MainTab = 'overview'|'records'|'health'|'disease'|'mortality';
 
 
 
-export function LivestockManagement() {
+export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
+  const role = userRole || (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').role; } catch { return undefined; } })();
+  const isBahw = role === 'bahw';
   const [tab, setTab]           = useState<MainTab>('overview');
   const [livestock, setLivestock] = useState<Livestock[]>([]);
   const [summary, setSummary]   = useState<Summary|null>(null);
@@ -614,7 +617,15 @@ export function LivestockManagement() {
   const [viewItem, setViewItem] = useState<Livestock|null>(null);
   const [showMF, setShowMF]     = useState(false);
   const [showDF, setShowDF]     = useState(false);
-  const [mf, setMf] = useState({ animalType:'', breed:'', ownerName:'', barangay:'', quantity:'1', cause:'', dateReported:new Date().toISOString().split('T')[0], notes:'' });
+  const [mf, setMf] = useState({ recordKind:'Livestock' as 'Livestock'|'Pet', animalType:'', breed:'', ownerName:'', barangay:'', quantity:'1', cause:'', dateReported:new Date().toISOString().split('T')[0], notes:'', photoUrl:'' });
+  const mortalityFileRef = useRef<HTMLInputElement>(null);
+  const onMortalityPhoto = (e: { target: HTMLInputElement }) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => setMf(p => ({ ...p, photoUrl: ev.target?.result as string }));
+    r.readAsDataURL(f);
+  };
   const [df, setDf] = useState({ lsId:'', animalType:'', disease:'', barangay:'', farmAddress:'', ownerName:'', contactNumber:'', cases:'1', deaths:'0', dateReported:new Date().toISOString().split('T')[0], notes:'' });
   const [saving, setSaving]     = useState(false);
 
@@ -628,6 +639,17 @@ export function LivestockManagement() {
   const [lsLookupLoading, setLsLookupLoading] = useState(false);
 
   useEffect(()=>{ loadAll(); },[]);
+
+  // Pre-fill the mortality form's barangay with the BAHW's own assigned barangay
+  // (server also enforces this, this just keeps the UI/validation consistent).
+  useEffect(()=>{
+    if (isBahw) {
+      try {
+        const u = JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}');
+        if (u.barangay) setMf(p => p.barangay ? p : ({ ...p, barangay: u.barangay }));
+      } catch { /* ignore */ }
+    }
+  }, [isBahw]);
 
   const loadAll = async()=>{
     setLoading(true);
@@ -693,12 +715,13 @@ export function LivestockManagement() {
 
   const handleAddMortality = async()=>{
     if(!mf.animalType||!mf.ownerName||!mf.barangay||!mf.cause||saving) return;
+    if (isBahw && !mf.photoUrl) { alert('A photo document is required to submit a death/expired report.'); return; }
     setSaving(true);
     try {
       await api.addMortality({...mf,quantity:parseInt(mf.quantity)||1});
       await loadAll();
       setShowMF(false);
-      setMf({animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:''});
+      setMf({recordKind:'Livestock',animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:'',photoUrl:''});
     } catch(e:any){ alert('Error: '+e.message); }
     finally { setSaving(false); }
   };
@@ -1126,20 +1149,45 @@ export function LivestockManagement() {
           </div>
           {showMF&&(
             <div className="bg-red-50 border border-red-200 rounded-2xl p-5 space-y-3">
-              <p className="font-bold text-red-800 flex items-center gap-2"><Skull className="w-4 h-4"/>Report Livestock Mortality</p>
+              <p className="font-bold text-red-800 flex items-center gap-2"><Skull className="w-4 h-4"/>Report Death / Expired Record</p>
               <div className="grid grid-cols-2 gap-3">
-                <SelectField label="Animal Type *" value={mf.animalType} onChange={(v:string)=>setMf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
+                <div className="col-span-2 flex gap-2">
+                  {(['Livestock','Pet'] as const).map(k=>(
+                    <button key={k} type="button" onClick={()=>setMf(p=>({...p,recordKind:k}))}
+                      className={`flex-1 py-2 rounded-xl text-sm font-bold border-2 ${mf.recordKind===k?'bg-red-600 text-white border-red-600':'bg-white text-gray-500 border-gray-200'}`}>
+                      {k==='Livestock'?'Livestock Death':'Pet Died / Expired'}
+                    </button>
+                  ))}
+                </div>
+                {mf.recordKind==='Livestock'
+                  ? <SelectField label="Animal Type *" value={mf.animalType} onChange={(v:string)=>setMf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
+                  : <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Species *</label><input value={mf.animalType} onChange={e=>setMf(p=>({...p,animalType:e.target.value}))} className={INPUT} placeholder="e.g. Dog, Cat"/></div>}
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Breed</label><input value={mf.breed} onChange={e=>setMf(p=>({...p,breed:e.target.value}))} className={INPUT} placeholder="Optional"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name *</label><input value={mf.ownerName} onChange={e=>setMf(p=>({...p,ownerName:e.target.value}))} className={INPUT}/></div>
-                <SelectField label="Barangay *" value={mf.barangay} onChange={(v:string)=>setMf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity Dead *</label><input type="number" min="1" value={mf.quantity} onChange={e=>setMf(p=>({...p,quantity:e.target.value}))} className={INPUT}/></div>
+                {isBahw
+                  ? <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay</label><input value={mf.barangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/></div>
+                  : <SelectField label="Barangay *" value={mf.barangay} onChange={(v:string)=>setMf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>}
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity Dead *</label><input type="number" min="1" value={mf.quantity} onChange={e=>setMf(p=>({...p,quantity:e.target.value}))} className={INPUT} disabled={mf.recordKind==='Pet'}/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date Reported</label><input type="date" value={mf.dateReported} onChange={e=>setMf(p=>({...p,dateReported:e.target.value}))} className={INPUT}/></div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Cause of Death *</label><input value={mf.cause} onChange={e=>setMf(p=>({...p,cause:e.target.value}))} className={INPUT} placeholder="Disease, accident, unknown…"/></div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label><textarea value={mf.notes} onChange={e=>setMf(p=>({...p,notes:e.target.value}))} rows={2} className={INPUT+' resize-none'}/></div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Photo Document {isBahw && <span className="text-red-600">*required</span>}</label>
+                  <input ref={mortalityFileRef} type="file" accept="image/*" onChange={onMortalityPhoto} className="hidden"/>
+                  {mf.photoUrl
+                    ? <div className="flex items-center gap-3">
+                        <img src={mf.photoUrl} alt="Death record" className="w-20 h-20 object-cover rounded-xl border border-gray-200"/>
+                        <button type="button" onClick={()=>mortalityFileRef.current?.click()} className="text-xs font-semibold text-red-600 hover:underline">Replace photo</button>
+                        <button type="button" onClick={()=>setMf(p=>({...p,photoUrl:''}))} className="text-xs font-semibold text-gray-400 hover:underline">Remove</button>
+                      </div>
+                    : <button type="button" onClick={()=>mortalityFileRef.current?.click()} className="w-full py-3 border-2 border-dashed border-red-300 rounded-xl text-sm text-red-500 font-semibold hover:bg-red-50">
+                        Attach photo document
+                      </button>}
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={()=>setShowMF(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
-                <button onClick={handleAddMortality} disabled={!mf.animalType||!mf.ownerName||!mf.barangay||!mf.cause||saving}
+                <button onClick={handleAddMortality} disabled={!mf.animalType||!mf.ownerName||!mf.barangay||!mf.cause||saving||(isBahw&&!mf.photoUrl)}
                   className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2">
                   {saving?<><RefreshCw className="w-3.5 h-3.5 animate-spin"/>Saving…</>:'Submit Report'}
                 </button>

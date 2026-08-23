@@ -61,7 +61,7 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
     // They go through SuperAdminSettings component which is shown for superadmin only
     switch (activeView) {
       case 'dashboard':    return <DashboardOverview onNavigate={setActiveView} />;
-      case 'livestock':    return <LivestockManagement />;
+      case 'livestock':    return <LivestockManagement userRole={user.role} />;
       case 'rabies':        return <PetRegistration userRole={user.role} />;
       case 'vaccination':   return <VaccinationModule user={user} />;
       case 'budget':        return <BudgetUtilization userRole={user.role} />;

@@ -134,6 +134,14 @@ export const createTables = async () => {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_mortality_unique
       ON livestock_mortality (animal_type, owner_name, barangay, cause, date_reported)
     `);
+    // ── Death/expired report enhancements: photo document + pet support ────
+    // record_kind distinguishes a Livestock death report from a Pet death report
+    // (pets use pet_id + species stored in animal_type for a single unified table).
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS photo_url TEXT`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS record_kind VARCHAR(20) DEFAULT 'Livestock'`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS pet_id VARCHAR(50)`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS reported_by VARCHAR(255)`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS reported_by_role VARCHAR(50)`);
 
     // ── Livestock disease alerts table ─────────────────────────────────────
     await client.query(`
@@ -687,6 +695,9 @@ export const createTables = async () => {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+    // Barangay is needed so BAHW accounts can be scoped to reports in their own area.
+    await client.query(`ALTER TABLE biting_incidents ADD COLUMN IF NOT EXISTS barangay VARCHAR(255)`);
+    await client.query(`ALTER TABLE biting_incidents ADD COLUMN IF NOT EXISTS reported_by_role VARCHAR(50)`);
 
     // ── Add horse to livestock_stats ────────────────────────────────────────
     await client.query(`ALTER TABLE livestock_stats ADD COLUMN IF NOT EXISTS horses INTEGER DEFAULT 0`);

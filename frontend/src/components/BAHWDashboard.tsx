@@ -248,7 +248,7 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
         // Show barangay-specific dashboard if barangay is assigned
         return barangay ? <BAHWBarangayDashboard barangay={barangay} /> : <DashboardOverview />;
       case 'livestock':
-        return <LivestockManagement />;
+        return <LivestockManagement userRole={user.role} />;
       case 'rabies':
         return <PetRegistration userRole={user.role} />;
       case 'vaccination':

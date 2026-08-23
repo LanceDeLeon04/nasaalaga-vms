@@ -319,7 +319,12 @@ const EMPTY_FORM = {
 
 export function BitingIncidents({ userRole }: Props) {
   const canEdit   = ['admin','superadmin','cityHealth'].includes(userRole);
+  const canReport = canEdit || userRole === 'bahw';
   const canDelete = ['admin','superadmin'].includes(userRole);
+  const authHeaders = (): Record<string,string> => {
+    const token = sessionStorage.getItem('nasaalaga_token') || '';
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   const [list, setList]       = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
@@ -352,7 +357,7 @@ export function BitingIncidents({ userRole }: Props) {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch('/api/biting-incidents');
+      const r = await fetch('/api/biting-incidents', { headers: authHeaders() as any });
       const d = await r.json();
       setList(d.incidents || []);
     } catch { toast.error('Failed to load biting incidents'); }
@@ -477,7 +482,7 @@ export function BitingIncidents({ userRole }: Props) {
       const method = editing ? 'PUT' : 'POST';
       const r = await fetch(url, {
         method,
-        headers:{ 'Content-Type':'application/json' },
+        headers:{ 'Content-Type':'application/json', ...authHeaders() },
         body: JSON.stringify(form),
       });
       const d = await r.json();
@@ -517,7 +522,7 @@ export function BitingIncidents({ userRole }: Props) {
       // Delete the incident
       const r = await fetch(`/api/biting-incidents/${deleteTarget.id}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ justification: deleteJustification }),
       });
       if (!r.ok) throw new Error('Delete failed');
@@ -526,7 +531,7 @@ export function BitingIncidents({ userRole }: Props) {
       // If confirmed rabies, also remove the linked outbreak record
       if (deleteTarget.confirmed_rabies) {
         try {
-          await fetch(`/api/outbreaks/by-incident/${deleteTarget.id}`, { method: 'DELETE' });
+          await fetch(`/api/outbreaks/by-incident/${deleteTarget.id}`, { method: 'DELETE', headers: authHeaders() as any });
           toast.success('Linked outbreak record removed');
         } catch {
           toast.error('Note: Could not auto-remove linked outbreak. Please remove it manually.');
@@ -545,7 +550,7 @@ export function BitingIncidents({ userRole }: Props) {
       try {
         await fetch(`/api/outbreaks/by-incident/${outbreakEndPrompt.incidentId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ status: 'Resolved', resolution_notes: `Linked biting incident for ${outbreakEndPrompt.petName} was marked as closed.` }),
         });
         toast.success('Outbreak record marked as resolved');
@@ -571,7 +576,7 @@ export function BitingIncidents({ userRole }: Props) {
             <h1 className="bi-title">Biting Incident Reports</h1>
             <p className="bi-sub">Track animal biting cases, 14-day observation windows, and rabies status</p>
           </div>
-          {canEdit && (
+          {canReport && (
             <button className="bi-btn-primary" onClick={openNew}>＋ Report Incident</button>
           )}
         </div>

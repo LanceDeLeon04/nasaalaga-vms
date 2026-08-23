@@ -4,7 +4,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', async (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { type, ownerId } = req.query;
     const conditions: string[] = [];
@@ -18,6 +18,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     if (ownerId) {
       conditions.push(`owner_id=$${idx++}`);
       params.push(ownerId);
+    }
+    // BAHW accounts only see lost/found reports for their assigned barangay.
+    if (req.user?.role === 'bahw' && req.user?.barangay) {
+      conditions.push(`barangay=$${idx++}`);
+      params.push(req.user.barangay);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -54,6 +59,34 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
     const result = await query('SELECT * FROM lost_found_reports WHERE id=$1', [newId]);
     const report = result.rows[0];
+
+    // ── Alert the BAHW(s) assigned to this barangay when a pet is reported Lost ──
+    if (d.type === 'Lost' && d.barangay) {
+      try {
+        const bahws = await query(
+          `SELECT id FROM users WHERE role='bahw' AND LOWER(barangay) = LOWER($1)`,
+          [d.barangay]
+        );
+        if (bahws.rows.length > 0) {
+          const countRes = await query('SELECT COUNT(*) FROM user_notifications');
+          let notifIdx = parseInt(countRes.rows[0].count || '0');
+          const title = `🐾 Lost Pet Reported — Brgy. ${d.barangay}`;
+          const message = `${d.petName || 'A pet'} (${d.species || 'unknown species'}) was reported lost in Barangay ${d.barangay}${d.lastSeenLocation ? ' near ' + d.lastSeenLocation : ''}. Please help watch out for this pet.`;
+          for (const u of bahws.rows) {
+            notifIdx++;
+            const nid = `NOTIF-${String(notifIdx).padStart(5, '0')}`;
+            await query(
+              `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, is_read, created_at)
+               VALUES ($1,$2,'lost_pet',$3,$4,$5,false,NOW())`,
+              [nid, u.id, title, message, d.barangay]
+            );
+          }
+        }
+      } catch (notifErr) {
+        // Non-fatal: report was saved even if the alert fanout fails
+        console.error('⚠ Lost-pet BAHW notification error:', notifErr);
+      }
+    }
     query(
       `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [(req as any).user?.id, d.reportedBy, (req as any).user?.role || d.reportedByRole, 'Create', 'Lost/Found Report', newId,

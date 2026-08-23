@@ -6,9 +6,13 @@ import { v4 as uuidv4 } from 'uuid';
 const router = Router();
 
 // ── GET all livestock ─────────────────────────────────────────────────────
-router.get('/', async (req: AuthRequest, res: Response) => {
+// BAHW accounts are hard-scoped to their assigned barangay: any barangay
+// passed in the query string is ignored for that role, so a BAHW account
+// can never page through another barangay's records by tampering with the URL.
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { ownerId, barangay, type, status } = req.query;
+    const { ownerId, type, status } = req.query;
+    const barangay = req.user?.role === 'bahw' ? req.user?.barangay : req.query.barangay;
     let sql = 'SELECT * FROM livestock WHERE 1=1';
     const params: any[] = [];
     let i = 1;
@@ -94,6 +98,8 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       tempId = `TEMP-${uuidv4().slice(0, 8).toUpperCase()}`;
     }
 
+    // BAHW accounts can only register livestock within their own assigned barangay.
+    const barangay = req.user?.role === 'bahw' ? req.user?.barangay : d.barangay;
     const result = await query(
       `INSERT INTO livestock
         (id, owner_id, animal_type, breed, quantity, gender, age, color_markings,
@@ -104,7 +110,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       [newId, d.ownerId || null, d.animalType, d.breed || null, d.quantity || 1,
        d.gender || null, d.age || null, d.colorMarkings || null,
        d.purpose || 'Mixed', d.source || null, d.tagNumber || null,
-       d.ownerName, d.contactNumber || null, d.barangay, d.farmAddress || null,
+       d.ownerName, d.contactNumber || null, barangay, d.farmAddress || null,
        d.healthStatus || 'Healthy', d.farmType || 'Backyard', d.notes || null]
     );
     return res.json({ livestock: result.rows[0], success: true, tempId });
@@ -192,35 +198,59 @@ router.post('/:id/health-records', authenticate, async (req: AuthRequest, res: R
   }
 });
 
-// ── Mortality Records ─────────────────────────────────────────────────────
-router.get('/mortality/all', async (req: AuthRequest, res: Response) => {
+// ── Mortality / Death Reports (livestock AND pets, with photo document) ───
+// BAHW is scoped to records reported in their own barangay.
+router.get('/mortality/all', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM livestock_mortality ORDER BY date_reported DESC');
+    const isBahw = req.user?.role === 'bahw';
+    const sql = isBahw
+      ? 'SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC'
+      : 'SELECT * FROM livestock_mortality ORDER BY date_reported DESC';
+    const result = await query(sql, isBahw ? [req.user?.barangay] : []);
     return res.json({ mortality: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
+// Report a death (livestock) or an expired/deceased pet, with an optional
+// photo document. Kind is 'Livestock' (default) or 'Pet'.
+// BAHW accounts are always pinned to their own assigned barangay, and must
+// attach a photo document to substantiate the report.
 router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
+    const isBahw = req.user?.role === 'bahw';
+    const recordKind = d.recordKind === 'Pet' ? 'Pet' : 'Livestock';
+    const barangay = isBahw ? req.user?.barangay : d.barangay;
+    if (!barangay) return res.status(400).json({ error: 'Barangay is required' });
+    if (isBahw && !d.photoUrl) {
+      return res.status(400).json({ error: 'A photo document is required when reporting a death.' });
+    }
+
     const result = await query(
       `INSERT INTO livestock_mortality
         (livestock_id, animal_type, breed, owner_name, barangay, quantity,
-         cause, date_reported, investigation_status, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         cause, date_reported, investigation_status, notes, created_by,
+         photo_url, record_kind, pet_id, reported_by, reported_by_role)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (animal_type, owner_name, barangay, cause, date_reported)
-       DO UPDATE SET quantity = EXCLUDED.quantity, notes = EXCLUDED.notes, updated_at = NOW()
+       DO UPDATE SET quantity = EXCLUDED.quantity, notes = EXCLUDED.notes,
+         photo_url = COALESCE(EXCLUDED.photo_url, livestock_mortality.photo_url), updated_at = NOW()
        RETURNING *`,
-      [d.livestockId || null, d.animalType, d.breed || null, d.ownerName, d.barangay,
+      [d.livestockId || null, d.animalType, d.breed || null, d.ownerName, barangay,
        d.quantity || 1, d.cause, d.dateReported || new Date().toISOString().split('T')[0],
-       d.investigationStatus || 'Pending', d.notes || null, d.createdBy || 'Admin']
+       d.investigationStatus || 'Pending', d.notes || null, req.user?.username || d.createdBy || 'Admin',
+       d.photoUrl || null, recordKind, d.petId || null, req.user?.username || null, req.user?.role || null]
     );
-    // If linked to a record, update health status
+    // If linked to a livestock record, update its health status
     if (d.livestockId) {
       await query('UPDATE livestock SET health_status=$1, updated_at=NOW() WHERE id=$2',
         ['Dead', d.livestockId]);
+    }
+    // If linked to a registered pet, mark it Deceased
+    if (recordKind === 'Pet' && d.petId) {
+      await query(`UPDATE pets SET status='Deceased', updated_at=NOW() WHERE id=$1`, [d.petId]);
     }
     return res.json({ record: result.rows[0], success: true });
   } catch (err: any) {
@@ -268,11 +298,13 @@ router.delete('/mortality/cleanup/duplicates', authenticate, async (req: AuthReq
 });
 
 // ── Disease Events ────────────────────────────────────────────────────────
-router.get('/disease-events/all', async (req: AuthRequest, res: Response) => {
+router.get('/disease-events/all', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      'SELECT * FROM livestock_disease_events ORDER BY date_reported DESC'
-    );
+    const isBahw = req.user?.role === 'bahw';
+    const sql = isBahw
+      ? 'SELECT * FROM livestock_disease_events WHERE barangay=$1 ORDER BY date_reported DESC'
+      : 'SELECT * FROM livestock_disease_events ORDER BY date_reported DESC';
+    const result = await query(sql, isBahw ? [req.user?.barangay] : []);
     return res.json({ events: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

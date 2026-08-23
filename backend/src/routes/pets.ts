@@ -202,8 +202,10 @@ router.get('/pre-registered', authenticate, async (req: AuthRequest, res: Respon
     const params: any[] = [];
     let idx = 1;
     if (status) { conditions.push(`status=$${idx++}`); params.push(status); }
-    // BAHW can only see their tagged barangay; others see all
-    const filterBarangay = barangay || (req.user?.role === 'bahw' ? req.user?.barangay : null);
+    // BAHW can only see pre-registrations in their assigned barangay — the
+    // server always wins here, so a client-supplied ?barangay= cannot be used
+    // to view another barangay's data.
+    const filterBarangay = req.user?.role === 'bahw' ? req.user?.barangay : barangay;
     if (filterBarangay) { conditions.push(`barangay=$${idx++}`); params.push(filterBarangay); }
     let sql = 'SELECT * FROM pet_pre_registrations';
     if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
@@ -312,12 +314,19 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
 });
 
 // ── Pets CRUD ──────────────────────────────────────────────────────────────
-router.get('/', async (req: AuthRequest, res: Response) => {
+// BAHW accounts are hard-scoped server-side to their own assigned barangay —
+// any ?barangay= passed in the URL is ignored for that role.
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { ownerId } = req.query;
-    let sql = 'SELECT * FROM pets';
+    const barangay = req.user?.role === 'bahw' ? req.user?.barangay : req.query.barangay;
+    const conditions: string[] = [];
     const params: any[] = [];
-    if (ownerId) { sql += ' WHERE owner_id=$1'; params.push(ownerId); }
+    let idx = 1;
+    if (ownerId) { conditions.push(`owner_id=$${idx++}`); params.push(ownerId); }
+    if (barangay) { conditions.push(`barangay=$${idx++}`); params.push(barangay); }
+    let sql = 'SELECT * FROM pets';
+    if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY registration_date DESC';
     const result = await query(sql, params);
     return res.json({ pets: result.rows });
@@ -344,6 +353,11 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       } else if (d.isUnregistered) {
         tempId = `TEMP-${uuidv4().slice(0, 8).toUpperCase()}`;
       }
+    }
+
+    // BAHW accounts can only register pets within their own assigned barangay.
+    if (req.user?.role === 'bahw' && req.user?.barangay) {
+      d.barangay = req.user.barangay;
     }
 
     // Build color-coded tag from barangay + optional manual number
