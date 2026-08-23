@@ -4,9 +4,10 @@ import {
   Plus, RefreshCw, CheckCircle, Clock, User, Edit3, X, ChevronDown,
   ChevronUp, Activity, Layers, Eye, Calendar, Syringe, Shield,
   BarChart3, ArrowRight, Bell, Info, Tag, Crosshair, Trash2, Archive,
-  History, AlertOctagon
+  History, AlertOctagon, Camera
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { StreetViewModal } from './StreetViewModal';
 
 // ── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -513,12 +514,13 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
 
 // ── OUTBREAK CARD ────────────────────────────────────────────────────────────
 
-function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdit, canDelete, isArchived }: {
+function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, onStreetView, canEdit, canDelete, isArchived }: {
   record: OutbreakRecord;
   isSelected: boolean;
   onSelect: () => void;
   onUpdate: () => void;
   onDelete: () => void;
+  onStreetView: () => void;
   canEdit: boolean;
   canDelete: boolean;
   isArchived?: boolean;
@@ -548,8 +550,17 @@ function OutbreakCard({ record, isSelected, onSelect, onUpdate, onDelete, canEdi
               {record.type === 'rabies' ? <span style={{ fontSize: 10, background: '#fee2e2', color: '#991b1b', borderRadius: 6, padding: '2px 7px', fontWeight: 700 }}>🐕 Rabies</span> : <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '2px 7px', fontWeight: 700 }}>🐄 Livestock</span>}
             </div>
             <p style={{ fontSize: 15, fontWeight: 800, color: '#1f2937', margin: '0 0 2px' }}>{record.disease}</p>
-            <p style={{ fontSize: 12.5, color: '#6b7280', margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <p style={{ fontSize: 12.5, color: '#6b7280', margin: 0, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
               <MapPin size={11} />{record.barangay} · {record.cases} case{record.cases !== 1 ? 's' : ''} · {record.radius_km}km containment
+              {record.lat != null && record.lng != null && (
+                <button
+                  onClick={e => { e.stopPropagation(); onStreetView(); }}
+                  title="View Street View"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 2, height: 20, padding: '0 7px', background: '#eff6ff', border: 'none', borderRadius: 999, color: '#2B5EA6', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <Camera size={10} />Street View
+                </button>
+              )}
             </p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
@@ -633,6 +644,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingRecord, setEditingRecord] = useState<OutbreakRecord | null>(null);
   const [deletingRecord, setDeletingRecord] = useState<OutbreakRecord | null>(null);
+  const [streetViewRecord, setStreetViewRecord] = useState<OutbreakRecord | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -901,6 +913,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
                     onSelect={() => setSelectedId(p => p === ob.id ? null : ob.id)}
                     onUpdate={() => setEditingRecord(ob)}
                     onDelete={() => setDeletingRecord(ob)}
+                    onStreetView={() => setStreetViewRecord(ob)}
                     canEdit={canEdit}
                     canDelete={canDelete}
                     isArchived={activeTab === 'history' || ob.is_archived}
@@ -972,6 +985,17 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
           record={deletingRecord}
           onClose={() => setDeletingRecord(null)}
           onConfirm={handleDeleteRecord}
+        />
+      )}
+
+      {/* STREET VIEW MODAL */}
+      {streetViewRecord && streetViewRecord.lat != null && streetViewRecord.lng != null && (
+        <StreetViewModal
+          lat={streetViewRecord.lat}
+          lng={streetViewRecord.lng}
+          title={`${streetViewRecord.disease} — ${streetViewRecord.barangay}`}
+          subtitle={streetViewRecord.id}
+          onClose={() => setStreetViewRecord(null)}
         />
       )}
     </div>
