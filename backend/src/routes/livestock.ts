@@ -29,8 +29,16 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // ── GET summary stats ─────────────────────────────────────────────────────
-router.get('/summary', async (req: AuthRequest, res: Response) => {
+// BAHW accounts are hard-scoped to their own assigned barangay, same as the
+// list endpoint above — a BAHW must never see city-wide totals or other
+// barangays' breakdowns in their Overview tab.
+router.get('/summary', authenticate, async (req: AuthRequest, res: Response) => {
   try {
+    const isBahw = req.user?.role === 'bahw';
+    const brgy = req.user?.barangay;
+    const brgyClause = isBahw && brgy ? 'WHERE barangay=$1' : '';
+    const brgyParams = isBahw && brgy ? [brgy] : [];
+
     const totals = await query(`
       SELECT animal_type,
              SUM(quantity) as total,
@@ -39,8 +47,8 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
              SUM(CASE WHEN health_status='Sick'       THEN quantity ELSE 0 END) as sick,
              SUM(CASE WHEN health_status='Quarantine' THEN quantity ELSE 0 END) as quarantine,
              SUM(CASE WHEN vaccination_status='Vaccinated' THEN quantity ELSE 0 END) as vaccinated
-      FROM livestock GROUP BY animal_type
-    `);
+      FROM livestock ${brgyClause} GROUP BY animal_type
+    `, brgyParams);
     const barangayTotals = await query(`
       SELECT barangay,
              SUM(CASE WHEN animal_type='Cattle'  THEN quantity ELSE 0 END) as cattle,
@@ -49,11 +57,11 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
              SUM(CASE WHEN animal_type='Goats'   THEN quantity ELSE 0 END) as goats,
              SUM(CASE WHEN animal_type='Carabao' THEN quantity ELSE 0 END) as carabao,
              SUM(quantity) as total
-      FROM livestock GROUP BY barangay ORDER BY total DESC
-    `);
+      FROM livestock ${brgyClause} GROUP BY barangay ORDER BY total DESC
+    `, brgyParams);
     const recentActivity = await query(`
-      SELECT * FROM livestock ORDER BY updated_at DESC LIMIT 10
-    `);
+      SELECT * FROM livestock ${brgyClause} ORDER BY updated_at DESC LIMIT 10
+    `, brgyParams);
     return res.json({
       byType: totals.rows,
       byBarangay: barangayTotals.rows,

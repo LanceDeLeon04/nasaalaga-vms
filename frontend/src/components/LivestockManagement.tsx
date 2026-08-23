@@ -603,6 +603,7 @@ type MainTab = 'overview'|'records'|'health'|'disease'|'mortality';
 export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
   const role = userRole || (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').role; } catch { return undefined; } })();
   const isBahw = role === 'bahw';
+  const bahwBarangay = (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').barangay || ''; } catch { return ''; } })();
   const [tab, setTab]           = useState<MainTab>('overview');
   const [livestock, setLivestock] = useState<Livestock[]>([]);
   const [summary, setSummary]   = useState<Summary|null>(null);
@@ -646,7 +647,10 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
     if (isBahw) {
       try {
         const u = JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}');
-        if (u.barangay) setMf(p => p.barangay ? p : ({ ...p, barangay: u.barangay }));
+        if (u.barangay) {
+          setMf(p => p.barangay ? p : ({ ...p, barangay: u.barangay }));
+          setDf(p => p.barangay ? p : ({ ...p, barangay: u.barangay }));
+        }
       } catch { /* ignore */ }
     }
   }, [isBahw]);
@@ -974,9 +978,11 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
               <select value={fType} onChange={e=>setFType(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none bg-white">
                 <option value="all">All Types</option>{ANIMAL_TYPES.map(t=><option key={t}>{t}</option>)}
               </select>
-              <select value={fBrgy} onChange={e=>setFBrgy(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none bg-white">
-                <option value="all">All Barangays</option>{CALACA_BARANGAYS.map(b=><option key={b}>{b}</option>)}
-              </select>
+              {isBahw
+                ? <div className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-500 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5"/>{bahwBarangay || 'Your barangay'}</div>
+                : <select value={fBrgy} onChange={e=>setFBrgy(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none bg-white">
+                    <option value="all">All Barangays</option>{CALACA_BARANGAYS.map(b=><option key={b}>{b}</option>)}
+                  </select>}
               <select value={fHealth} onChange={e=>setFHealth(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none bg-white">
                 <option value="all">All Health</option>{HEALTH_STATUSES.map(s=><option key={s}>{s}</option>)}
               </select>
@@ -1078,7 +1084,9 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
               <div className="grid grid-cols-2 gap-3">
                 <SelectField label="Animal Type *" value={df.animalType} onChange={(v:string)=>setDf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Disease / Condition *</label><input value={df.disease} onChange={e=>setDf(p=>({...p,disease:e.target.value}))} className={INPUT} placeholder="e.g., ASF, Newcastle Disease"/></div>
-                <SelectField label="Barangay *" value={df.barangay} onChange={(v:string)=>setDf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>
+                {isBahw
+                  ? <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay</label><input value={df.barangay || bahwBarangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/></div>
+                  : <SelectField label="Barangay *" value={df.barangay} onChange={(v:string)=>setDf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>}
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Farm Address</label><input value={df.farmAddress} onChange={e=>setDf(p=>({...p,farmAddress:e.target.value}))} className={INPUT} placeholder="Street / Farm name"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name</label><input value={df.ownerName} onChange={e=>setDf(p=>({...p,ownerName:e.target.value}))} className={INPUT} placeholder="Owner's full name"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number</label><input value={df.contactNumber} onChange={e=>setDf(p=>({...p,contactNumber:e.target.value}))} className={INPUT} placeholder="09XXXXXXXXX"/></div>

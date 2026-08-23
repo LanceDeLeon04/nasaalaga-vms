@@ -108,15 +108,24 @@ router.get('/barangay-prefix', async (req: AuthRequest, res: Response) => {
 });
 
 // ── Survey data (real from DB) ─────────────────────────────────────────────
-router.get('/survey-data', async (req: AuthRequest, res: Response) => {
+// BAHW accounts are hard-scoped to their own assigned barangay, same as the
+// pet list endpoint below — a BAHW must never see city-wide survey totals
+// or other barangays' breakdowns in their Overview tab.
+router.get('/survey-data', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const petsResult = await query(`SELECT species, COUNT(*) as count FROM pets GROUP BY species`);
-    const vaxResult = await query(`SELECT vaccination_status, COUNT(*) as count FROM pets GROUP BY vaccination_status`);
-    const spayResult = await query(`SELECT COUNT(*) as spayed FROM pets WHERE is_spayed=true`);
-    const neuterResult = await query(`SELECT COUNT(*) as neutered FROM pets WHERE is_neutered=true`);
-    const impoundResult = await query(`SELECT COUNT(*) as impounded FROM pets WHERE impound_status != 'None' AND impound_status IS NOT NULL AND impound_status != ''`);
-    const barangayResult = await query(`SELECT barangay, COUNT(*) as count FROM pets GROUP BY barangay ORDER BY count DESC`);
-    const lostResult = await query(`SELECT type, COUNT(*) as count FROM lost_found_reports WHERE status='Open' GROUP BY type`);
+    const isBahw = req.user?.role === 'bahw';
+    const brgy = req.user?.barangay;
+    const scoped = isBahw && !!brgy;
+    const petsClause = scoped ? 'WHERE barangay=$1' : '';
+    const lfClause = scoped ? `AND barangay=$1` : '';
+
+    const petsResult = await query(`SELECT species, COUNT(*) as count FROM pets ${petsClause} GROUP BY species`, scoped ? [brgy] : []);
+    const vaxResult = await query(`SELECT vaccination_status, COUNT(*) as count FROM pets ${petsClause} GROUP BY vaccination_status`, scoped ? [brgy] : []);
+    const spayResult = await query(`SELECT COUNT(*) as spayed FROM pets WHERE is_spayed=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const neuterResult = await query(`SELECT COUNT(*) as neutered FROM pets WHERE is_neutered=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const impoundResult = await query(`SELECT COUNT(*) as impounded FROM pets WHERE impound_status != 'None' AND impound_status IS NOT NULL AND impound_status != '' ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const barangayResult = await query(`SELECT barangay, COUNT(*) as count FROM pets ${petsClause} GROUP BY barangay ORDER BY count DESC`, scoped ? [brgy] : []);
+    const lostResult = await query(`SELECT type, COUNT(*) as count FROM lost_found_reports WHERE status='Open' ${lfClause} GROUP BY type`, scoped ? [brgy] : []);
 
     const rows = petsResult.rows;
     const dogRow = rows.find((r: any) => r.species?.toLowerCase() === 'dog');

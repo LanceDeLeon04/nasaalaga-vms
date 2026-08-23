@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
-import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
+import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -285,9 +285,16 @@ router.get('/dashboard/summary', authenticate, async (req: AuthRequest, res: Res
 });
 
 // ── Schedules ──────────────────────────────────────────────────────────────
-router.get('/schedules', async (req, res) => {
+// Stays reachable by public / pet-owner / livestock-owner callers (they see
+// all barangays' vaccination drives), but a signed-in BAHW is hard-scoped to
+// their own assigned barangay's schedules only.
+router.get('/schedules', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM vaccination_schedules ORDER BY date ASC');
+    const isBahw = req.user?.role === 'bahw';
+    const brgy = req.user?.barangay;
+    const result = isBahw && brgy
+      ? await query('SELECT * FROM vaccination_schedules WHERE barangay=$1 ORDER BY date ASC', [brgy])
+      : await query('SELECT * FROM vaccination_schedules ORDER BY date ASC');
     return res.json({ schedules: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

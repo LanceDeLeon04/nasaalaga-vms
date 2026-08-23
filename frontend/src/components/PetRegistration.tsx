@@ -1614,6 +1614,9 @@ import { BitingIncidents } from './BitingIncidents';
 import { VaccinationCard } from './VaccinationCard';
 
 export function PetRegistration({ userRole, initialTab }: { userRole?: string; initialTab?: "overview"|"pets"|"lost-found"|"impounded"|"biting" } = {}) {
+  const role = userRole || (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').role; } catch { return undefined; } })();
+  const isBahw = role === 'bahw';
+  const bahwBarangay = (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').barangay || ''; } catch { return ''; } })();
   const [pets, setPets] = useState<Pet[]>([]);
   const [reports, setReports] = useState<LFReport[]>([]);
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
@@ -1666,6 +1669,18 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
   const [schForm, setSchForm] = useState({ barangay:"",date:"",time:"",location:"",capacity:"100" });
 
   useEffect(() => { loadAll(); }, []);
+
+  // Pre-fill/lock all barangay-entry forms with the BAHW's own assigned
+  // barangay — the server also enforces this, this just keeps the UI and
+  // client-side validation consistent with a BAHW's scope.
+  useEffect(() => {
+    if (isBahw && bahwBarangay) {
+      setNp(p => p.barangay ? p : ({ ...p, barangay: bahwBarangay }));
+      setLfForm(p => p.barangay ? p : ({ ...p, barangay: bahwBarangay }));
+      setImpoundForm(p => p.barangay ? p : ({ ...p, barangay: bahwBarangay }));
+      setSchForm(p => p.barangay ? p : ({ ...p, barangay: bahwBarangay }));
+    }
+  }, [isBahw, bahwBarangay]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -2140,7 +2155,9 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Species</label><select value={impoundForm.species} onChange={e=>setImpoundForm(p=>({...p,species:e.target.value}))} className={INPUT}><option>Dog</option><option>Cat</option><option>Other</option></select></div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Breed</label><input value={impoundForm.breed} onChange={e=>setImpoundForm(p=>({...p,breed:e.target.value}))} className={INPUT} placeholder="e.g., Aspin, Puspin"/></div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Color / Markings</label><input value={impoundForm.color} onChange={e=>setImpoundForm(p=>({...p,color:e.target.value}))} className={INPUT} placeholder="e.g., Brown with white chest"/></div>
-                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Barangay Found *</label><select value={impoundForm.barangay} onChange={e=>setImpoundForm(p=>({...p,barangay:e.target.value}))} className={INPUT}><option value="">Select Barangay</option>{CALACA_BARANGAYS.map(b=><option key={b}>{b}</option>)}</select></div>
+                <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Barangay Found *</label>{isBahw
+                  ? <input value={impoundForm.barangay || bahwBarangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/>
+                  : <select value={impoundForm.barangay} onChange={e=>setImpoundForm(p=>({...p,barangay:e.target.value}))} className={INPUT}><option value="">Select Barangay</option>{CALACA_BARANGAYS.map(b=><option key={b}>{b}</option>)}</select>}</div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Location Where Found</label><input value={impoundForm.lastSeenLocation} onChange={e=>setImpoundForm(p=>({...p,lastSeenLocation:e.target.value}))} className={INPUT} placeholder="Specific location"/></div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Impound Facility *</label><input value={impoundForm.impoundLocation} onChange={e=>setImpoundForm(p=>({...p,impoundLocation:e.target.value}))} className={INPUT} placeholder="e.g., Calaca City Pound"/></div>
                 <div><label className={"block text-xs font-semibold text-gray-600 mb-1.5"}>Impound Date</label><input type="date" value={impoundForm.impoundDate} onChange={e=>setImpoundForm(p=>({...p,impoundDate:e.target.value}))} className={INPUT}/></div>
@@ -2368,7 +2385,9 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
                   </div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number</label><input value={np.ownerContact} onChange={e=>setNp({...np,ownerContact:e.target.value})} className={INPUT} placeholder="0917-xxx-xxxx"/></div>
                   <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Address</label><input value={np.ownerAddress} onChange={e=>setNp({...np,ownerAddress:e.target.value})} className={INPUT} placeholder="Purok / Zone / Phase"/></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label><select value={np.barangay} onChange={e=>setNp({...np,barangay:e.target.value})} className={INPUT}><option value="">Select…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label>{isBahw
+                    ? <input value={np.barangay || bahwBarangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/>
+                    : <select value={np.barangay} onChange={e=>setNp({...np,barangay:e.target.value})} className={INPUT}><option value="">Select…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select>}</div>
                 </div>
                 )}
               </div>
@@ -2493,7 +2512,9 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Species</label><select value={lfForm.species} onChange={e=>setLfForm({...lfForm,species:e.target.value})} className={INPUT}><option value="">Select…</option><option value="Dog">Dog</option><option value="Cat">Cat</option><option value="Other">Other</option></select></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Breed</label><input value={lfForm.breed} onChange={e=>setLfForm({...lfForm,breed:e.target.value})} className={INPUT} placeholder="e.g., Aspin"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Color</label><input value={lfForm.color} onChange={e=>setLfForm({...lfForm,color:e.target.value})} className={INPUT} placeholder="e.g., Brown, White"/></div>
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label><select value={lfForm.barangay} onChange={e=>setLfForm({...lfForm,barangay:e.target.value})} className={INPUT}><option value="">Select…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label>{isBahw
+                  ? <input value={lfForm.barangay || bahwBarangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/>
+                  : <select value={lfForm.barangay} onChange={e=>setLfForm({...lfForm,barangay:e.target.value})} className={INPUT}><option value="">Select…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select>}</div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Reported By *</label><input value={lfForm.reportedBy} onChange={e=>setLfForm({...lfForm,reportedBy:e.target.value})} className={INPUT} placeholder="Your name"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Contact Number *</label><input value={lfForm.contactNumber} onChange={e=>setLfForm({...lfForm,contactNumber:e.target.value})} className={INPUT} placeholder="0917-xxx-xxxx"/></div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Last Seen Location</label><input value={lfForm.lastSeenLocation} onChange={e=>setLfForm({...lfForm,lastSeenLocation:e.target.value})} className={INPUT} placeholder="Street, landmark…"/></div>
@@ -2519,7 +2540,9 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
               <button onClick={()=>setShowScheduleAdd(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6 space-y-4">
-              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label><select value={schForm.barangay} onChange={e=>setSchForm({...schForm,barangay:e.target.value})} className={INPUT}><option value="">Select barangay…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select></div>
+              <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay *</label>{isBahw
+                ? <input value={schForm.barangay || bahwBarangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/>
+                : <select value={schForm.barangay} onChange={e=>setSchForm({...schForm,barangay:e.target.value})} className={INPUT}><option value="">Select barangay…</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}</select>}</div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date *</label><input type="date" value={schForm.date} onChange={e=>setSchForm({...schForm,date:e.target.value})} className={INPUT}/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Capacity</label><input type="number" value={schForm.capacity} onChange={e=>setSchForm({...schForm,capacity:e.target.value})} className={INPUT}/></div>
