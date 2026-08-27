@@ -65,6 +65,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
         fixed lg:static inset-y-0 left-0 z-50
         w-72 bg-gradient-to-b from-[#60A85C] to-[#4a8a47] text-white shadow-2xl
         transform transition-transform duration-300 ease-in-out
+        overflow-y-auto overscroll-contain
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {onClose && (

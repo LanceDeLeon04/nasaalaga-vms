@@ -12,7 +12,7 @@ type CHOView = 'pets' | 'biting' | 'profile' | 'notifications';
 const STYLES = `
   @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
   .cho-layout { display:flex; min-height:100vh; background:#f0f4fb; font-family:inherit; }
-  .cho-sidebar { width:240px; background:linear-gradient(180deg,#1e3a6e 0%,#2B5EA6 100%); min-height:100vh; display:flex; flex-direction:column; flex-shrink:0; }
+  .cho-sidebar { width:240px; background:linear-gradient(180deg,#1e3a6e 0%,#2B5EA6 100%); min-height:100vh; display:flex; flex-direction:column; flex-shrink:0; overflow-y:auto; }
   .cho-sidebar-logo { padding:24px 20px 18px; border-bottom:1px solid rgba(255,255,255,.1); }
   .cho-sidebar-logo h2 { color:#fff; font-size:18px; font-weight:900; margin:0 0 2px; }
   .cho-sidebar-logo p  { color:rgba(255,255,255,.6); font-size:11px; margin:0; }
