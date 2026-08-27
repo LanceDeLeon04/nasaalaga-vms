@@ -17,6 +17,13 @@ function createTransporter() {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: { user, pass },
+    // Keep these short — this check now runs in the background after the
+    // server is already accepting traffic, so a dead SMTP path should fail
+    // fast and log clearly instead of hanging on nodemailer's long defaults
+    // (connectionTimeout defaults to 2 minutes).
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 }
 

@@ -54,43 +54,69 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-app.listen(PORT, async () => {
-  console.log(`\n🐾 NASaAlaga API running on port ${PORT}`);
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   Health check: http://localhost:${PORT}/api/health`);
-  await verifyEmailConnection();
+// ── Startup ───────────────────────────────────────────────────────────────
+// IMPORTANT: migrations must finish BEFORE the server accepts traffic.
+// Previously app.listen() started routing requests immediately, and the
+// migration chain ran afterward (gated behind an awaited Gmail SMTP check
+// that can hang for a long time on its default timeouts) — so early
+// requests (e.g. login) could hit tables that didn't exist yet, throwing
+// "relation \"users\" does not exist". Fix: run migrations first, listen
+// second, and never let email verification block startup.
+const runMigrations = async () => {
+  await createTables();
+  await migrateBudget();
+  await migrateInventoryV2();
+  await migrateLivestockPreReg();
+  await migrateProfileColumns();
+  await migrateInventoryV3();
+  await migrateDispatch();
+  await migrateInventoryDosage();
+  await migrateInventoryLotColumns();
+  await migrateNotifications();
+};
 
-  // Run full migration chain on every startup (all are idempotent)
-  const runMigrations = async () => {
-    await createTables();
-    await migrateBudget();
-    await migrateInventoryV2();
-    await migrateLivestockPreReg();
-    await migrateProfileColumns();
-    await migrateInventoryV3();
-    await migrateDispatch();
-    await migrateInventoryDosage();
-    await migrateInventoryLotColumns();
-    await migrateNotifications();
-  };
+async function start() {
+  console.log('🐾 NASaAlaga API starting…');
+  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
 
   const MAX_RETRIES = 3;
+  let migrated = false;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       await runMigrations();
       console.log('✅ Database ready');
+      migrated = true;
       break;
     } catch (err) {
       if (attempt < MAX_RETRIES) {
-        console.warn(`⚠️  Migration attempt ${attempt} failed, retrying in 3s...`);
+        console.warn(`⚠️  Migration attempt ${attempt} failed, retrying in 3s...`, err);
         await new Promise(r => setTimeout(r, 3000));
       } else {
-        console.error('⚠️  Migration warning (non-fatal):', err);
+        console.error('❌ Migration failed after retries — refusing to start (DB would serve broken requests):', err);
       }
     }
   }
 
-  console.log('');
-});
+  if (!migrated) {
+    // Do not open the port with a half-migrated (or unmigrated) database —
+    // that's exactly how "relation users does not exist" reaches users.
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🐾 NASaAlaga API running on port ${PORT}`);
+    console.log(`   Health check: http://localhost:${PORT}/api/health\n`);
+
+    // Fire-and-forget: Gmail connectivity must never gate startup or block
+    // request handling. verifyEmailConnection() now also has short timeouts
+    // (see services/email.ts) so a bad SMTP path fails fast in the logs
+    // instead of hanging.
+    verifyEmailConnection().catch((err) => {
+      console.error('[Email] verification threw unexpectedly:', err);
+    });
+  });
+}
+
+start();
 
 export default app;
