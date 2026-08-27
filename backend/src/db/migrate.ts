@@ -848,15 +848,19 @@ export const createTables = async () => {
     // Using a sequence instead of COUNT(*) ensures atomic, gap-safe ID generation
     // even when users are deleted or concurrent signups occur.
     await client.query(`CREATE SEQUENCE IF NOT EXISTS users_id_seq START 1;`);
-    // Sync sequence to the current max numeric ID so we never re-use existing IDs
+    // Sync sequence to the current max numeric ID so we never re-use existing IDs.
+    // On a fresh/empty users table there is no max — setval requires a value >= 1,
+    // so we pass 1 with is_called=false, meaning the *next* nextval() still returns 1.
     await client.query(`
       SELECT setval(
         'users_id_seq',
-        COALESCE(
-          (SELECT MAX(CAST(NULLIF(regexp_replace(id, '[^0-9]', '', 'g'), '') AS INTEGER)) FROM users),
-          0
-        )
-      );
+        COALESCE(max_id, 1),
+        max_id IS NOT NULL
+      )
+      FROM (
+        SELECT MAX(CAST(NULLIF(regexp_replace(id, '[^0-9]', '', 'g'), '') AS INTEGER)) AS max_id
+        FROM users
+      ) sub;
     `);
 
     await client.query('COMMIT');
