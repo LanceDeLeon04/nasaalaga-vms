@@ -5,6 +5,8 @@ import { router } from './routes';
 import { Toaster } from './components/ui/sonner';
 import { useSessionTimeout } from './hooks/useSessionTimeout';
 import { SessionWarningModal, SessionExpiredModal } from './components/SessionTimeoutModals';
+import PwaUpdater from './components/PwaUpdater';
+import HelpButton from './components/HelpButton';
 
 export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | 'both' | 'cvoStaff' | null;
 
@@ -263,6 +265,8 @@ export default function App() {
     <SessionTimeoutWrapper>
       <RouterProvider router={router} />
       <Toaster />
+      <PwaUpdater />
+      <HelpButton />
     </SessionTimeoutWrapper>
   );
 }
