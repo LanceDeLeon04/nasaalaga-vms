@@ -328,6 +328,7 @@ export function VaccinationModule({ user }: Props) {
             {historyLoading ? (
               <div className="vm-empty">Loading history…</div>
             ) : (
+              <div style={{ overflowX: 'auto' }}>
               <table className="vm-table">
                 <thead><tr>
                   <th>Date</th><th>Vaccine</th><th>Lot/Batch No.</th><th>Veterinarian</th><th>Lic No.</th>
@@ -344,6 +345,7 @@ export function VaccinationModule({ user }: Props) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}

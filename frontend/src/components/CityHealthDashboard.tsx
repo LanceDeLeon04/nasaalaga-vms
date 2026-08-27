@@ -70,7 +70,23 @@ const STYLES = `
   .cho-notif-body  { font-size:13px; color:#6b7280; margin:0; line-height:1.6; }
   .cho-notif-time  { font-size:11px; color:#9ca3af; margin-top:6px; }
 
-  @media(max-width:700px){ .cho-sidebar{display:none;} }
+  .cho-menu-btn { display:none; background:none; border:none; cursor:pointer; padding:6px; color:#1f2937; margin-right:6px; }
+  .cho-overlay { display:none; }
+
+  @media(max-width:700px){
+    .cho-sidebar {
+      position: fixed; top:0; left:0; height:100vh; z-index:60;
+      transform: translateX(-100%);
+      transition: transform .25s ease-in-out;
+    }
+    .cho-sidebar.open { transform: translateX(0); display:flex; }
+    .cho-menu-btn { display:inline-flex; }
+    .cho-overlay.open {
+      display:block; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55;
+    }
+    .cho-topbar { padding:12px 14px; }
+    .cho-content { padding:16px; }
+  }
 `;
 
 const IC = (d: string) => (
@@ -95,6 +111,7 @@ function vaxClass(status?: string) {
 
 export function CityHealthDashboard({ user, onLogout }: Props) {
   const [view, setView] = useState<CHOView>('pets');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [pets, setPets]   = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [petsLoaded, setPetsLoaded] = useState(false);
@@ -134,6 +151,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
 
   const handleNav = (v: CHOView) => {
     setView(v);
+    setMobileNavOpen(false);
     if (v === 'pets') loadPets();
     if (v === 'notifications') { loadIncidents(); loadPets(); }
   };
@@ -188,11 +206,19 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
       <style>{STYLES}</style>
       <div className="cho-layout">
 
+        {/* mobile overlay backdrop */}
+        <div className={`cho-overlay ${mobileNavOpen ? 'open' : ''}`} onClick={() => setMobileNavOpen(false)} />
+
         {/* sidebar */}
-        <div className="cho-sidebar">
-          <div className="cho-sidebar-logo">
-            <h2 style={{display:"flex",alignItems:"center",gap:8}}><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>NASaAlaga</h2>
-            <p>City Health Office Portal</p>
+        <div className={`cho-sidebar ${mobileNavOpen ? 'open' : ''}`}>
+          <div className="cho-sidebar-logo" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+            <div>
+              <h2 style={{display:"flex",alignItems:"center",gap:8}}><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>NASaAlaga</h2>
+              <p>City Health Office Portal</p>
+            </div>
+            <button className="cho-menu-btn" style={{color:'#fff',marginRight:0}} onClick={() => setMobileNavOpen(false)} aria-label="Close menu">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
           <div className="cho-sidebar-role">
             <p>Logged in as</p>
@@ -230,8 +256,13 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
         {/* main */}
         <div className="cho-main">
           <div className="cho-topbar">
-            <div className="cho-topbar-title">
-              {NAV_ITEMS.find(n=>n.id===view)?.label}
+            <div style={{display:'flex',alignItems:'center'}}>
+              <button className="cho-menu-btn" onClick={() => setMobileNavOpen(true)} aria-label="Open menu">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              </button>
+              <div className="cho-topbar-title">
+                {NAV_ITEMS.find(n=>n.id===view)?.label}
+              </div>
             </div>
             <div className="cho-topbar-user">
               <div style={{textAlign:'right'}}>
@@ -267,6 +298,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                     Loading records…
                   </div>
                 ) : (
+                  <div style={{ overflowX: 'auto' }}>
                   <table className="cho-pet-table">
                     <thead>
                       <tr>
@@ -320,6 +352,7 @@ export function CityHealthDashboard({ user, onLogout }: Props) {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}

@@ -635,6 +635,7 @@ export function BitingIncidents({ userRole }: Props) {
           ) : filtered.length === 0 ? (
             <div className="bi-empty"><p>No biting incidents found.</p></div>
           ) : (
+            <div style={{ overflowX: 'auto' }}>
             <table className="bi-table">
               <thead>
                 <tr>
@@ -690,6 +691,7 @@ export function BitingIncidents({ userRole }: Props) {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

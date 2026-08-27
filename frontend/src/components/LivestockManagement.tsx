@@ -1205,6 +1205,7 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {mortality.length===0?<div className="py-10 text-center"><Skull className="w-8 h-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">No mortality records</p></div>
             :<>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="bg-gray-50 border-b border-gray-100">{['Type','Breed','Owner','Barangay','Qty Dead','Cause','Date','Status',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
@@ -1243,6 +1244,7 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
                 </tr>
               </tfoot>
             </table>
+            </div>
             </>}
           </div>
         </div>

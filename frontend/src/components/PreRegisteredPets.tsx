@@ -328,6 +328,7 @@ export function PreRegisteredPets() {
           ) : filtered.length === 0 ? (
             <div className="prl-empty"><div className="prl-empty-ico"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>No pre-registrations found.</p></div>
           ) : (
+            <div style={{ overflowX: 'auto' }}>
             <table className="prl-table">
               <thead>
                 <tr>
@@ -370,6 +371,7 @@ export function PreRegisteredPets() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

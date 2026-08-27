@@ -62,28 +62,28 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
 
   return (
     <header className="bg-gradient-to-r from-[#2B5EA6] to-[#3d7ac7] text-white shadow-xl">
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between">
+      <div className="px-3 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center justify-between gap-2">
           {/* Left — logo + title */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {onMenuClick && (
               <button onClick={onMenuClick}
-                className="lg:hidden p-2 hover:bg-white/20 rounded-lg transition-all duration-200"
+                className="lg:hidden p-2 -ml-1 hover:bg-white/20 rounded-lg transition-all duration-200 shrink-0"
                 aria-label="Toggle menu">
                 <Menu className="w-6 h-6" />
               </button>
             )}
             <img src={logoImage} alt="Calaca City Logo"
               onError={e => { e.currentTarget.style.opacity = '0'; }}
-              className="w-14 h-14 drop-shadow-lg" />
-            <div className="flex flex-col">
-              <h1 className="text-xl font-bold text-white drop-shadow-md">NASaAlaga</h1>
+              className="w-9 h-9 sm:w-14 sm:h-14 drop-shadow-lg shrink-0" />
+            <div className="flex flex-col min-w-0">
+              <h1 className="text-base sm:text-xl font-bold text-white drop-shadow-md truncate">NASaAlaga</h1>
               <p className="text-xs text-blue-100 hidden sm:block">Veterinary Management System</p>
             </div>
           </div>
 
           {/* Right — status badges + user dropdown */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full">
               <CheckCircle className="w-4 h-4 text-green-300" />
               <span className="text-sm text-green-100">System Online</span>
@@ -94,7 +94,7 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
             </div>
 
             {/* Notifications */}
-            <button className="relative p-2.5 hover:bg-white/20 rounded-full transition-all duration-200">
+            <button className="relative p-2 sm:p-2.5 hover:bg-white/20 rounded-full transition-all duration-200">
               <Bell className="w-5 h-5" />
               <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F39C3A] rounded-full animate-pulse" />
             </button>
@@ -104,8 +104,8 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
               <button
                 onClick={() => setDropOpen(v => !v)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '6px 14px 6px 8px',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '4px 10px 4px 4px',
                   background: 'rgba(255,255,255,0.15)',
                   backdropFilter: 'blur(8px)',
                   border: '1px solid rgba(255,255,255,0.2)',
@@ -132,6 +132,7 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
                 <div style={{
                   position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 1000,
                   background: 'white', borderRadius: 14, width: 220,
+                  maxWidth: 'calc(100vw - 24px)',
                   boxShadow: '0 12px 40px rgba(0,0,0,0.18)', border: '1px solid #e5e7eb',
                   overflow: 'hidden',
                 }}>
@@ -198,7 +199,7 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
       </div>
 
       {/* ISO Compliance Banner */}
-      <div className="bg-black/10 backdrop-blur-sm px-6 py-2 text-xs text-blue-50 flex items-center justify-center gap-8 flex-wrap">
+      <div className="bg-black/10 backdrop-blur-sm px-3 py-1.5 sm:px-6 sm:py-2 text-[10px] sm:text-xs text-blue-50 flex items-center justify-center gap-3 sm:gap-8 flex-wrap">
         <span className="flex items-center gap-1">✓ ISO 9001:2015</span>
         <span className="flex items-center gap-1">✓ ISO 27001</span>
         <span className="flex items-center gap-1">✓ ISO 22301</span>

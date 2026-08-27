@@ -206,6 +206,7 @@ export function LivestockPreRegistration({ ownerId, ownerEmail, userRole, barang
             No livestock pre-registrations found
           </div>
         ) : (
+          <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f9fafb', borderBottom: '2px solid #f3f4f6' }}>
@@ -245,6 +246,7 @@ export function LivestockPreRegistration({ ownerId, ownerEmail, userRole, barang
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
