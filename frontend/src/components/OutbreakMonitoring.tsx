@@ -881,10 +881,24 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
           <p style={{ color: '#9ca3af', fontSize: 14 }}>Loading outbreak data…</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: view === 'split' && activeTab === 'active' ? '1fr 360px' : '1fr', gap: 16 }}>
+        <div
+          className="ob-split-grid"
+          style={{ display: 'grid', gridTemplateColumns: view === 'split' && activeTab === 'active' ? '1fr 360px' : '1fr', gap: 16 }}
+        >
+          <style>{`
+            @media (max-width: 768px) {
+              .ob-split-grid {
+                grid-template-columns: 1fr !important;
+              }
+              .ob-list-col {
+                max-height: none !important;
+                overflow-y: visible !important;
+              }
+            }
+          `}</style>
           {/* MAP — only show for active tab */}
           {view !== 'list' && activeTab === 'active' && (
-            <div style={{ background: '#fff', borderRadius: 18, padding: 16, boxShadow: '0 4px 16px rgba(0,0,0,.07)', border: '1.5px solid #e5e7eb' }}>
+            <div className="ob-map-tile" style={{ background: '#fff', borderRadius: 18, padding: 16, boxShadow: '0 4px 16px rgba(0,0,0,.07)', border: '1.5px solid #e5e7eb' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: '#374151', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Layers size={15} style={{ color: '#2B5EA6' }} />Disease Map — Calaca City
@@ -897,7 +911,7 @@ export function OutbreakMonitoring({ userRole, currentUser }: Props) {
 
           {/* LIST */}
           {view !== 'map' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: view === 'split' && activeTab === 'active' ? 540 : 'auto', overflowY: view === 'split' && activeTab === 'active' ? 'auto' : 'visible' }}>
+            <div className="ob-list-col" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: view === 'split' && activeTab === 'active' ? 540 : 'auto', overflowY: view === 'split' && activeTab === 'active' ? 'auto' : 'visible' }}>
               {filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 16, border: '1.5px dashed #e5e7eb' }}>
                   <Shield size={36} style={{ color: '#d1d5db', margin: '0 auto 10px' }} />
