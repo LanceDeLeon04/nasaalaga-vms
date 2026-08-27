@@ -1281,6 +1281,7 @@ if (isMain) {
     .then(() => migrateOfficeBudgetColumns())
     .then(() => migrateInventoryDosage())
     .then(() => migrateInventoryLotColumns())
+    .then(() => migrateNotifications())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);

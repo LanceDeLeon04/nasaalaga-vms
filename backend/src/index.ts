@@ -9,7 +9,7 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns } from './db/migrate';
 
 dotenv.config();
 
@@ -69,6 +69,7 @@ const runMigrations = async () => {
   await migrateLivestockPreReg();
   await migrateProfileColumns();
   await migrateInventoryV3();
+  await migrateOfficeBudgetColumns();
   await migrateDispatch();
   await migrateInventoryDosage();
   await migrateInventoryLotColumns();
