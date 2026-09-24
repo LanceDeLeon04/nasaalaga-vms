@@ -51,3 +51,16 @@
 
 ## Migrations
 Run `npm run db:migrate` then `npm run db:seed` for new tables and initial data.
+
+## Backup & Restore
+
+Super Admin → **Backup & Restore** (Control Panel).
+
+- **Automatic backups** run inside the API server (hourly / every 6 h / daily / weekly, configurable, with retention). The job checks every 5 minutes and catches up after a restart or redeploy; a Postgres advisory lock keeps multiple instances from running it twice.
+- **Manual backups**, **download** (`.json.gz`), **upload**, **verify** (checksum + structure) and **restore**.
+- **Restore is atomic** — one transaction; any failure rolls back and leaves data untouched. A safety snapshot is taken before every restore and before *Clear Records*.
+- Header/sidebar badges show live backup health (Active / Overdue / Failing / None yet).
+- No `pg_dump` needed. Optional `BACKUP_DIR` mirrors files to a Railway volume.
+- Backups live in the same database by default — **download copies regularly** or enable Railway's own Postgres backups for disaster recovery.
+
+API: `GET /api/backup/status` (admin+), everything else under `/api/backup` is superadmin-only.

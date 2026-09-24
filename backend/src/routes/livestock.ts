@@ -219,7 +219,7 @@ router.get('/mortality/all', authenticate, async (req: AuthRequest, res: Respons
   try {
     const isBahw = req.user?.role === 'bahw';
     const sql = isBahw
-      ? `SELECT * FROM livestock_mortality WHERE ${LIVESTOCK_ONLY} AND barangay=$1 ORDER BY date_reported DESC`
+      ? `SELECT * FROM livestock_mortality WHERE ${LIVESTOCK_ONLY} AND LOWER(barangay)=LOWER($1) ORDER BY date_reported DESC`
       : `SELECT * FROM livestock_mortality WHERE ${LIVESTOCK_ONLY} ORDER BY date_reported DESC`;
     const result = await query(sql, isBahw ? [req.user?.barangay] : []);
     return res.json({ mortality: result.rows });

@@ -187,6 +187,43 @@ export const api = {
     request('/deployments/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDeployment: (id: string) =>
     request('/deployments/' + id, { method: 'DELETE' }),
+  // ── Backup & restore (superadmin; status also admin) ──
+  getBackupStatus: () => request('/backup/status'),
+  listBackups: () => request('/backup'),
+  createBackup: (note?: string) =>
+    request('/backup', { method: 'POST', body: JSON.stringify({ note }) }),
+  updateBackupSettings: (data: { autoBackup?: boolean; frequency?: string; retention?: number }) =>
+    request('/backup/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  verifyBackup: (id: string) =>
+    request('/backup/' + id + '/verify', { method: 'POST' }),
+  restoreBackup: (id: string) =>
+    request('/backup/' + id + '/restore', { method: 'POST', body: JSON.stringify({ confirm: 'RESTORE' }) }),
+  deleteBackup: (id: string) =>
+    request('/backup/' + id, { method: 'DELETE' }),
+  /** Downloads the .json.gz through fetch so the auth header is sent, then triggers a browser save. */
+  downloadBackup: async (id: string, filename: string) => {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/backup/${id}/download`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  },
+  importBackup: async (file: File) => {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/backup/import?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: file,
+    });
+    const body = await res.json().catch(() => ({ error: 'Upload failed' }));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+  },
   clearRecords: (type: 'pets' | 'livestock' | 'all') =>
     request('/superadmin/clear-records', { method: 'DELETE', body: JSON.stringify({ type }) }),
   getMedicines: () => request('/inventory/medicines'),

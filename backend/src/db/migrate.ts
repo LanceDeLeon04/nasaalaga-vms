@@ -414,6 +414,40 @@ export const createTables = async () => {
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS tag_number VARCHAR(100)`);
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_date DATE`);
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS quarantine_reason TEXT`);
+
+    // ── Legacy death data backfill (idempotent) ────────────────────────────
+    // Bring pre-existing death data into the two separate validation modules so
+    // it shows up and can be validated. Runs here because it needs both the
+    // pets and livestock tables to exist.
+    await client.query(`UPDATE livestock_mortality SET validation_status='Pending' WHERE validation_status IS NULL`);
+    await client.query(`UPDATE livestock_mortality SET record_kind='Livestock' WHERE record_kind IS NULL`);
+    // Pets already marked Deceased that have no death report → Pending pet report
+    await client.query(`
+      INSERT INTO pet_death_reports
+        (pet_id, pet_name, species, breed, owner_name, barangay, cause, date_of_death,
+         notes, reported_by, reported_by_role, validation_status, created_at, updated_at)
+      SELECT p.id, p.pet_name, p.species, p.breed, p.owner_name, p.barangay,
+             'Not specified (legacy record)', COALESCE(p.updated_at::date, CURRENT_DATE),
+             'Auto-created from a pet already marked Deceased before pet death validation was separated. Needs validation.',
+             'system', 'system', 'Pending', COALESCE(p.updated_at, NOW()), NOW()
+      FROM pets p
+      WHERE p.status = 'Deceased'
+        AND NOT EXISTS (SELECT 1 FROM pet_death_reports d WHERE d.pet_id = p.id)
+    `);
+    // Livestock already marked Dead that have no mortality report → Pending livestock report
+    await client.query(`
+      INSERT INTO livestock_mortality
+        (livestock_id, animal_type, breed, owner_name, barangay, quantity, cause, date_reported,
+         notes, created_by, record_kind, reported_by, reported_by_role, validation_status)
+      SELECT l.id, l.animal_type, l.breed, l.owner_name, l.barangay, COALESCE(l.quantity, 1),
+             'Not specified (legacy record)', COALESCE(l.updated_at::date, CURRENT_DATE),
+             'Auto-created from livestock already marked Dead before livestock death validation was separated. Needs validation.',
+             'system', 'Livestock', 'system', 'system', 'Pending'
+      FROM livestock l
+      WHERE l.health_status = 'Dead'
+        AND NOT EXISTS (SELECT 1 FROM livestock_mortality m WHERE m.livestock_id = l.id)
+      ON CONFLICT DO NOTHING
+    `);
     await client.query(`ALTER TABLE livestock ADD COLUMN IF NOT EXISTS farm_type VARCHAR(50) DEFAULT 'Backyard'`);
     await client.query(`ALTER TABLE livestock ALTER COLUMN owner_id DROP NOT NULL`);
 
@@ -1349,6 +1383,7 @@ if (isMain) {
     .then(() => migrateInventoryDosage())
     .then(() => migrateInventoryLotColumns())
     .then(() => migrateNotifications())
+    .then(() => migrateBackups())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1465,6 +1500,59 @@ export async function migrateNotifications() {
     console.log('✅ user_notifications table ready');
   } catch (err) {
     console.error('❌ Notifications migration failed:', err);
+  } finally {
+    client.release();
+  }
+}
+
+// ── Backup & restore ────────────────────────────────────────────────────────
+// `backups` stores each snapshot as a gzip-compressed JSON blob (BYTEA) so a
+// backup survives redeploys / container restarts (Railway's filesystem is
+// ephemeral). `admin_settings` gets a retention column for the auto-backup job.
+export async function migrateBackups() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS backups (
+        id                 VARCHAR(60) PRIMARY KEY,
+        filename           VARCHAR(255) NOT NULL,
+        type               VARCHAR(20)  NOT NULL DEFAULT 'manual',   -- manual | auto | pre-restore | pre-clear | imported
+        status             VARCHAR(20)  NOT NULL DEFAULT 'running',  -- running | completed | failed
+        note               TEXT,
+        created_by         VARCHAR(255),
+        size_bytes         BIGINT,
+        uncompressed_bytes BIGINT,
+        table_count        INTEGER,
+        row_count          BIGINT,
+        checksum           VARCHAR(64),
+        error              TEXT,
+        data               BYTEA,
+        created_at         TIMESTAMPTZ DEFAULT NOW(),
+        completed_at       TIMESTAMPTZ
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_backups_created ON backups (created_at DESC)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_backups_type_status ON backups (type, status, created_at DESC)`);
+    await client.query(`ALTER TABLE admin_settings ADD COLUMN IF NOT EXISTS backup_retention INTEGER DEFAULT 14`);
+
+    // A crash / redeploy mid-backup leaves a 'running' row behind forever.
+    await client.query(
+      `UPDATE backups SET status='failed', error='Interrupted (server restarted during backup)', completed_at=NOW()
+       WHERE status='running'`
+    );
+    // Normalise legacy free-text frequency values ("Daily", "every day", ...) to the supported set.
+    await client.query(`
+      UPDATE admin_settings SET backup_frequency = CASE
+        WHEN LOWER(backup_frequency) LIKE '%week%' THEN 'weekly'
+        WHEN LOWER(backup_frequency) LIKE '%6%'    THEN 'every_6_hours'
+        WHEN LOWER(backup_frequency) LIKE '%hour%' THEN 'hourly'
+        ELSE 'daily' END
+      WHERE backup_frequency IS NULL OR backup_frequency NOT IN ('hourly','every_6_hours','daily','weekly')
+    `);
+    console.log('✅ backups table ready');
+  } catch (err) {
+    console.error('❌ Backups migration failed:', err);
+    throw err;
   } finally {
     client.release();
   }

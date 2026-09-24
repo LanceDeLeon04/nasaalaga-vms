@@ -1,8 +1,9 @@
 import { Router, Response } from 'express';
-import { query } from '../db';
+import pool, { query } from '../db';
 import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { createBackup, normalizeFrequency } from '../services/backup';
 
 const router = Router();
 
@@ -604,7 +605,8 @@ router.get('/admin/settings', authenticate, async (req: AuthRequest, res: Respon
       emailNotifications: s.email_notifications ?? true,
       smsNotifications: s.sms_notifications ?? false,
       autoBackup: s.auto_backup ?? true,
-      backupFrequency: s.backup_frequency || 'daily',
+      backupFrequency: normalizeFrequency(s.backup_frequency),
+      backupRetention: s.backup_retention || 14,
       sessionTimeout: s.session_timeout || 480,
       maxLoginAttempts: s.max_login_attempts || 5,
     }});
@@ -616,19 +618,23 @@ router.get('/admin/settings', authenticate, async (req: AuthRequest, res: Respon
 router.put('/admin/settings', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const d = req.body;
+    const d = req.body || {};
+    // Backup fields are optional here (the Backup panel owns them via PUT /backup/settings).
+    // COALESCE means an omitted/undefined field never overwrites the stored value.
+    const autoBackup = typeof d.autoBackup === 'boolean' ? d.autoBackup : null;
+    const backupFrequency = d.backupFrequency ? normalizeFrequency(d.backupFrequency) : null;
     const existing = await query('SELECT id FROM admin_settings LIMIT 1');
     if (existing.rows.length > 0) {
       await query(
         `UPDATE admin_settings SET system_name=$1, city=$2, province=$3, email_notifications=$4, sms_notifications=$5,
-         auto_backup=$6, backup_frequency=$7, session_timeout=$8, max_login_attempts=$9, updated_at=NOW()`,
-        [d.systemName, d.city, d.province, d.emailNotifications, d.smsNotifications, d.autoBackup, d.backupFrequency, d.sessionTimeout, d.maxLoginAttempts]
+         auto_backup=COALESCE($6, auto_backup), backup_frequency=COALESCE($7, backup_frequency), session_timeout=$8, max_login_attempts=$9, updated_at=NOW()`,
+        [d.systemName, d.city, d.province, d.emailNotifications, d.smsNotifications, autoBackup, backupFrequency, d.sessionTimeout, d.maxLoginAttempts]
       );
     } else {
       await query(
         `INSERT INTO admin_settings (system_name, city, province, email_notifications, sms_notifications, auto_backup, backup_frequency, session_timeout, max_login_attempts)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [d.systemName, d.city, d.province, d.emailNotifications, d.smsNotifications, d.autoBackup, d.backupFrequency, d.sessionTimeout, d.maxLoginAttempts]
+         VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),COALESCE($7,'daily'),$8,$9)`,
+        [d.systemName, d.city, d.province, d.emailNotifications, d.smsNotifications, autoBackup, backupFrequency, d.sessionTimeout, d.maxLoginAttempts]
       );
     }
     return res.json({ success: true, message: 'Settings updated' });
@@ -862,23 +868,41 @@ router.delete('/deployments/:id', authenticate, async (req: AuthRequest, res: Re
 // ── SuperAdmin: Clear all pets/livestock ──────────────────────────────────
 router.delete('/superadmin/clear-records', authenticate, async (req: AuthRequest, res: Response) => {
   if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Forbidden' });
+  const { type } = req.body || {}; // 'pets', 'livestock', or 'all'
+  if (!['pets', 'livestock', 'all'].includes(type)) return res.status(400).json({ error: "type must be 'pets', 'livestock' or 'all'" });
+
+  // Safety net: never delete data without a fresh, verified snapshot. If the backup fails, abort.
+  let backupId: string;
   try {
-    const { type } = req.body; // 'pets', 'livestock', or 'all'
+    const b = await createBackup('pre-clear', req.user?.username || null, `Automatic snapshot before clearing ${type} records`);
+    backupId = b.id;
+  } catch (err: any) {
+    return res.status(500).json({ error: `Records were NOT cleared because the safety backup failed. ${err.message}` });
+  }
+
+  // All-or-nothing: a failure half-way must not leave pets deleted but pre-registrations intact.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
     if (type === 'pets' || type === 'all') {
-      await query('DELETE FROM pets');
-      await query('DELETE FROM pet_pre_registrations');
-      await query('DELETE FROM lost_found_reports');
+      await client.query('DELETE FROM pets');
+      await client.query('DELETE FROM pet_pre_registrations');
+      await client.query('DELETE FROM lost_found_reports');
     }
     if (type === 'livestock' || type === 'all') {
-      await query('DELETE FROM livestock');
+      await client.query('DELETE FROM livestock');
     }
+    await client.query('COMMIT');
     await query(
       `INSERT INTO audit_logs (user_id, username, user_role, action, resource, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [req.user?.id, req.user?.username, req.user?.role, `Clear_Records_${type.toUpperCase()}`, 'Records', JSON.stringify({ type, clearedAt: new Date() }), req.ip]
+      [req.user?.id, req.user?.username, req.user?.role, `Clear_Records_${type.toUpperCase()}`, 'Records', JSON.stringify({ type, clearedAt: new Date(), safetyBackupId: backupId }), req.ip]
     );
-    return res.json({ success: true, message: `${type} records cleared` });
+    return res.json({ success: true, message: `${type} records cleared`, backupId });
   } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
     return res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

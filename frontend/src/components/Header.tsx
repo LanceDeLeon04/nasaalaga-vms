@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LogOut, Bell, Server, CheckCircle, Settings, Menu, User, ChevronDown, UserCircle2 } from 'lucide-react';
 import type { User as UserType } from '../App';
+import { useBackupStatus, timeAgo, HEALTH_COLOR } from '../hooks/useBackupStatus';
 
 const logoImage = '/images/city-seal.png';
 
@@ -21,6 +22,7 @@ interface HeaderProps {
 export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderProps) {
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
+  const backup = useBackupStatus(user.role);
 
   // Derive avatar: prefer user prop (always fresh from React state), fall back to sessionStorage
   const avatar = user.avatar || (() => {
@@ -88,10 +90,17 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
               <CheckCircle className="w-4 h-4 text-green-300" />
               <span className="text-sm text-green-100">System Online</span>
             </div>
-            <div className="hidden lg:flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full">
-              <Server className="w-4 h-4 text-blue-300" />
-              <span className="text-sm text-blue-100">Backup: Today</span>
-            </div>
+            {backup && (
+              <div className="hidden lg:flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full"
+                title={backup.lastError ? `Last auto-backup failed: ${backup.lastError}` : backup.nextDue ? `Next auto-backup: ${new Date(backup.nextDue).toLocaleString()}` : 'Auto-backup is off'}>
+                <Server className={`w-4 h-4 ${HEALTH_COLOR[backup.health]}`} />
+                <span className={`text-sm ${HEALTH_COLOR[backup.health]}`}>
+                  {backup.health === 'failing' ? 'Backup: Failing'
+                    : backup.health === 'never' ? 'Backup: None yet'
+                    : `Backup: ${timeAgo(backup.lastBackup?.createdAt)}`}
+                </span>
+              </div>
+            )}
 
             {/* Notifications */}
             <button className="relative p-2 sm:p-2.5 hover:bg-white/20 rounded-full transition-all duration-200">

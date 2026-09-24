@@ -9,8 +9,10 @@ import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
 import petDeathRoutes from './routes/petDeaths';
 import lostFoundRoutes from './routes/lostFound';
+import backupRoutes from './routes/backup';
 import apiRoutes from './routes/api';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns } from './db/migrate';
+import { startBackupScheduler, stopBackupScheduler } from './services/backup';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups } from './db/migrate';
 
 dotenv.config();
 
@@ -39,6 +41,7 @@ app.use(`${API}/pets`, petsRoutes);
 app.use(`${API}/livestock`, livestockRoutes);
 app.use(`${API}/pet-deaths`, petDeathRoutes);
 app.use(`${API}/lost-found`, lostFoundRoutes);
+app.use(`${API}/backup`, backupRoutes);
 app.use(`${API}`, apiRoutes);
 
 // ── Serve frontend in production ───────────────────────────────────────────
@@ -76,6 +79,7 @@ const runMigrations = async () => {
   await migrateInventoryDosage();
   await migrateInventoryLotColumns();
   await migrateNotifications();
+  await migrateBackups();
 };
 
 async function start() {
@@ -117,9 +121,17 @@ async function start() {
     verifyEmailConnection().catch((err) => {
       console.error('[Email] verification threw unexpectedly:', err);
     });
+
+    // Auto-backup job (reads admin_settings each tick, so toggling in the UI takes effect without a restart).
+    startBackupScheduler();
   });
 }
 
 start();
+
+// Let an in-flight backup/restore finish its DB statements before Railway kills the container.
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => { stopBackupScheduler(); setTimeout(() => process.exit(0), 3000).unref(); });
+}
 
 export default app;

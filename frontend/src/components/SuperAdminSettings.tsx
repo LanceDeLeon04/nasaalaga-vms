@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Save, Plus, Trash2, Edit2, Database, Shield, AlertTriangle,
-  Bell, Zap, Power, RefreshCw, X, CheckCircle
+  Bell, Zap, Power, RefreshCw, X, CheckCircle, HardDriveDownload
 } from 'lucide-react';
 import { RuleEnginePanel } from './RuleEnginePanel';
+import { BackupManager } from './BackupManager';
 import { api } from '../lib/api';
 import type { User } from '../App';
 
 interface Props { user: User }
-type Section = 'maintenance' | 'clearrecords' | 'thresholds' | 'recommendations' | 'rules' | 'database';
+type Section = 'maintenance' | 'backup' | 'clearrecords' | 'thresholds' | 'recommendations' | 'rules' | 'database';
 
-function OtpModal({ onConfirm, onCancel, userEmail }: { onConfirm: () => void; onCancel: () => void; userEmail: string }) {
+function OtpModal({ onConfirm, onCancel, userEmail, warning = 'This will permanently delete records', confirmLabel = 'Confirm & Clear' }: { onConfirm: () => void; onCancel: () => void; userEmail: string; warning?: string; confirmLabel?: string }) {
   const [step, setStep] = useState<'send' | 'verify'>('send');
   const [otp, setOtp] = useState('');
   const [sending, setSending] = useState(false);
@@ -43,7 +44,7 @@ function OtpModal({ onConfirm, onCancel, userEmail }: { onConfirm: () => void; o
           {step === 'send' ? (
             <>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
-                <p className="text-amber-800 text-sm font-semibold">This will permanently delete records</p>
+                <p className="text-amber-800 text-sm font-semibold">{warning}</p>
                 <p className="text-amber-700 text-sm mt-1">An OTP will be sent to your registered personal email.</p>
               </div>
               <p className="text-gray-600 text-sm mb-5">OTP will be sent to: <strong>{userEmail}</strong></p>
@@ -64,7 +65,7 @@ function OtpModal({ onConfirm, onCancel, userEmail }: { onConfirm: () => void; o
               <div className="flex gap-3">
                 <button onClick={onCancel} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
                 <button onClick={handleVerify} disabled={verifying} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 disabled:opacity-60">
-                  {verifying ? 'Verifying...' : 'Confirm & Clear'}
+                  {verifying ? 'Verifying...' : confirmLabel}
                 </button>
               </div>
             </>
@@ -89,6 +90,7 @@ export function SuperAdminSettings({ user }: Props) {
   const [showOtp, setShowOtp] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearSuccess, setClearSuccess] = useState('');
+  const [otpAction, setOtpAction] = useState<{ title: string; warning: string; confirmLabel: string; run: () => Promise<void> } | null>(null);
 
   // OTP is sent to personal email; API uses nexgov email
   const OTP_EMAIL_MAP: Record<string, string> = {
@@ -130,7 +132,8 @@ export function SuperAdminSettings({ user }: Props) {
     setShowOtp(false); setClearing(true);
     try {
       await api.clearRecords(clearType);
-      setClearSuccess(`${clearType === 'all' ? 'All animal' : clearType} records cleared.`);
+      window.dispatchEvent(new Event('nasaalaga_backup_changed'));
+      setClearSuccess(`${clearType === 'all' ? 'All animal' : clearType} records cleared. A safety backup was taken first — restore it from Backup & Restore if needed.`);
       setTimeout(() => setClearSuccess(''), 6000);
     } catch(e: any) { alert('Failed: ' + e.message); }
     setClearing(false); setClearType(null);
@@ -145,7 +148,12 @@ export function SuperAdminSettings({ user }: Props) {
 
   const saveSettings = async () => {
     setSaving(true);
-    try { await api.updateAdminSettings(settings); alert('Settings saved!'); }
+    try {
+      // Backup schedule is owned by the Backup & Restore panel — never send it from here (would overwrite it with stale values).
+      const { autoBackup, backupFrequency, backupRetention, ...rest } = settings;
+      await api.updateAdminSettings(rest);
+      alert('Settings saved!');
+    }
     catch(e: any) { alert('Error: ' + e.message); }
     setSaving(false);
   };
@@ -168,6 +176,7 @@ export function SuperAdminSettings({ user }: Props) {
 
   const navItems = [
     { id: 'maintenance' as Section, label: 'Maintenance Mode', icon: Power, desc: 'Lock system access' },
+    { id: 'backup' as Section, label: 'Backup & Restore', icon: HardDriveDownload, desc: 'Snapshots, schedule, recovery' },
     { id: 'clearrecords' as Section, label: 'Clear Records', icon: Trash2, desc: 'Delete animal data + OTP' },
     { id: 'thresholds' as Section, label: 'Alert Thresholds', icon: AlertTriangle, desc: 'Configure alert limits' },
     { id: 'recommendations' as Section, label: 'Recommendations', icon: Bell, desc: 'Manage action items' },
@@ -190,6 +199,11 @@ export function SuperAdminSettings({ user }: Props) {
           <p className="text-blue-200 text-sm">Full system access · {user.username}</p>
         </div>
       </div>
+
+      {otpAction && (
+        <OtpModal userEmail={userApiEmail || 'deleonlance@nexgov.ph'} warning={otpAction.warning} confirmLabel={otpAction.confirmLabel}
+          onConfirm={() => { const a = otpAction; setOtpAction(null); a.run(); }} onCancel={() => setOtpAction(null)} />
+      )}
 
       {showOtp && clearType && (
         <OtpModal userEmail={userApiEmail || 'deleonlance@nexgov.ph'} onConfirm={handleClearConfirmed} onCancel={() => { setShowOtp(false); setClearType(null); }} />
@@ -214,6 +228,9 @@ export function SuperAdminSettings({ user }: Props) {
 
         {/* Content */}
         <div className="lg:col-span-3">
+
+          {/* BACKUP & RESTORE */}
+          {activeSection === 'backup' && <BackupManager requestOtp={setOtpAction} />}
 
           {/* MAINTENANCE */}
           {activeSection === 'maintenance' && (
@@ -411,7 +428,6 @@ export function SuperAdminSettings({ user }: Props) {
                     { label: 'System Name', key: 'systemName' },
                     { label: 'City', key: 'city' },
                     { label: 'Province', key: 'province' },
-                    { label: 'Backup Frequency', key: 'backupFrequency' },
                     { label: 'Session Timeout (min)', key: 'sessionTimeout', type: 'number' },
                     { label: 'Max Login Attempts', key: 'maxLoginAttempts', type: 'number' },
                   ].map(({ label, key, type }) => (
@@ -427,7 +443,6 @@ export function SuperAdminSettings({ user }: Props) {
                   {[
                     { label: 'Email Notifications', key: 'emailNotifications' },
                     { label: 'SMS Notifications', key: 'smsNotifications' },
-                    { label: 'Auto Backup', key: 'autoBackup' },
                   ].map(({ label, key }) => (
                     <div key={key} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
                       <span className="text-sm font-semibold text-gray-700">{label}</span>

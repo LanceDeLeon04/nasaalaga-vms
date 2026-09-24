@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 import { useState, useEffect } from 'react';
+import { useBackupStatus, timeAgo, HEALTH_LABEL, HEALTH_COLOR, HEALTH_DOT } from '../hooks/useBackupStatus';
 
 interface SidebarProps {
   activeView: ActiveView;
@@ -17,6 +18,7 @@ interface SidebarProps {
 
 export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, onClose }: SidebarProps) {
   const [, forceUpdate] = useState(0);
+  const backup = useBackupStatus(userRole);
   useEffect(() => {
     const refresh = () => forceUpdate(n => n + 1);
     window.addEventListener('nasaalaga_profile_updated', refresh);
@@ -119,14 +121,16 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
             <div className="space-y-2.5 text-xs">
               <div className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
                 <span className="text-gray-100">Recovery</span>
-                <span className="text-green-300 flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-300 rounded-full" /> Ready
+                <span className={`${backup?.lastBackup ? 'text-green-300' : 'text-amber-300'} flex items-center gap-1`}>
+                  <span className={`w-2 h-2 rounded-full ${backup?.lastBackup ? 'bg-green-300' : 'bg-amber-300'}`} />
+                  {backup?.lastBackup ? 'Ready' : 'No backup'}
                 </span>
               </div>
-              <div className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
+              <div className="flex justify-between items-center p-2 bg-white/5 rounded-lg" title={backup?.lastBackup ? `Last backup ${timeAgo(backup.lastBackup.createdAt)}` : ''}>
                 <span className="text-gray-100">Backup</span>
-                <span className="text-green-300 flex items-center gap-1">
-                  <span className="w-2 h-2 bg-green-300 rounded-full" /> Active
+                <span className={`${backup ? HEALTH_COLOR[backup.health] : 'text-gray-300'} flex items-center gap-1`}>
+                  <span className={`w-2 h-2 rounded-full ${backup ? HEALTH_DOT[backup.health] : 'bg-gray-400'}`} />
+                  {backup ? HEALTH_LABEL[backup.health] : '…'}
                 </span>
               </div>
               <div className="flex justify-between items-center p-2 bg-white/5 rounded-lg">
