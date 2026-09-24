@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
-import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList, MessageSquare, CalendarClock } from 'lucide-react';
+import { PawPrint, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Syringe, X, Heart, Search, MapPin, Phone, Menu, Plus, ClipboardList, MessageSquare, CalendarClock, Skull, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
 import { CVOServicesShared } from './CVOServicesShared';
@@ -37,7 +37,7 @@ interface Pet {
   vaccinationStatus: 'Vaccinated' | 'Not Vaccinated' | 'Due Soon';
   lastVaccinationDate?: string;
   nextVaccinationDate?: string;
-  status: 'Active' | 'Lost' | 'Found';
+  status: 'Active' | 'Lost' | 'Found' | 'Deceased';
   photo?: string;
   petTagId?: string;
 }
@@ -86,6 +86,19 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
   const [vaxCardPet, setVaxCardPet] = useState<any>(null);
   const [vaxCardHistory, setVaxCardHistory] = useState<any[]>([]);
 
+  // Report Death / Expired
+  const [showDeathModal, setShowDeathModal] = useState(false);
+  const [deathTargetPet, setDeathTargetPet] = useState<Pet | null>(null);
+  const [deathForm, setDeathForm] = useState({ cause: '', dateReported: new Date().toISOString().split('T')[0], notes: '', photoUrl: '' });
+  const [savingDeath, setSavingDeath] = useState(false);
+  const deathFileRef = useRef<HTMLInputElement>(null);
+  const onDeathPhoto = (e: { target: HTMLInputElement }) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => setDeathForm(p => ({ ...p, photoUrl: ev.target?.result as string }));
+    r.readAsDataURL(f);
+  };
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [lostFoundReports, setLostFoundReports] = useState<LostFoundReport[]>([]);
@@ -323,6 +336,41 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
     }
   };
 
+  const openDeathModal = (pet: Pet) => {
+    setDeathTargetPet(pet);
+    setDeathForm({ cause: '', dateReported: new Date().toISOString().split('T')[0], notes: '', photoUrl: '' });
+    setShowDeathModal(true);
+  };
+
+  const handleReportDeath = async () => {
+    if (!deathTargetPet || !deathForm.cause || savingDeath) return;
+    setSavingDeath(true);
+    try {
+      await api.addMortality({
+        recordKind: 'Pet',
+        petId: deathTargetPet.id,
+        animalType: deathTargetPet.species,
+        breed: deathTargetPet.breed,
+        ownerName: deathTargetPet.ownerName || user.username,
+        barangay: deathTargetPet.barangay,
+        quantity: 1,
+        cause: deathForm.cause,
+        dateReported: deathForm.dateReported,
+        notes: deathForm.notes,
+        photoUrl: deathForm.photoUrl || undefined,
+      });
+      setPets(prev => prev.map(p => p.id === deathTargetPet.id ? { ...p, status: 'Deceased' } : p));
+      setShowDeathModal(false);
+      setDeathTargetPet(null);
+      toast.success('Death/expired report submitted successfully.');
+    } catch (error: any) {
+      console.error('Error reporting pet death:', error);
+      toast.error(error?.message || 'Failed to submit death report');
+    } finally {
+      setSavingDeath(false);
+    }
+  };
+
   const handleDownloadCertificate = async (pet: Pet) => {
     try {
       const { default: jsPDF } = await import('jspdf');
@@ -546,6 +594,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
               <div className={`h-2 ${
                 pet.status === 'Lost' ? 'bg-red-500' : 
                 pet.status === 'Found' ? 'bg-green-500' : 
+                pet.status === 'Deceased' ? 'bg-gray-500' :
                 'bg-[#2B5EA6]'
               }`}></div>
               <div className="p-6">
@@ -578,7 +627,9 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                     </span>
                     {pet.status !== 'Active' && (
                       <span className={`inline-block ml-2 px-2 py-1 text-xs rounded-full ${
-                        pet.status === 'Lost' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                        pet.status === 'Lost' ? 'bg-red-100 text-red-800' :
+                        pet.status === 'Deceased' ? 'bg-gray-200 text-gray-700' :
+                        'bg-green-100 text-green-800'
                       }`}>
                         {pet.status}
                       </span>
@@ -618,6 +669,15 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                     Vax Card
                   </button>
                 </div>
+                {pet.status !== 'Deceased' && (
+                  <button
+                    onClick={() => openDeathModal(pet)}
+                    className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-400 text-gray-600 rounded-md hover:bg-gray-600 hover:text-white transition-colors text-sm"
+                  >
+                    <Skull className="w-4 h-4" />
+                    Report Death / Expired
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -1311,6 +1371,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                   <span className={`inline-block px-2 py-1 text-xs rounded-full ${
                     selectedPet.status === 'Active' ? 'bg-blue-100 text-blue-800' :
                     selectedPet.status === 'Lost' ? 'bg-red-100 text-red-800' :
+                    selectedPet.status === 'Deceased' ? 'bg-gray-200 text-gray-700' :
                     'bg-green-100 text-green-800'
                   }`}>
                     {selectedPet.status}
@@ -1377,6 +1438,79 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
           history={vaxCardHistory}
           onClose={() => { setVaxCardPet(null); setVaxCardHistory([]); }}
         />
+      )}
+
+      {showDeathModal && deathTargetPet && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDeathModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Skull className="w-5 h-5 text-gray-600" />
+                Report Death / Expired
+              </h3>
+              <button onClick={() => setShowDeathModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Reporting for <strong>{deathTargetPet.petName}</strong> ({deathTargetPet.species}). This will mark the pet as Deceased.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cause of Death *</label>
+                <input
+                  value={deathForm.cause}
+                  onChange={e => setDeathForm(p => ({ ...p, cause: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  placeholder="Illness, old age, accident, unknown…"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date</label>
+                <input
+                  type="date"
+                  value={deathForm.dateReported}
+                  onChange={e => setDeathForm(p => ({ ...p, dateReported: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label>
+                <textarea
+                  value={deathForm.notes}
+                  onChange={e => setDeathForm(p => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Photo (optional)</label>
+                <input ref={deathFileRef} type="file" accept="image/*" onChange={onDeathPhoto} className="hidden" />
+                {deathForm.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={deathForm.photoUrl} alt="Death record" className="w-16 h-16 object-cover rounded-md border border-gray-200" />
+                    <button type="button" onClick={() => deathFileRef.current?.click()} className="text-xs font-semibold text-gray-600 hover:underline">Replace photo</button>
+                    <button type="button" onClick={() => setDeathForm(p => ({ ...p, photoUrl: '' }))} className="text-xs font-semibold text-gray-400 hover:underline">Remove</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => deathFileRef.current?.click()} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-md text-sm text-gray-500 font-semibold hover:bg-gray-50">
+                    Attach photo
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setShowDeathModal(false)} className="flex-1 py-2 border border-gray-200 rounded-md text-sm hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleReportDeath}
+                disabled={!deathForm.cause || savingDeath}
+                className="flex-1 py-2 bg-gray-700 text-white rounded-md text-sm font-bold hover:bg-gray-800 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {savingDeath ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Saving…</> : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Footer />

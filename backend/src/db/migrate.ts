@@ -142,6 +142,12 @@ export const createTables = async () => {
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS pet_id VARCHAR(50)`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS reported_by VARCHAR(255)`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS reported_by_role VARCHAR(50)`);
+    // ── BAHW/CVO validation of death reports (separate from investigation_status,
+    // which tracks the follow-up investigation once a report is accepted) ──────
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validation_status VARCHAR(20) DEFAULT 'Pending'`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validated_by VARCHAR(255)`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validation_notes TEXT`);
 
     // ── Livestock disease alerts table ─────────────────────────────────────
     await client.query(`

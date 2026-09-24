@@ -94,6 +94,8 @@ export const api = {
     request('/livestock/mortality/' + id, { method: 'DELETE' }),
   updateMortality: (id: number, data: any) =>
     request('/livestock/mortality/' + id, { method: 'PUT', body: JSON.stringify(data) }),
+  validateMortality: (id: number, data: { validationStatus: 'Verified' | 'Rejected'; validationNotes?: string }) =>
+    request('/livestock/mortality/' + id + '/validate', { method: 'PUT', body: JSON.stringify(data) }),
   cleanupDuplicateMortality: () =>
     request('/livestock/mortality/cleanup/duplicates', { method: 'DELETE' }),
   getDiseaseEvents: () => request('/livestock/disease-events/all'),

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
@@ -7,7 +7,7 @@ import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { UserFeedback } from './UserFeedback';
 import { ScheduleModule } from './ScheduleModule';
 import { LostFoundDetailsModal } from './LostFoundDetailsModal';
-import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare, CalendarClock, Plus, MapPin, Heart } from 'lucide-react';
+import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare, CalendarClock, Plus, MapPin, Heart, Skull, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
 
@@ -26,7 +26,7 @@ interface Livestock {
   registrationDate: string;
   lastInspection: string;
   nextInspection: string;
-  healthStatus: 'Healthy' | 'Under Observation' | 'Quarantine';
+  healthStatus: 'Healthy' | 'Under Observation' | 'Quarantine' | 'Dead';
   vaccinationStatus: 'Up to Date' | 'Due Soon' | 'Overdue';
 }
 
@@ -84,6 +84,20 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
   });
   // Official barangay names from the database (must match what BAHW accounts are assigned to)
   const [barangayOptions, setBarangayOptions] = useState<string[]>([]);
+
+  // Report Death / Expired
+  const [showDeathModal, setShowDeathModal] = useState(false);
+  const [deathTargetLivestock, setDeathTargetLivestock] = useState<Livestock | null>(null);
+  const [deathForm, setDeathForm] = useState({ quantity: '1', cause: '', dateReported: new Date().toISOString().split('T')[0], notes: '', photoUrl: '' });
+  const [savingDeath, setSavingDeath] = useState(false);
+  const deathFileRef = useRef<HTMLInputElement>(null);
+  const onDeathPhoto = (e: { target: HTMLInputElement }) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = ev => setDeathForm(p => ({ ...p, photoUrl: ev.target?.result as string }));
+    r.readAsDataURL(f);
+  };
 
   useEffect(() => {
     api.getBarangays()
@@ -269,6 +283,41 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
   const filteredLostFoundReports = lostFoundReports.filter(report =>
     lostFoundFilter === 'all' || report.type === lostFoundFilter
   );
+
+  const openDeathModal = (item: Livestock) => {
+    setDeathTargetLivestock(item);
+    setDeathForm({ quantity: '1', cause: '', dateReported: new Date().toISOString().split('T')[0], notes: '', photoUrl: '' });
+    setShowDeathModal(true);
+  };
+
+  const handleReportDeath = async () => {
+    if (!deathTargetLivestock || !deathForm.cause || savingDeath) return;
+    setSavingDeath(true);
+    try {
+      await api.addMortality({
+        recordKind: 'Livestock',
+        livestockId: deathTargetLivestock.id,
+        animalType: deathTargetLivestock.type,
+        breed: deathTargetLivestock.breed,
+        ownerName: user.username,
+        barangay: deathTargetLivestock.barangay,
+        quantity: parseInt(deathForm.quantity) || 1,
+        cause: deathForm.cause,
+        dateReported: deathForm.dateReported,
+        notes: deathForm.notes,
+        photoUrl: deathForm.photoUrl || undefined,
+      });
+      setLivestock(prev => prev.map(l => l.id === deathTargetLivestock.id ? { ...l, healthStatus: 'Dead' } : l));
+      setShowDeathModal(false);
+      setDeathTargetLivestock(null);
+      toast.success('Death/expired report submitted successfully.');
+    } catch (error: any) {
+      console.error('Error reporting livestock death:', error);
+      toast.error(error?.message || 'Failed to submit death report');
+    } finally {
+      setSavingDeath(false);
+    }
+  };
 
   const handleDownloadCertificate = async (livestockItem: Livestock) => {
     try {
@@ -562,6 +611,15 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
                   Certificate
                 </button>
               </div>
+              {item.healthStatus !== 'Dead' && (
+                <button
+                  onClick={() => openDeathModal(item)}
+                  className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-400 text-gray-600 rounded-md hover:bg-gray-600 hover:text-white transition-colors text-sm"
+                >
+                  <Skull className="w-4 h-4" />
+                  Report Death / Expired
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -1248,6 +1306,90 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             setSelectedLostFoundReport(null);
           }}
         />
+      )}
+
+      {showDeathModal && deathTargetLivestock && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDeathModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Skull className="w-5 h-5 text-gray-600" />
+                Report Death / Expired
+              </h3>
+              <button onClick={() => setShowDeathModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Reporting for <strong>{deathTargetLivestock.type}</strong> ({deathTargetLivestock.id}). This will mark the record as Dead.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity Dead *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={deathTargetLivestock.count}
+                  value={deathForm.quantity}
+                  onChange={e => setDeathForm(p => ({ ...p, quantity: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Cause of Death *</label>
+                <input
+                  value={deathForm.cause}
+                  onChange={e => setDeathForm(p => ({ ...p, cause: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  placeholder="Disease, accident, unknown…"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date</label>
+                <input
+                  type="date"
+                  value={deathForm.dateReported}
+                  onChange={e => setDeathForm(p => ({ ...p, dateReported: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label>
+                <textarea
+                  value={deathForm.notes}
+                  onChange={e => setDeathForm(p => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Photo (optional)</label>
+                <input ref={deathFileRef} type="file" accept="image/*" onChange={onDeathPhoto} className="hidden" />
+                {deathForm.photoUrl ? (
+                  <div className="flex items-center gap-3">
+                    <img src={deathForm.photoUrl} alt="Death record" className="w-16 h-16 object-cover rounded-md border border-gray-200" />
+                    <button type="button" onClick={() => deathFileRef.current?.click()} className="text-xs font-semibold text-gray-600 hover:underline">Replace photo</button>
+                    <button type="button" onClick={() => setDeathForm(p => ({ ...p, photoUrl: '' }))} className="text-xs font-semibold text-gray-400 hover:underline">Remove</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => deathFileRef.current?.click()} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-md text-sm text-gray-500 font-semibold hover:bg-gray-50">
+                    Attach photo
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setShowDeathModal(false)} className="flex-1 py-2 border border-gray-200 rounded-md text-sm hover:bg-gray-50">Cancel</button>
+              <button
+                onClick={handleReportDeath}
+                disabled={!deathForm.cause || savingDeath}
+                className="flex-1 py-2 bg-gray-700 text-white rounded-md text-sm font-bold hover:bg-gray-800 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {savingDeath ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Saving…</> : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <Footer />

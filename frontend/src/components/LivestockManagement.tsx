@@ -34,6 +34,9 @@ interface MortalityRecord {
   owner_name: string; barangay: string; quantity: number; cause: string;
   date_reported: string; investigation_status: string; notes?: string;
   photo_url?: string; record_kind?: 'Livestock' | 'Pet'; pet_id?: string;
+  reported_by?: string; reported_by_role?: string; created_by?: string;
+  validation_status?: 'Pending' | 'Verified' | 'Rejected';
+  validated_by?: string; validated_at?: string; validation_notes?: string;
 }
 
 interface DiseaseEvent {
@@ -739,6 +742,22 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
     try { await api.updateMortality(id,{investigationStatus:status,notes}); await loadAll(); } catch(e:any){ alert('Error: '+e.message); }
   };
 
+  const [validatingId, setValidatingId] = useState<number|null>(null);
+  const handleValidateMortality = async(id:number, validationStatus:'Verified'|'Rejected')=>{
+    let validationNotes = '';
+    if (validationStatus === 'Rejected') {
+      const input = prompt('Optional: reason for rejecting this death/expired report');
+      if (input === null) return; // user cancelled
+      validationNotes = input;
+    }
+    setValidatingId(id);
+    try {
+      await api.validateMortality(id, { validationStatus, validationNotes: validationNotes || undefined });
+      await loadAll();
+    } catch(e:any){ alert('Error: '+e.message); }
+    finally { setValidatingId(null); }
+  };
+
   const handleAddDisease = async()=>{
     if(!df.animalType||!df.disease||!df.barangay) return;
     setSaving(true);
@@ -1207,17 +1226,47 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
             :<>
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Type','Breed','Owner','Barangay','Qty Dead','Cause','Date','Status',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
+              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Kind','Type','Breed','Owner','Reported By','Barangay','Qty Dead','Cause','Date','Photo','Validation','Investigation',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
                 {mortality.map(m=>(
                   <tr key={m.id} className="hover:bg-red-50/20">
+                    <td className="py-3 px-3 text-xs font-bold whitespace-nowrap">{m.record_kind==='Pet'?'🐾 Pet':'🐄 Livestock'}</td>
                     <td className="py-3 px-3 text-sm font-semibold">{m.animal_type}</td>
                     <td className="py-3 px-3 text-sm text-gray-600">{m.breed||'—'}</td>
                     <td className="py-3 px-3 text-sm text-gray-700">{m.owner_name}</td>
+                    <td className="py-3 px-3 text-xs text-gray-500 whitespace-nowrap">
+                      {m.reported_by || m.created_by || '—'}
+                      {m.reported_by_role && <span className="block text-[10px] text-gray-400">{m.reported_by_role==='bahw'?'BAHW':m.reported_by_role}</span>}
+                    </td>
                     <td className="py-3 px-3 text-sm text-gray-600 whitespace-nowrap">{m.barangay}</td>
                     <td className="py-3 px-3 font-black text-red-600 text-base">{m.quantity}</td>
                     <td className="py-3 px-3 text-xs text-gray-700 max-w-[160px] truncate">{m.cause}</td>
                     <td className="py-3 px-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(m.date_reported)}</td>
+                    <td className="py-3 px-3">
+                      {m.photo_url
+                        ? <a href={m.photo_url} target="_blank" rel="noreferrer"><img src={m.photo_url} alt="Death record" className="w-10 h-10 object-cover rounded-lg border border-gray-200"/></a>
+                        : <span className="text-xs text-gray-300">—</span>}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${m.validation_status==='Verified'?'bg-green-100 text-green-700':m.validation_status==='Rejected'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}`}>
+                        {m.validation_status || 'Pending'}
+                      </span>
+                      {m.validation_status==='Pending' && (
+                        <div className="flex gap-1 mt-1.5">
+                          <button onClick={()=>handleValidateMortality(m.id,'Verified')} disabled={validatingId===m.id}
+                            className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded-lg text-[11px] font-bold hover:bg-green-700 disabled:opacity-50">
+                            <CheckCircle className="w-3 h-3"/>Verify
+                          </button>
+                          <button onClick={()=>handleValidateMortality(m.id,'Rejected')} disabled={validatingId===m.id}
+                            className="flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded-lg text-[11px] font-bold hover:bg-red-700 disabled:opacity-50">
+                            <X className="w-3 h-3"/>Reject
+                          </button>
+                        </div>
+                      )}
+                      {m.validated_by && m.validation_status!=='Pending' && (
+                        <p className="text-[10px] text-gray-400 mt-1">by {m.validated_by}</p>
+                      )}
+                    </td>
                     <td className="py-3 px-3">
                       <select
                         value={m.investigation_status}
@@ -1238,9 +1287,9 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
               </tbody>
               <tfoot>
                 <tr className="bg-red-50 border-t-2 border-red-100">
-                  <td colSpan={4} className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wide">Total Deaths ({mortality.length} incident{mortality.length!==1?'s':''})</td>
+                  <td colSpan={6} className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wide">Total Deaths ({mortality.length} incident{mortality.length!==1?'s':''})</td>
                   <td className="py-3 px-3 font-black text-red-700 text-base">{mortality.reduce((s,m)=>s+(m.quantity||1),0)}</td>
-                  <td colSpan={4}/>
+                  <td colSpan={6}/>
                 </tr>
               </tfoot>
             </table>

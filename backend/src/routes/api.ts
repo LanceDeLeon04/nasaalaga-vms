@@ -284,6 +284,18 @@ router.get('/dashboard/summary', authenticate, async (req: AuthRequest, res: Res
   }
 });
 
+// ── Owner-scope helper: resolves the caller's own identifiers from the DB ─────
+const OWNER_ROLES = ['petOwner', 'livestockManager', 'both', 'owner'];
+async function ownerCtx(req: AuthRequest) {
+  if (!req.user || !OWNER_ROLES.includes(req.user.role)) return null;
+  const r = await query('SELECT owner_id, email, barangay FROM users WHERE id=$1', [req.user.id]);
+  const u = r.rows[0] || {};
+  return {
+    ids: [u.owner_id, u.email, req.user.id, req.user.ownerId].filter(Boolean) as string[],
+    barangay: (u.barangay || req.user.barangay || '') as string,
+  };
+}
+
 // ── Schedules ──────────────────────────────────────────────────────────────
 // Stays reachable by public / pet-owner / livestock-owner callers (they see
 // all barangays' vaccination drives), but a signed-in BAHW is hard-scoped to
@@ -291,9 +303,11 @@ router.get('/dashboard/summary', authenticate, async (req: AuthRequest, res: Res
 router.get('/schedules', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
     const isBahw = req.user?.role === 'bahw';
-    const brgy = req.user?.barangay;
-    const result = isBahw && brgy
-      ? await query('SELECT * FROM vaccination_schedules WHERE barangay=$1 ORDER BY date ASC', [brgy])
+    const owner = await ownerCtx(req);
+    const brgy = owner ? owner.barangay : (isBahw ? req.user?.barangay : '');
+    // BAHW / owners: own barangay drives (+ city-wide drives with no barangay)
+    const result = (isBahw || owner)
+      ? await query(`SELECT * FROM vaccination_schedules WHERE barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($1) ORDER BY date ASC`, [brgy || '__none__'])
       : await query('SELECT * FROM vaccination_schedules ORDER BY date ASC');
     return res.json({ schedules: result.rows });
   } catch (err: any) {
@@ -3337,12 +3351,21 @@ router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: 
 
 
 // ── Appointment Schedules ──────────────────────────────────────────────────────
-router.get('/appointment-schedules', async (req, res) => {
+router.get('/appointment-schedules', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { requestedBy, status, type } = req.query;
     let sql = 'SELECT * FROM appointment_schedules';
     const vals: any[] = [];
     const conds: string[] = [];
+    const owner = await ownerCtx(req);
+    if (owner) {
+      // Owners: only their own requests + admin-created drives for their barangay / city-wide
+      vals.push(owner.ids); vals.push(owner.barangay || '__none__');
+      conds.push(`(requested_by = ANY($1) OR (is_admin_created = true AND (barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($2))))`);
+    } else if (req.user?.role === 'bahw') {
+      vals.push(req.user.barangay || '__none__');
+      conds.push(`(barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($1))`);
+    }
     if (requestedBy) { conds.push(`requested_by=$${vals.length + 1}`); vals.push(requestedBy); }
     if (status)      { conds.push(`status=$${vals.length + 1}`);       vals.push(status); }
     if (type)        { conds.push(`schedule_type=$${vals.length + 1}`); vals.push(type); }
@@ -3452,8 +3475,11 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
     }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     vals.push(req.params.id);
+    let where = `id=$${i++}`;
+    const owner = await ownerCtx(req);
+    if (owner) { vals.push(owner.ids); where += ` AND requested_by = ANY($${i})`; }
     const result = await query(
-      `UPDATE appointment_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals
+      `UPDATE appointment_schedules SET ${sets.join(',')} WHERE ${where} RETURNING *`, vals
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     return res.json({ schedule: result.rows[0] });
@@ -3464,7 +3490,9 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
 
 router.delete('/appointment-schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    const owner = await ownerCtx(req);
+    if (owner) await query('DELETE FROM appointment_schedules WHERE id=$1 AND requested_by = ANY($2)', [req.params.id, owner.ids]);
+    else await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3524,7 +3552,10 @@ router.get('/notifications/unread-count', authenticate, async (req: AuthRequest,
 // ── Unavailable Blocks ─────────────────────────────────────────────────────────
 router.get('/unavailable-blocks', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM unavailable_blocks ORDER BY date ASC, time_start ASC');
+    const owner = await ownerCtx(req);
+    const result = owner
+      ? await query('SELECT * FROM unavailable_blocks WHERE user_id = ANY($1) ORDER BY date ASC, time_start ASC', [owner.ids])
+      : await query('SELECT * FROM unavailable_blocks ORDER BY date ASC, time_start ASC');
     return res.json({ blocks: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3547,7 +3578,9 @@ router.post('/unavailable-blocks', authenticate, async (req: AuthRequest, res: R
 
 router.delete('/unavailable-blocks/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    await query('DELETE FROM unavailable_blocks WHERE id=$1', [req.params.id]);
+    const owner = await ownerCtx(req);
+    if (owner) await query('DELETE FROM unavailable_blocks WHERE id=$1 AND user_id = ANY($2)', [req.params.id, owner.ids]);
+    else await query('DELETE FROM unavailable_blocks WHERE id=$1', [req.params.id]);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
