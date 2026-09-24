@@ -53,6 +53,32 @@ interface Pet {
   impound_status?: string; impoundStatus?: string;
   impound_date?: string;
   impound_reason?: string;
+  // registration renewal / archive (server-computed)
+  is_archived?: boolean; archived_at?: string; archived_reason?: string; archive_type?: 'auto' | 'manual';
+  renewal_due_date?: string; days_until_renewal?: number; renewal_count?: number;
+  renewal_status?: 'valid' | 'expiring' | 'expired' | 'archived';
+}
+
+const REG_BADGE: Record<string, { cls: string; label: string }> = {
+  valid: { cls: 'bg-green-100 text-green-700', label: 'Registered' },
+  expiring: { cls: 'bg-amber-100 text-amber-700', label: 'Renew soon' },
+  expired: { cls: 'bg-red-100 text-red-700', label: 'Expired' },
+  archived: { cls: 'bg-gray-200 text-gray-700', label: 'Archived' },
+};
+function RegBadge({ pet }: { pet: Pet }) {
+  const st = pet.renewal_status || 'valid';
+  const b = REG_BADGE[st] || REG_BADGE.valid;
+  const d = pet.days_until_renewal;
+  return (
+    <div>
+      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${b.cls}`}>{b.label}</span>
+      {pet.renewal_due_date && (
+        <p className="text-[10px] text-gray-400 mt-0.5">
+          {st === 'archived' ? `Archived ${fmtDate(pet.archived_at)}` : `${d != null && d < 0 ? 'Due' : 'Until'} ${fmtDate(pet.renewal_due_date)}`}
+        </p>
+      )}
+    </div>
+  );
 }
 
 interface LFReport {
@@ -736,7 +762,7 @@ function OverviewTab({ survey, pets, reports, schedules, onTab }: {
 
 // ─── PET DETAIL MODAL ────────────────────────────────────────────────────────
 
-function PetDetailModal({ pet, onClose, onVaccinate, onUpdate }: { pet:Pet; onClose:()=>void; onVaccinate:(p:Pet)=>void; onUpdate?:()=>void }) {
+function PetDetailModal({ pet, onClose, onVaccinate, onUpdate, canRenew, canArchive, onRenew, onArchive }: { pet:Pet; onClose:()=>void; onVaccinate:(p:Pet)=>void; onUpdate?:()=>void; canRenew?:boolean; canArchive?:boolean; onRenew?:(p:Pet)=>void; onArchive?:(p:Pet)=>void }) {
   const vacStatus = vs(pet);
   const isImpounded = impound(pet);
   const [tab, setTab] = useState<'info'|'old-records'>('info');
@@ -839,6 +865,20 @@ function PetDetailModal({ pet, onClose, onVaccinate, onUpdate }: { pet:Pet; onCl
                   <div className="flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><IUsers className="w-4 h-4 text-blue-600"/></div><div><p className="text-xs text-gray-400">Owner</p><p className="text-sm font-semibold text-gray-800">{on(pet)}</p></div></div>
                   <div className="flex items-center gap-3"><div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><IPhone className="w-4 h-4 text-green-600"/></div><div><p className="text-xs text-gray-400">Contact</p><p className="text-sm font-semibold text-gray-800">{pet.contact_number||pet.ownerContact||"—"}</p></div></div>
                   <div className="flex items-center gap-3"><div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><IMapPin className="w-4 h-4 text-purple-600"/></div><div><p className="text-xs text-gray-400">Address</p><p className="text-sm font-semibold text-gray-800">{pet.address||pet.ownerAddress||"—"}, {brgy(pet)}</p></div></div>
+                </div>
+              </div>
+              <div className={`rounded-xl p-4 border ${pet.renewal_status==="archived"?"bg-gray-50 border-gray-300":pet.renewal_status==="expired"?"bg-red-50 border-red-200":pet.renewal_status==="expiring"?"bg-amber-50 border-amber-200":"bg-green-50 border-green-200"}`}>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-xs font-bold uppercase text-gray-500 mb-1">Registration</p>
+                    <RegBadge pet={pet}/>
+                    {pet.is_archived && pet.archived_reason && <p className="text-xs text-gray-500 mt-1">{pet.archived_reason}{pet.archive_type==="auto"?" (auto-archived)":""}</p>}
+                    {!!pet.renewal_count && <p className="text-[11px] text-gray-400 mt-1">Renewed {pet.renewal_count}×</p>}
+                  </div>
+                  <div className="flex gap-2">
+                    {canRenew && onRenew && <button onClick={()=>{onRenew(pet);onClose();}} className="px-3 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47]">{pet.is_archived?"Restore & Renew":"Renew 12 months"}</button>}
+                    {canArchive && onArchive && !pet.is_archived && <button onClick={()=>{onArchive(pet);onClose();}} className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-100">Archive</button>}
+                  </div>
                 </div>
               </div>
               {isImpounded && (
@@ -1618,6 +1658,10 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
   const isBahw = role === 'bahw';
   const bahwBarangay = (() => { try { return JSON.parse(sessionStorage.getItem('nasaalaga_user') || '{}').barangay || ''; } catch { return ''; } })();
   const [pets, setPets] = useState<Pet[]>([]);
+  const [archivedPets, setArchivedPets] = useState<Pet[]>([]);
+  const [filterReg, setFilterReg] = useState<"all"|"expiring"|"expired"|"archived">("all");
+  const [archiveSummary, setArchiveSummary] = useState<any>(null);
+  const [busyPet, setBusyPet] = useState<string|null>(null);
   const [reports, setReports] = useState<LFReport[]>([]);
   const [schedules, setSchedules] = useState<BarangaySchedule[]>([]);
   const [survey, setSurvey] = useState<SurveyData|null>(null);
@@ -1689,6 +1733,9 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
         api.getPets(), api.getLostFound(), api.getSchedules(), api.getPetSurveyData()
       ]);
       setPets(pRes.pets || []);
+      // Archive + renewal summary are staff-only extras; never let them break the main load.
+      api.getPets(undefined, 'only').then((r: any) => setArchivedPets(r.pets || [])).catch(() => setArchivedPets([]));
+      api.getPetArchiveSummary().then((r: any) => setArchiveSummary(r)).catch(() => setArchiveSummary(null));
       setReports(rRes.reports || rRes.lostFoundReports || []);
       setSchedules(sRes.schedules || []);
       setSurvey(svRes);
@@ -1724,6 +1771,32 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
       await loadAll();
     } catch(e:any) { alert("Error: " + e.message); }
     setSaving(false);
+  };
+
+  const canRenew = ["admin","superadmin","cvoStaff","bahw"].includes(role || "");
+  const canArchive = ["admin","superadmin","cvoStaff"].includes(role || "");
+
+  const handleRenew = async (pet: Pet) => {
+    const restoring = !!pet.is_archived;
+    if (!confirm(restoring
+      ? `Restore ${pn(pet)} from the archive and renew the registration for 12 months?`
+      : `Renew ${pn(pet)}'s registration for another 12 months?`)) return;
+    setBusyPet(pet.id);
+    try {
+      const r = restoring ? await api.restorePet(pet.id) : await api.renewPet(pet.id);
+      toast.success(restoring ? `${pn(pet)} restored — valid until ${fmtDate(r.pet?.renewal_due_date)}` : `Registration renewed — valid until ${fmtDate(r.pet?.renewal_due_date)}`);
+      await loadAll();
+    } catch (e: any) { toast.error(e.message || "Could not renew registration"); }
+    setBusyPet(null);
+  };
+
+  const handleArchive = async (pet: Pet) => {
+    const reason = prompt(`Archive ${pn(pet)}? It will be hidden from lists and reports but can be restored later.\n\nReason (optional):`);
+    if (reason === null) return;
+    setBusyPet(pet.id);
+    try { await api.archivePet(pet.id, reason || undefined); toast.success(`${pn(pet)} archived`); await loadAll(); }
+    catch (e: any) { toast.error(e.message || "Could not archive pet"); }
+    setBusyPet(null);
   };
 
   const handleVaccinate = async (pet: Pet) => {
@@ -1883,14 +1956,15 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
   };
 
   // ── Computed
-  const filteredPets = pets.filter(p => {
+  const filteredPets = (filterReg === "archived" ? archivedPets : pets).filter(p => {
     const s = search.toLowerCase();
     const m = pn(p).toLowerCase().includes(s)||on(p).toLowerCase().includes(s)||p.id.toLowerCase().includes(s)||p.breed.toLowerCase().includes(s);
     const v = filterVax==="all"||(filterVax==="vaccinated"&&vs(p)==="Vaccinated")||(filterVax==="not-vaccinated"&&vs(p)==="Not Vaccinated")||(filterVax==="due-soon"&&vs(p)==="Due Soon");
     const sp2 = filterSpecies==="all"||p.species===filterSpecies;
     const br2 = filterBrgy==="all"||brgy(p)===filterBrgy;
     const imp = filterImpound==="all"||(filterImpound==="impounded"&&!!impound(p));
-    return m&&v&&sp2&&br2&&imp;
+    const rg = filterReg==="all"||filterReg==="archived"||(filterReg==="expiring"&&p.renewal_status==="expiring")||(filterReg==="expired"&&p.renewal_status==="expired");
+    return m&&v&&sp2&&br2&&imp&&rg;
   });
 
   const filteredReports = reports.filter(r => {
@@ -1954,6 +2028,23 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
       {/* ══ PETS */}
       {activeTab==="pets" && (
         <div className="space-y-4">
+          {archiveSummary?.summary && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-gray-700 mr-1">Registration renewals</span>
+                {([["expiring","Expiring ≤30 days",archiveSummary.summary.expiring,"bg-amber-100 text-amber-700"],
+                   ["expired","Expired (pending archive)",archiveSummary.summary.expired,"bg-red-100 text-red-700"],
+                   ["archived","Archived",archiveSummary.summary.archived,"bg-gray-200 text-gray-700"]] as [string,string,number,string][]).map(([k,l,n,c])=>(
+                  <button key={k} onClick={()=>setFilterReg(filterReg===k?"all":k as any)} className={`px-3 py-1 rounded-full text-xs font-bold ${c} ${filterReg===k?"ring-2 ring-offset-1 ring-[#2B5EA6]":""}`}>{l}: {n}</button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Registrations are valid for {archiveSummary.settings?.renewalMonths ?? 12} months. Unrenewed records are archived automatically
+                {!archiveSummary.settings?.enabled ? " — auto-archive is currently OFF." : archiveSummary.settings?.inGrace ? ` — starting after ${fmtDate(archiveSummary.settings.graceUntil)} (grace period).` : "."}
+                {" "}Archived pets are hidden from lists and reports, never deleted, and can be restored.
+              </p>
+            </div>
+          )}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
             <div className="flex flex-wrap gap-3">
               <div className="flex-1 min-w-[200px] relative"><ISearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input placeholder="Search pets, owners, IDs…" value={search} onChange={e=>setSearch(e.target.value)} className={`${INPUT} pl-9`}/></div>
@@ -1966,18 +2057,21 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
               <select value={filterBrgy} onChange={e=>setFilterBrgy(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
                 <option value="all">All Barangays</option>{CALACA_BARANGAYS.map(b=><option key={b} value={b}>{b}</option>)}
               </select>
+              <select value={filterReg} onChange={e=>setFilterReg(e.target.value as any)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
+                <option value="all">All Registrations</option><option value="expiring">Expiring Soon</option><option value="expired">Expired</option><option value="archived">Archived ({archivedPets.length})</option>
+              </select>
               <select value={filterImpound} onChange={e=>setFilterImpound(e.target.value as any)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
                 <option value="all">All</option><option value="impounded">Impounded Only</option>
               </select>
               <button onClick={handleExportPets} className="flex items-center gap-2 px-4 py-2.5 bg-[#60A85C] text-white rounded-xl text-sm font-semibold hover:bg-[#4a8a47]"><IDownload className="w-4 h-4"/>Export CSV</button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">{filteredPets.length} of {pets.length} records shown</p>
+            <p className="text-xs text-gray-400 mt-2">{filteredPets.length} of {filterReg==="archived"?archivedPets.length:pets.length} {filterReg==="archived"?"archived ":""}records shown</p>
           </div>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead><tr className="bg-gray-50 border-b border-gray-100">
-                  {["Photo","ID","Pet","Owner","Barangay","S/N","Vaccination","Actions"].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}
+                  {["Photo","ID","Pet","Owner","Barangay","S/N","Vaccination","Registration","Actions"].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide">{h}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredPets.map(pet=>(
@@ -2031,6 +2125,7 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
                           {vs(pet)}
                         </span>
                       </td>
+                      <td className="py-3 px-3"><RegBadge pet={pet}/></td>
                       <td className="py-3 px-3">
                         <div className="flex gap-1">
                           <button onClick={()=>setViewPet(pet)} className="px-2.5 py-1.5 bg-[#2B5EA6] text-white text-xs font-semibold rounded-lg hover:bg-[#234a85] flex items-center gap-1"><IEye className="w-3 h-3"/>View</button>
@@ -2044,11 +2139,14 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
                           }} className="px-2.5 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 inline-block mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>Card
                           </button>
+                          {canRenew&&(pet.is_archived||pet.renewal_status==="expiring"||pet.renewal_status==="expired")&&(
+                            <button disabled={busyPet===pet.id} onClick={()=>handleRenew(pet)} className="px-2.5 py-1.5 bg-[#60A85C] text-white text-xs font-semibold rounded-lg hover:bg-[#4a8a47] disabled:opacity-60 flex items-center gap-1"><IRefreshCw className="w-3 h-3"/>{pet.is_archived?"Restore":"Renew"}</button>
+                          )}
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {filteredPets.length===0&&<tr><td colSpan={8} className="py-12 text-center text-gray-400"><IPawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
+                  {filteredPets.length===0&&<tr><td colSpan={9} className="py-12 text-center text-gray-400"><IPawPrint className="w-8 h-8 mx-auto mb-2 text-gray-200"/><p className="text-sm">No pets found</p></td></tr>}
                 </tbody>
               </table>
             </div>
@@ -2562,7 +2660,7 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
 
       {/* Sub-modals */}
       {showPhoto && <PetPhotoCapture petName={np.petName} onCapture={url=>{setNp(p=>({...p,photoUrl:url}));setShowPhoto(false);}} onClose={()=>setShowPhoto(false)}/>}
-      {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}} onUpdate={loadAll}/>}
+      {viewPet && <PetDetailModal pet={viewPet} onClose={()=>setViewPet(null)} onVaccinate={p=>{setVaccinatePet(p);setViewPet(null);setShowVaccinate(true);}} onUpdate={loadAll} canRenew={canRenew} canArchive={canArchive} onRenew={handleRenew} onArchive={handleArchive}/>}
       {viewReport && <LostFoundModal report={viewReport} all={reports} pets={pets} onClose={()=>setViewReport(null)} onResolve={handleResolve}/>}
       {vaxCardPet && (
         <VaccinationCard

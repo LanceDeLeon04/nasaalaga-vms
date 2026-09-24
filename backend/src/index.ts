@@ -12,7 +12,8 @@ import lostFoundRoutes from './routes/lostFound';
 import backupRoutes from './routes/backup';
 import apiRoutes from './routes/api';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups } from './db/migrate';
+import { startPetArchiveScheduler, stopPetArchiveScheduler } from './services/petArchive';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups, migratePetArchive } from './db/migrate';
 
 dotenv.config();
 
@@ -80,6 +81,7 @@ const runMigrations = async () => {
   await migrateInventoryLotColumns();
   await migrateNotifications();
   await migrateBackups();
+  await migratePetArchive();
 };
 
 async function start() {
@@ -124,6 +126,8 @@ async function start() {
 
     // Auto-backup job (reads admin_settings each tick, so toggling in the UI takes effect without a restart).
     startBackupScheduler();
+    // Pet registration expiry → auto-archive job.
+    startPetArchiveScheduler();
   });
 }
 
@@ -131,7 +135,7 @@ start();
 
 // Let an in-flight backup/restore finish its DB statements before Railway kills the container.
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
-  process.on(sig, () => { stopBackupScheduler(); setTimeout(() => process.exit(0), 3000).unref(); });
+  process.on(sig, () => { stopBackupScheduler(); stopPetArchiveScheduler(); setTimeout(() => process.exit(0), 3000).unref(); });
 }
 
 export default app;

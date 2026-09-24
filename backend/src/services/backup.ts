@@ -35,7 +35,7 @@ const SCHEDULER_FIRST_TICK_MS = 45 * 1000; // catch up shortly after boot
 const FAILURE_BACKOFF_MS = 15 * 60 * 1000; // after a failed auto backup wait 15 min
 const ADVISORY_LOCK_KEY = 7382011;         // arbitrary app-wide constant
 
-export type BackupType = 'manual' | 'auto' | 'pre-restore' | 'pre-clear' | 'imported';
+export type BackupType = 'manual' | 'auto' | 'pre-restore' | 'pre-clear' | 'pre-archive' | 'imported';
 export type Frequency = 'hourly' | 'every_6_hours' | 'daily' | 'weekly';
 
 export const FREQUENCY_MS: Record<Frequency, number> = {
@@ -348,7 +348,7 @@ async function pruneType(types: string[], keep: number) {
 export async function applyRetention() {
   const { retention } = await getBackupSettings();
   await pruneType(['auto'], retention);                     // scheduled: per admin setting
-  await pruneType(['pre-restore', 'pre-clear'], 10);        // safety snapshots: newest 10
+  await pruneType(['pre-restore', 'pre-clear', 'pre-archive'], 10);        // safety snapshots: newest 10
   // Manual & imported backups are never auto-deleted. Failed rows older than 30 days are just noise.
   await query(`DELETE FROM backups WHERE status='failed' AND created_at < NOW() - INTERVAL '30 days'`);
 }

@@ -3,6 +3,10 @@ import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { sendPreRegEmail } from '../services/email';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  renewalSelectSql, renewPet, archivePet, renewalSummary, runPetArchive, getArchiveSettings, endGracePeriod,
+  PetActionError, PET_RENEWAL_MONTHS,
+} from '../services/petArchive';
 
 const router = Router();
 
@@ -119,12 +123,12 @@ router.get('/survey-data', authenticate, async (req: AuthRequest, res: Response)
     const petsClause = scoped ? 'WHERE barangay=$1' : '';
     const lfClause = scoped ? `AND barangay=$1` : '';
 
-    const petsResult = await query(`SELECT species, COUNT(*) as count FROM pets ${petsClause} GROUP BY species`, scoped ? [brgy] : []);
-    const vaxResult = await query(`SELECT vaccination_status, COUNT(*) as count FROM pets ${petsClause} GROUP BY vaccination_status`, scoped ? [brgy] : []);
-    const spayResult = await query(`SELECT COUNT(*) as spayed FROM pets WHERE is_spayed=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
-    const neuterResult = await query(`SELECT COUNT(*) as neutered FROM pets WHERE is_neutered=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
-    const impoundResult = await query(`SELECT COUNT(*) as impounded FROM pets WHERE impound_status != 'None' AND impound_status IS NOT NULL AND impound_status != '' ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
-    const barangayResult = await query(`SELECT barangay, COUNT(*) as count FROM pets ${petsClause} GROUP BY barangay ORDER BY count DESC`, scoped ? [brgy] : []);
+    const petsResult = await query(`SELECT species, COUNT(*) as count FROM active_pets ${petsClause} GROUP BY species`, scoped ? [brgy] : []);
+    const vaxResult = await query(`SELECT vaccination_status, COUNT(*) as count FROM active_pets ${petsClause} GROUP BY vaccination_status`, scoped ? [brgy] : []);
+    const spayResult = await query(`SELECT COUNT(*) as spayed FROM active_pets WHERE is_spayed=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const neuterResult = await query(`SELECT COUNT(*) as neutered FROM active_pets WHERE is_neutered=true ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const impoundResult = await query(`SELECT COUNT(*) as impounded FROM active_pets WHERE impound_status != 'None' AND impound_status IS NOT NULL AND impound_status != '' ${scoped ? 'AND barangay=$1' : ''}`, scoped ? [brgy] : []);
+    const barangayResult = await query(`SELECT barangay, COUNT(*) as count FROM active_pets ${petsClause} GROUP BY barangay ORDER BY count DESC`, scoped ? [brgy] : []);
     const lostResult = await query(`SELECT type, COUNT(*) as count FROM lost_found_reports WHERE status='Open' ${lfClause} GROUP BY type`, scoped ? [brgy] : []);
 
     const rows = petsResult.rows;
@@ -335,7 +339,12 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     let idx = 1;
     if (ownerId) { conditions.push(`owner_id=$${idx++}`); params.push(ownerId); }
     if (barangay) { conditions.push(`barangay=$${idx++}`); params.push(barangay); }
-    let sql = 'SELECT * FROM pets';
+    // Archived pets (registration not renewed) are hidden by default so every existing screen keeps working.
+    //   ?archived=only → just the archive   ?archived=all → everything (flagged with is_archived)
+    const archived = String(req.query.archived || '');
+    if (archived === 'only') conditions.push('is_archived IS TRUE');
+    else if (archived !== 'all') conditions.push('is_archived IS NOT TRUE');
+    let sql = `SELECT *, ${renewalSelectSql()} FROM pets`;
     if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY registration_date DESC';
     const result = await query(sql, params);
@@ -438,6 +447,84 @@ router.get('/owner-search', authenticate, async (req: AuthRequest, res: Response
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ── Registration renewal & archive ─────────────────────────────────────────
+const RENEW_ROLES = ['admin', 'superadmin', 'cvoStaff', 'bahw'];
+const ARCHIVE_ROLES = ['admin', 'superadmin', 'cvoStaff'];
+const auditPet = (req: AuthRequest, action: string, id: string | undefined, details: object) => {
+  query(
+    `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [req.user?.id, req.user?.username, req.user?.role, action, 'Pet', id || null, JSON.stringify(details), req.ip]
+  ).catch(() => {});
+};
+const petErr = (res: Response, err: any) =>
+  res.status(err instanceof PetActionError ? err.status : 500).json({ error: err.message });
+
+router.get('/archive/summary', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!RENEW_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    const scope = req.user?.role === 'bahw' ? (req.user?.barangay || '__none__') : null;
+    return res.json({ success: true, summary: await renewalSummary(scope), settings: await getArchiveSettings() });
+  } catch (err: any) { return petErr(res, err); }
+});
+
+// Preview (dryRun) or trigger the archive job now. Honors the on/off switch and grace period.
+router.post('/archive/run', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!['admin', 'superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    if (req.body?.endGrace) {
+      if (req.user?.role !== 'superadmin') return res.status(403).json({ error: 'Only a superadmin can end the grace period' });
+      await endGracePeriod(req.user?.username || 'superadmin');
+    }
+    const result = await runPetArchive({ dryRun: !!req.body?.dryRun, triggeredBy: req.user?.username, ip: req.ip });
+    return res.json({ success: true, result });
+  } catch (err: any) { return petErr(res, err); }
+});
+
+router.post('/:id/renew', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!RENEW_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    const scope = req.user?.role === 'bahw' ? (req.user?.barangay || '__none__') : null;
+    const { pet, wasArchived } = await renewPet(req.params.id, req.user?.username || 'staff', req.body?.notes, scope);
+    auditPet(req, wasArchived ? 'Restore_Renew_Pet' : 'Renew_Pet', req.params.id, { newDueDate: pet.renewal_due_date, notes: req.body?.notes });
+    return res.json({ success: true, pet, restored: wasArchived, message: `Registration renewed for ${PET_RENEWAL_MONTHS} months` });
+  } catch (err: any) { return petErr(res, err); }
+});
+
+// Restoring an archived pet == renewing it (otherwise the job would re-archive it on the next tick).
+router.post('/:id/restore', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!RENEW_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    const chk = await query('SELECT is_archived FROM pets WHERE id=$1', [req.params.id]);
+    if (!chk.rows.length) return res.status(404).json({ error: 'Pet not found' });
+    if (!(chk.rows[0] as any).is_archived) return res.status(409).json({ error: 'Pet is not archived' });
+    const scope = req.user?.role === 'bahw' ? (req.user?.barangay || '__none__') : null;
+    const { pet } = await renewPet(req.params.id, req.user?.username || 'staff', req.body?.notes || 'Restored from archive', scope);
+    auditPet(req, 'Restore_Renew_Pet', req.params.id, { newDueDate: pet.renewal_due_date });
+    return res.json({ success: true, pet, restored: true });
+  } catch (err: any) { return petErr(res, err); }
+});
+
+router.post('/:id/archive', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!ARCHIVE_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    const pet = await archivePet(req.params.id, typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : undefined);
+    auditPet(req, 'Archive_Pet', req.params.id, { reason: req.body?.reason, manual: true });
+    return res.json({ success: true, pet });
+  } catch (err: any) { return petErr(res, err); }
+});
+
+router.get('/:id/renewals', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!RENEW_ROLES.includes(req.user?.role || '') && !['petOwner', 'both', 'owner', 'livestockManager'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
+    if (!RENEW_ROLES.includes(req.user?.role || '')) {
+      const own = await query('SELECT 1 FROM pets WHERE id=$1 AND owner_id=$2', [req.params.id, req.user?.ownerId || '__none__']);
+      if (!own.rows.length) return res.status(403).json({ error: 'Forbidden' });
+    }
+    const r = await query('SELECT * FROM pet_renewals WHERE pet_id=$1 ORDER BY renewed_on DESC, id DESC', [req.params.id]);
+    return res.json({ success: true, renewals: r.rows });
+  } catch (err: any) { return petErr(res, err); }
 });
 
 router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {

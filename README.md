@@ -64,3 +64,13 @@ Super Admin → **Backup & Restore** (Control Panel).
 - Backups live in the same database by default — **download copies regularly** or enable Railway's own Postgres backups for disaster recovery.
 
 API: `GET /api/backup/status` (admin+), everything else under `/api/backup` is superadmin-only.
+
+## Pet registration renewal & auto-archive
+
+- A pet registration is valid **12 months** (`PET_RENEWAL_MONTHS` env var to change) from `registration_date`, or from the due date set by the latest renewal.
+- **Not renewed by the due date → auto-archived.** An hourly job archives expired registrations (skips pets that are Deceased, reported Lost, or impounded). Archiving is a soft-hide: nothing is deleted, and archived pets disappear from lists, dashboards and analytics (`active_pets` view).
+- **Safety:** a `pre-archive` backup is taken before every bulk archive; if it fails, nothing is archived.
+- **One-time 30-day grace period** after deployment so existing old registrations can be renewed first. A Super Admin can end it early (`POST /api/pets/archive/run {"endGrace":true}`); preview with `{"dryRun":true}`.
+- **Renew / Restore:** staff (Admin, Super Admin, CVO Staff, BAHW for their barangay) use *Renew* on the Pet Records tab or pet detail. Early renewals keep unused time. Restoring an archived pet renews it. History is stored in `pet_renewals`.
+- Auto-archive can be switched off in Super Admin → System Settings.
+- Pet owners see a renewal warning (≤30 days) or an "archived" notice on their dashboard.

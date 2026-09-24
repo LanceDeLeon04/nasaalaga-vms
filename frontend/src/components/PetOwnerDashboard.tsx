@@ -40,6 +40,8 @@ interface Pet {
   status: 'Active' | 'Lost' | 'Found' | 'Deceased';
   photo?: string;
   petTagId?: string;
+  isArchived?: boolean;
+  renewalDueDate?: string;
 }
 
 interface LostFoundReport {
@@ -143,7 +145,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
       try {
         setIsLoadingPets(true);
         const response = await fetch(
-          `/api/pets?ownerId=${user.ownerId}`,
+          `/api/pets?ownerId=${user.ownerId}&archived=all`,
           {
             headers: {
               
@@ -176,6 +178,8 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
           status: p.status ?? 'Active',
           photo: p.photo ?? undefined,
           petTagId: p.pet_tag_id ?? p.petTagId ?? undefined,
+          isArchived: !!p.is_archived,
+          renewalDueDate: p.renewal_due_date ?? undefined,
         }));
         setPets(mappedPets);
       } catch (error) {
@@ -627,6 +631,16 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
                       }`}>
                         {pet.status}
                       </span>
+                    )}
+                    {pet.isArchived && (
+                      <div className="mt-2 rounded-lg bg-gray-100 border border-gray-300 px-3 py-2 text-xs text-gray-700">
+                        <strong>Registration archived</strong> — not renewed within 12 months. Please visit the City Veterinary Office to renew and reactivate this pet's record.
+                      </div>
+                    )}
+                    {!pet.isArchived && pet.renewalDueDate && (new Date(pet.renewalDueDate).getTime() - Date.now()) / 86400000 <= 30 && (
+                      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                        Registration {new Date(pet.renewalDueDate).getTime() < Date.now() ? 'expired' : 'expires'} on <strong>{new Date(pet.renewalDueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>. Renew at the City Veterinary Office to avoid archiving.
+                      </div>
                     )}
                   </div>
                 </div>

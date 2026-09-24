@@ -38,8 +38,25 @@ export const api = {
   setMaintenance: (enabled: boolean) =>
     request('/system/maintenance', { method: 'PUT', body: JSON.stringify({ enabled }) }),
   getBarangays: () => request('/barangays'),
-  getPets: (ownerId?: string) =>
-    request('/pets' + (ownerId ? '?ownerId=' + ownerId : '')),
+  // archived: omit → active only (default) · 'only' → archived pets · 'all' → both (flagged with is_archived)
+  getPets: (ownerId?: string, archived?: 'only' | 'all') => {
+    const q = new URLSearchParams();
+    if (ownerId) q.set('ownerId', ownerId);
+    if (archived) q.set('archived', archived);
+    const qs = q.toString();
+    return request('/pets' + (qs ? '?' + qs : ''));
+  },
+  // ── Pet registration renewal & archive ──
+  renewPet: (id: string, notes?: string) =>
+    request('/pets/' + id + '/renew', { method: 'POST', body: JSON.stringify({ notes }) }),
+  restorePet: (id: string, notes?: string) =>
+    request('/pets/' + id + '/restore', { method: 'POST', body: JSON.stringify({ notes }) }),
+  archivePet: (id: string, reason?: string) =>
+    request('/pets/' + id + '/archive', { method: 'POST', body: JSON.stringify({ reason }) }),
+  getPetRenewals: (id: string) => request('/pets/' + id + '/renewals'),
+  getPetArchiveSummary: () => request('/pets/archive/summary'),
+  runPetArchive: (opts: { dryRun?: boolean; endGrace?: boolean } = {}) =>
+    request('/pets/archive/run', { method: 'POST', body: JSON.stringify(opts) }),
   createPet: (data: any) =>
     request('/pets', { method: 'POST', body: JSON.stringify(data) }),
   updatePet: (id: string, data: any) =>

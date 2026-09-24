@@ -1384,6 +1384,7 @@ if (isMain) {
     .then(() => migrateInventoryLotColumns())
     .then(() => migrateNotifications())
     .then(() => migrateBackups())
+    .then(() => migratePetArchive())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1552,6 +1553,62 @@ export async function migrateBackups() {
     console.log('✅ backups table ready');
   } catch (err) {
     console.error('❌ Backups migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── Pet registration renewal & archiving ────────────────────────────────────
+// A pet registration is valid for 12 months. If it is not renewed by then the
+// record is auto-archived (hidden from lists/analytics, never deleted) and can be
+// restored + renewed by staff. Expiry is:
+//     COALESCE(registration_expires_at, registration_date + 12 months)
+// so pets created by any existing insert path need no changes.
+export async function migratePetArchive() {
+  const client = await pool.connect();
+  try {
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS archived_reason TEXT`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS archive_type VARCHAR(20)`); // auto | manual
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS registration_expires_at DATE`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_renewed_at DATE`);
+    await client.query(`ALTER TABLE pets ADD COLUMN IF NOT EXISTS renewal_count INTEGER DEFAULT 0`);
+    await client.query(`UPDATE pets SET is_archived = FALSE WHERE is_archived IS NULL`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pets_archived ON pets (is_archived)`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pet_renewals (
+        id SERIAL PRIMARY KEY,
+        pet_id VARCHAR(50) NOT NULL REFERENCES pets(id) ON DELETE CASCADE,
+        renewed_on DATE NOT NULL DEFAULT CURRENT_DATE,
+        previous_expiry DATE,
+        new_expiry DATE NOT NULL,
+        was_archived BOOLEAN DEFAULT FALSE,
+        renewed_by VARCHAR(255),
+        notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pet_renewals_pet ON pet_renewals (pet_id, renewed_on DESC)`);
+
+    await client.query(`ALTER TABLE admin_settings ADD COLUMN IF NOT EXISTS pet_archive_enabled BOOLEAN DEFAULT TRUE`);
+
+    // One-time grace period: registrations that were already >12 months old when this feature
+    // shipped were never renewable before, so do not archive them until owners had time to renew.
+    await client.query(
+      `INSERT INTO system_settings (key, value, updated_by) VALUES ('pet_archive_grace_until', (CURRENT_DATE + 30)::text, 'migration')
+       ON CONFLICT (key) DO NOTHING`
+    );
+
+    // Analytics/dashboards read from this view so archived pets never skew counts.
+    // Recreated every startup so it always picks up newly added pets columns.
+    await client.query(`DROP VIEW IF EXISTS active_pets`);
+    await client.query(`CREATE VIEW active_pets AS SELECT * FROM pets WHERE is_archived IS NOT TRUE`);
+    console.log('✅ Pet archive/renewal columns, pet_renewals table and active_pets view ready');
+  } catch (err) {
+    console.error('❌ Pet archive migration failed:', err);
     throw err;
   } finally {
     client.release();

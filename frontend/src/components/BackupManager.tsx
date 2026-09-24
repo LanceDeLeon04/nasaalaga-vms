@@ -7,7 +7,7 @@ import { api } from '../lib/api';
 import { timeAgo } from '../hooks/useBackupStatus';
 
 interface BackupItem {
-  id: string; filename: string; type: 'manual' | 'auto' | 'pre-restore' | 'pre-clear' | 'imported';
+  id: string; filename: string; type: 'manual' | 'auto' | 'pre-restore' | 'pre-clear' | 'pre-archive' | 'imported';
   status: 'running' | 'completed' | 'failed'; note: string | null; createdBy: string | null;
   sizeBytes: number | null; tableCount: number | null; rowCount: number | null;
   error: string | null; createdAt: string;
@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<string, { label: string; cls: string }> = {
   auto: { label: 'Scheduled', cls: 'bg-green-100 text-green-700' },
   'pre-restore': { label: 'Before restore', cls: 'bg-amber-100 text-amber-700' },
   'pre-clear': { label: 'Before clear', cls: 'bg-amber-100 text-amber-700' },
+  'pre-archive': { label: 'Before archive', cls: 'bg-amber-100 text-amber-700' },
   imported: { label: 'Uploaded', cls: 'bg-purple-100 text-purple-700' },
 };
 

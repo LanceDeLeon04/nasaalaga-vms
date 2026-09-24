@@ -443,6 +443,7 @@ export function SuperAdminSettings({ user }: Props) {
                   {[
                     { label: 'Email Notifications', key: 'emailNotifications' },
                     { label: 'SMS Notifications', key: 'smsNotifications' },
+                    { label: 'Auto-archive pets not renewed after 12 months', key: 'petArchiveEnabled' },
                   ].map(({ label, key }) => (
                     <div key={key} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
                       <span className="text-sm font-semibold text-gray-700">{label}</span>
