@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -37,9 +37,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-router.post('/', async (req: AuthRequest, res: Response) => {
+router.post('/', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
+    // Lost-livestock reports must come from a signed-in owner (pet/guest reports stay public).
+    if (d.reportedByRole === 'livestockOwner') {
+      if (!req.user) return res.status(401).json({ error: 'Please sign in to report lost livestock' });
+      d.ownerId = req.user.ownerId || d.ownerId;
+    }
     const maxResult = await query(
       `SELECT MAX(CAST(SUBSTRING(id FROM 4) AS INTEGER)) AS max_num FROM lost_found_reports WHERE id ~ '^LF-[0-9]+$'`
     );
@@ -70,15 +75,21 @@ router.post('/', async (req: AuthRequest, res: Response) => {
         if (bahws.rows.length > 0) {
           const countRes = await query('SELECT COUNT(*) FROM user_notifications');
           let notifIdx = parseInt(countRes.rows[0].count || '0');
-          const title = `🐾 Lost Pet Reported — Brgy. ${d.barangay}`;
-          const message = `${d.petName || 'A pet'} (${d.species || 'unknown species'}) was reported lost in Barangay ${d.barangay}${d.lastSeenLocation ? ' near ' + d.lastSeenLocation : ''}. Please help watch out for this pet.`;
+          const isLivestock = d.reportedByRole === 'livestockOwner';
+          const notifType = isLivestock ? 'lost_livestock' : 'lost_pet';
+          const title = isLivestock
+            ? `🐄 Lost Livestock Reported — Brgy. ${d.barangay}`
+            : `🐾 Lost Pet Reported — Brgy. ${d.barangay}`;
+          const message = isLivestock
+            ? `${d.species || 'Livestock'} (${d.petId}) was reported lost in Barangay ${d.barangay}${d.lastSeenLocation ? ' near ' + d.lastSeenLocation : ''}. Please review and validate the report.`
+            : `${d.petName || 'A pet'} (${d.species || 'unknown species'}) was reported lost in Barangay ${d.barangay}${d.lastSeenLocation ? ' near ' + d.lastSeenLocation : ''}. Please help watch out for this pet.`;
           for (const u of bahws.rows) {
             notifIdx++;
             const nid = `NOTIF-${String(notifIdx).padStart(5, '0')}`;
             await query(
               `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, is_read, created_at)
-               VALUES ($1,$2,'lost_pet',$3,$4,$5,false,NOW())`,
-              [nid, u.id, title, message, d.barangay]
+               VALUES ($1,$2,$3,$4,$5,$6,false,NOW())`,
+              [nid, u.id, notifType, title, message, d.barangay]
             );
           }
         }
@@ -99,10 +110,33 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Roles allowed to validate (verify/reject) a lost-livestock report.
+const VALIDATOR_ROLES = ['bahw', 'admin', 'superadmin', 'cvoStaff'];
+
 router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+
+    // A "Verified" / "Rejected" status change is a BAHW/staff validation
+    // action, not a plain field edit — gate it accordingly.
+    const isValidationAction = updates.status === 'Verified' || updates.status === 'Rejected';
+    if (isValidationAction) {
+      if (!req.user || !VALIDATOR_ROLES.includes(req.user.role)) {
+        return res.status(403).json({ error: 'Only BAHW or CVO staff can validate lost-livestock reports' });
+      }
+      // A BAHW can only validate reports filed in their own assigned barangay.
+      if (req.user.role === 'bahw' && req.user.barangay) {
+        const existing = await query('SELECT barangay FROM lost_found_reports WHERE id=$1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+        if ((existing.rows[0].barangay || '').toLowerCase() !== req.user.barangay.toLowerCase()) {
+          return res.status(403).json({ error: 'You can only validate reports in your assigned barangay' });
+        }
+      }
+      // Server sets who validated it and when — not trusted from the client.
+      updates.validatedBy = req.user.username;
+      updates.validatedAt = new Date().toISOString();
+    }
 
     const fieldMap: Record<string, string> = {
       status: 'status', description: 'description',
@@ -110,6 +144,9 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       impoundLocation: 'impound_location',
       impoundDate: 'impound_date',
       impoundOfficer: 'impound_officer',
+      validatedBy: 'validated_by',
+      validatedAt: 'validated_at',
+      validationNotes: 'validation_notes',
     };
 
     const setClauses: string[] = ['updated_at=NOW()'];

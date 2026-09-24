@@ -26,6 +26,7 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
   const menuItems = [
     { id: 'dashboard' as ActiveView, label: 'Dashboard',        icon: LayoutDashboard, roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'livestock' as ActiveView, label: 'Livestock',        icon: Package,         roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
+    { id: 'lost-livestock' as ActiveView, label: 'Validate Lost Livestock', icon: ShieldCheck, roles: ['bahw', 'admin', 'superadmin', 'cvoStaff'] },
     { id: 'rabies'      as ActiveView, label: 'Pets Management',  icon: PawPrint,    roles: ['admin', 'bahw', 'superadmin', 'cvoStaff'] },
     { id: 'vaccination' as ActiveView, label: 'Vaccination',       icon: Syringe,     roles: ['admin', 'bahw', 'superadmin'] },
     { id: 'preregistered' as ActiveView, label: 'Pet Pre-Reg Review', icon: ClipboardList, roles: ['admin', 'superadmin', 'cvoStaff'] },

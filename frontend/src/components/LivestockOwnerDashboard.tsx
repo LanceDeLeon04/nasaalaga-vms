@@ -6,7 +6,8 @@ import { Footer } from './Footer';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { UserFeedback } from './UserFeedback';
 import { ScheduleModule } from './ScheduleModule';
-import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare, CalendarClock } from 'lucide-react';
+import { LostFoundDetailsModal } from './LostFoundDetailsModal';
+import { Beef, Bell, User, FileText, AlertCircle, Calendar, Download, Eye, Activity, X, Menu, ClipboardList, MessageSquare, CalendarClock, Plus, MapPin, Heart } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User as UserType } from '../App';
 
@@ -18,6 +19,8 @@ interface LivestockOwnerDashboardProps {
 interface Livestock {
   id: string;
   type: string;
+  breed?: string;
+  color?: string;
   count: number;
   barangay: string;
   registrationDate: string;
@@ -36,8 +39,28 @@ interface Notification {
   read: boolean;
 }
 
+interface LostFoundReport {
+  id: string;
+  petId: string;
+  petName: string;
+  species: string;
+  breed: string;
+  color: string;
+  type: 'Lost' | 'Found';
+  reportedBy: string;
+  reportedByRole: string;
+  ownerId: string;
+  contactNumber: string;
+  lastSeenLocation: string;
+  barangay: string;
+  dateReported: string;
+  description: string;
+  status: 'Open' | 'Verified' | 'Rejected' | 'Resolved';
+  photo?: string;
+}
+
 export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback' | 'schedule'>('dashboard');
+  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback' | 'schedule' | 'lostfound'>('dashboard');
   const [selectedLivestock, setSelectedLivestock] = useState<Livestock | null>(null);
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -45,6 +68,28 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
   const [livestock, setLivestock] = useState<Livestock[]>([]);
   const [livestockLoading, setLivestockLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Lost Livestock reports
+  const [lostFoundReports, setLostFoundReports] = useState<LostFoundReport[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [lostFoundFilter, setLostFoundFilter] = useState<'all' | 'Lost' | 'Found'>('all');
+  const [showReportLostModal, setShowReportLostModal] = useState(false);
+  const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
+  const [showLostFoundDetailsModal, setShowLostFoundDetailsModal] = useState(false);
+  const [reportForm, setReportForm] = useState({
+    selectedLivestockId: '',
+    lastSeenLocation: '',
+    barangay: '',
+    description: '',
+  });
+  // Official barangay names from the database (must match what BAHW accounts are assigned to)
+  const [barangayOptions, setBarangayOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    api.getBarangays()
+      .then((d: any) => setBarangayOptions(d.barangays || []))
+      .catch(() => setBarangayOptions([]));
+  }, []);
 
   useEffect(() => {
     const fetchLivestock = async () => {
@@ -54,6 +99,8 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
         const mapped: Livestock[] = rows.map((r: any) => ({
           id: r.id,
           type: r.animal_type ?? r.type ?? '',
+          breed: r.breed ?? '',
+          color: r.color_markings ?? r.color ?? '',
           count: r.quantity ?? r.count ?? 0,
           barangay: r.barangay ?? '',
           registrationDate: r.registration_date ?? r.registrationDate ?? '',
@@ -108,6 +155,120 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
       setLivestockLoading(false);
     }
   }, [user?.ownerId]);
+
+  // Fetch this owner's lost/found livestock reports
+  useEffect(() => {
+    const fetchReports = async () => {
+      if (!user.ownerId) {
+        setIsLoadingReports(false);
+        return;
+      }
+      try {
+        setIsLoadingReports(true);
+        const data = await api.getLostFound(undefined, user.ownerId);
+        const mapped = ((data as any).reports || []).map((r: any) => ({
+          id: r.id,
+          petId: r.pet_id ?? r.petId ?? '',
+          petName: r.pet_name ?? r.petName ?? '',
+          species: r.species ?? '',
+          breed: r.breed ?? '',
+          color: r.color ?? '',
+          type: r.type ?? 'Lost',
+          reportedBy: r.reported_by ?? r.reportedBy ?? '',
+          reportedByRole: r.reported_by_role ?? r.reportedByRole ?? '',
+          ownerId: r.owner_id ?? r.ownerId ?? '',
+          contactNumber: r.contact_number ?? r.contactNumber ?? '',
+          lastSeenLocation: r.last_seen_location ?? r.lastSeenLocation ?? '',
+          barangay: r.barangay ?? '',
+          dateReported: r.date_reported ?? r.dateReported ?? '',
+          description: r.description ?? '',
+          status: r.status ?? 'Open',
+          photo: r.photo ?? undefined,
+        }));
+        setLostFoundReports(mapped);
+      } catch (err) {
+        console.error('[LivestockOwnerDashboard] Failed to load lost/found reports:', err);
+        toast.error('Failed to load lost & found reports');
+      } finally {
+        setIsLoadingReports(false);
+      }
+    };
+
+    fetchReports();
+  }, [user.ownerId]);
+
+  const handleReportLostLivestock = async () => {
+    try {
+      if (!reportForm.selectedLivestockId) {
+        toast.error('Please select one of your registered livestock');
+        return;
+      }
+      const selected = livestock.find(l => l.id === reportForm.selectedLivestockId);
+      if (!selected) {
+        toast.error('Selected livestock not found');
+        return;
+      }
+      if (!reportForm.lastSeenLocation || !reportForm.barangay || !reportForm.description) {
+        toast.error('Please fill in all location and description fields');
+        return;
+      }
+
+      const reportData = {
+        petId: selected.id,
+        petName: `${selected.type} (${selected.id})`,
+        species: selected.type,
+        breed: selected.breed || '',
+        color: selected.color || '',
+        type: 'Lost',
+        reportedBy: user.username,
+        reportedByRole: 'livestockOwner',
+        ownerId: user.ownerId,
+        contactNumber: user.username,
+        lastSeenLocation: reportForm.lastSeenLocation,
+        barangay: reportForm.barangay,
+        description: reportForm.description,
+      };
+
+      const data = await api.createLostFound(reportData);
+      const r = (data as any).report;
+      const mappedReport: LostFoundReport = {
+        id: r.id,
+        petId: r.pet_id ?? r.petId ?? '',
+        petName: r.pet_name ?? r.petName ?? '',
+        species: r.species ?? '',
+        breed: r.breed ?? '',
+        color: r.color ?? '',
+        type: r.type ?? 'Lost',
+        reportedBy: r.reported_by ?? r.reportedBy ?? '',
+        reportedByRole: r.reported_by_role ?? r.reportedByRole ?? '',
+        ownerId: r.owner_id ?? r.ownerId ?? '',
+        contactNumber: r.contact_number ?? r.contactNumber ?? '',
+        lastSeenLocation: r.last_seen_location ?? r.lastSeenLocation ?? '',
+        barangay: r.barangay ?? '',
+        dateReported: r.date_reported ?? r.dateReported ?? '',
+        description: r.description ?? '',
+        status: r.status ?? 'Open',
+        photo: r.photo ?? undefined,
+      };
+      setLostFoundReports(prev => [mappedReport, ...prev]);
+
+      setReportForm({
+        selectedLivestockId: '',
+        lastSeenLocation: '',
+        barangay: '',
+        description: '',
+      });
+      setShowReportLostModal(false);
+      toast.success('Lost livestock report submitted successfully!');
+    } catch (error) {
+      console.error('Error reporting lost livestock:', error);
+      toast.error('Failed to submit lost livestock report');
+    }
+  };
+
+  const filteredLostFoundReports = lostFoundReports.filter(report =>
+    lostFoundFilter === 'all' || report.type === lostFoundFilter
+  );
 
   const handleDownloadCertificate = async (livestockItem: Livestock) => {
     try {
@@ -514,6 +675,134 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
     </div>
   );
 
+  const renderLostFound = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-1">Lost & Found</h2>
+          <p className="text-gray-600">Report lost livestock and track your reports</p>
+        </div>
+        <button
+          onClick={() => setShowReportLostModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-[#E85D3B] text-white rounded-md hover:bg-[#d64d2b] transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Report Lost Livestock
+        </button>
+      </div>
+
+      <div className="bg-blue-50 border-l-4 border-[#2B5EA6] rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-[#2B5EA6] flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-gray-700 font-medium">Livestock Owner Information:</p>
+            <p className="text-sm text-gray-600 mt-1">
+              You can report <strong>lost livestock only</strong>. If you find stray or unaccounted livestock, please report it to your barangay office or the City Veterinary Office.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setLostFoundFilter('all')}
+            className={`px-4 py-2 rounded-md transition-colors ${
+              lostFoundFilter === 'all' ? 'bg-[#2B5EA6] text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setLostFoundFilter('Lost')}
+            className={`px-4 py-2 rounded-md transition-colors ${
+              lostFoundFilter === 'Lost' ? 'bg-[#E85D3B] text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Lost
+          </button>
+          <button
+            onClick={() => setLostFoundFilter('Found')}
+            className={`px-4 py-2 rounded-md transition-colors ${
+              lostFoundFilter === 'Found' ? 'bg-[#60A85C] text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Found
+          </button>
+        </div>
+      </div>
+
+      {isLoadingReports && (
+        <div className="bg-white rounded-lg shadow p-12 text-center">
+          <div className="w-12 h-12 border-4 border-[#2B5EA6] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading reports...</p>
+        </div>
+      )}
+
+      {!isLoadingReports && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredLostFoundReports.map(report => (
+            <div key={report.id} className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow">
+              <div className={`h-2 ${report.type === 'Lost' ? 'bg-[#E85D3B]' : 'bg-[#60A85C]'}`}></div>
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                    report.type === 'Lost' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                  }`}>
+                    {report.type}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                      report.status === 'Verified' ? 'bg-blue-100 text-blue-700'
+                      : report.status === 'Rejected' ? 'bg-red-100 text-red-700'
+                      : report.status === 'Resolved' ? 'bg-green-100 text-green-700'
+                      : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {report.status === 'Open' ? 'Pending validation' : report.status}
+                    </span>
+                    <Beef className="w-5 h-5 text-gray-400" />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">{report.petName}</h3>
+                <div className="space-y-2 text-sm text-gray-600 mb-4">
+                  <p><strong>Type:</strong> {report.species}</p>
+                  {report.breed && <p><strong>Breed:</strong> {report.breed}</p>}
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <p className="flex-1">{report.lastSeenLocation}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    <p>{report.dateReported}</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setSelectedLostFoundReport(report);
+                    setShowLostFoundDetailsModal(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-md hover:bg-[#234a85] transition-colors"
+                >
+                  <Eye className="w-4 h-4" />
+                  View Details
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isLoadingReports && filteredLostFoundReports.length === 0 && (
+        <div className="bg-white rounded-lg shadow p-12 text-center">
+          <Heart className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">You haven't reported any lost livestock yet.</p>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
@@ -527,6 +816,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
               {activeSection === 'dashboard' && 'Dashboard'}
               {activeSection === 'livestock' && 'Livestock'}
               {activeSection === 'preregistration' && 'Pre-Registration'}
+              {activeSection === 'lostfound' && 'Lost & Found'}
               {activeSection === 'notifications' && 'Notifications'}
               {activeSection === 'profile' && 'Profile'}
             </h3>
@@ -573,6 +863,17 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
                 }`}
               >
                 Pre-Registration
+              </button>
+              <button
+                onClick={() => {
+                  setActiveSection('lostfound');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full px-4 py-3 text-left text-sm font-medium border-b border-gray-200 ${
+                  activeSection === 'lostfound' ? 'bg-[#2B5EA6] text-white' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Lost &amp; Found
               </button>
               <button
                 onClick={() => {
@@ -646,6 +947,16 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
               Pre-Registration
             </button>
             <button
+              onClick={() => setActiveSection('lostfound')}
+              className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+                activeSection === 'lostfound'
+                  ? 'border-[#2B5EA6] text-[#2B5EA6]'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Lost & Found
+            </button>
+            <button
               onClick={() => setActiveSection('notifications')}
               className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 relative ${
                 activeSection === 'notifications'
@@ -707,6 +1018,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
         {activeSection === 'profile' && (
           <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />
         )}
+        {activeSection === 'lostfound' && renderLostFound()}
         {activeSection === 'notifications' && renderNotifications()}
         {activeSection === 'schedule' && (
           <ScheduleModule user={user} />
@@ -816,6 +1128,126 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             </div>
           </div>
         </div>
+      )}
+
+      {/* Report Lost Livestock Modal */}
+      {showReportLostModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowReportLostModal(false)}>
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">Report Lost Livestock</h3>
+                <p className="text-sm text-gray-500 mt-1">Notify the City Veterinary Office and your barangay</p>
+              </div>
+              <button
+                onClick={() => setShowReportLostModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800">You can only report livestock that is already registered under your account.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Your Registered Livestock *</label>
+                <select
+                  value={reportForm.selectedLivestockId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const found = livestock.find(l => l.id === id);
+                    setReportForm(prev => ({
+                      ...prev,
+                      selectedLivestockId: id,
+                      // pre-fill with the livestock's registered barangay
+                      barangay: prev.barangay || found?.barangay || '',
+                    }));
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
+                >
+                  <option value="">-- Select a registered livestock record --</option>
+                  {livestock.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.type} ({item.count} head(s)) · {item.id}
+                    </option>
+                  ))}
+                </select>
+                {livestock.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">No registered livestock found. Please register your livestock first before filing a lost report.</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Last Seen Location</label>
+                  <input
+                    type="text"
+                    value={reportForm.lastSeenLocation}
+                    onChange={(e) => setReportForm(prev => ({ ...prev, lastSeenLocation: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
+                    placeholder="e.g., Near the rice field along Purok 3"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Barangay</label>
+                  <select
+                    value={reportForm.barangay}
+                    onChange={(e) => setReportForm(prev => ({ ...prev, barangay: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
+                  >
+                    <option value="">-- Select barangay --</option>
+                    {barangayOptions.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea
+                  value={reportForm.description}
+                  onChange={(e) => setReportForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2B5EA6]"
+                  placeholder="Describe the livestock and circumstances of when it was last seen..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setShowReportLostModal(false)}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReportLostLivestock}
+                  className="flex-1 px-4 py-3 bg-[#E85D3B] text-white rounded-md hover:bg-[#d64d2b] transition-colors font-medium"
+                >
+                  Submit Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLostFoundDetailsModal && selectedLostFoundReport && (
+        <LostFoundDetailsModal
+          report={selectedLostFoundReport}
+          onClose={() => {
+            setShowLostFoundDetailsModal(false);
+            setSelectedLostFoundReport(null);
+          }}
+        />
       )}
 
       <Footer />

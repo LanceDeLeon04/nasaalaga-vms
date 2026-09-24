@@ -244,7 +244,9 @@ export const createTables = async () => {
       BEGIN
         DELETE FROM lost_found_reports
         WHERE pet_id NOT SIMILAR TO '(BLU|PRP|GRY|RED)-[0-9]{4}-[0-9]{5}'
-          AND pet_id != 'UNKNOWN';
+          AND pet_id != 'UNKNOWN'
+          AND pet_id NOT LIKE 'LS-%'           -- keep lost-livestock reports
+          AND COALESCE(reported_by_role,'') != 'livestockOwner';
       EXCEPTION WHEN undefined_table THEN
         NULL;
       END $$;
@@ -384,6 +386,10 @@ export const createTables = async () => {
     await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_location TEXT`);
     await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_date DATE`);
     await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS impound_officer VARCHAR(255)`);
+    // BAHW validation of lost-livestock reports
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS validated_by VARCHAR(255)`);
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ`);
+    await client.query(`ALTER TABLE lost_found_reports ADD COLUMN IF NOT EXISTS validation_notes TEXT`);
 
     // Vaccination schedules table
     await client.query(`

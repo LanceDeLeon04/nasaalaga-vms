@@ -15,7 +15,7 @@ interface LostFoundReport {
   barangay: string;
   dateReported: string;
   description: string;
-  status: 'Open' | 'Resolved';
+  status: 'Open' | 'Verified' | 'Rejected' | 'Resolved';
   photo?: string;
 }
 
