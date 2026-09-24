@@ -98,6 +98,14 @@ export const api = {
     request('/livestock/mortality/' + id + '/validate', { method: 'PUT', body: JSON.stringify(data) }),
   cleanupDuplicateMortality: () =>
     request('/livestock/mortality/cleanup/duplicates', { method: 'DELETE' }),
+  // ── Pet death validation (separate module from livestock mortality) ──
+  getPetDeaths: () => request('/pet-deaths/all'),
+  addPetDeath: (data: any) =>
+    request('/pet-deaths', { method: 'POST', body: JSON.stringify(data) }),
+  validatePetDeath: (id: number, data: { validationStatus: 'Verified' | 'Rejected'; validationNotes?: string }) =>
+    request('/pet-deaths/' + id + '/validate', { method: 'PUT', body: JSON.stringify(data) }),
+  deletePetDeath: (id: number) =>
+    request('/pet-deaths/' + id, { method: 'DELETE' }),
   getDiseaseEvents: () => request('/livestock/disease-events/all'),
   addDiseaseEvent: (data: any) =>
     request('/livestock/disease-events', { method: 'POST', body: JSON.stringify(data) }),

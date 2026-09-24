@@ -17,6 +17,8 @@ import { PreRegisteredPets } from './PreRegisteredPets';
 import { Footer } from './Footer';
 import { ScheduleModule } from './ScheduleModule';
 import { LostLivestockValidation } from './LostLivestockValidation';
+import { PetDeathValidation } from './PetDeathValidation';
+import { LivestockDeathValidation } from './LivestockDeathValidation';
 import { api } from '../lib/api';
 import { toast } from 'sonner';
 import type { User } from '../App';
@@ -252,6 +254,10 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
         return <LivestockManagement userRole={user.role} />;
       case 'lost-livestock':
         return <LostLivestockValidation barangay={user.barangay} userName={user.username || user.email} />;
+      case 'pet-death-validation':
+        return <PetDeathValidation userRole={user.role} barangay={user.barangay} />;
+      case 'livestock-death-validation':
+        return <LivestockDeathValidation userRole={user.role} barangay={user.barangay} />;
       case 'rabies':
         return <PetRegistration userRole={user.role} />;
       case 'vaccination':

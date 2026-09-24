@@ -21,6 +21,8 @@ import { VaccinationModule } from './VaccinationModule';
 import { BudgetUtilization } from './BudgetUtilization';
 import { ScheduleModule } from './ScheduleModule';
 import { LostLivestockValidation } from './LostLivestockValidation';
+import { PetDeathValidation } from './PetDeathValidation';
+import { LivestockDeathValidation } from './LivestockDeathValidation';
 import { Footer } from './Footer';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { User } from '../App';
@@ -35,7 +37,8 @@ export type ActiveView =
   | 'outbreak'  | 'services'  | 'reports'| 'users'
   | 'audit'     | 'feedback'  | 'wildlife'| 'inventory'
   | 'vaccination'| 'settings' | 'budget' | 'livestock-prereg' | 'my-profile'
-  | 'pre-registration' | 'schedule' | 'lost-livestock';
+  | 'pre-registration' | 'schedule' | 'lost-livestock'
+  | 'pet-death-validation' | 'livestock-death-validation';
 
 export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>('dashboard');
@@ -70,6 +73,8 @@ export function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
       case 'livestock-prereg': return <LivestockPreRegistration userRole={user.role} />;
       case 'schedule':   return <ScheduleModule user={user} />;
       case 'lost-livestock': return <LostLivestockValidation barangay={user.barangay} />;
+      case 'pet-death-validation': return <PetDeathValidation userRole={user.role} barangay={user.barangay} />;
+      case 'livestock-death-validation': return <LivestockDeathValidation userRole={user.role} barangay={user.barangay} />;
       case 'my-profile': return <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />;
       case 'outbreak':     return <OutbreakMonitoring userRole={user.role} currentUser={{ username: user.username || user.email }} />;
       case 'services':     return <CVOServicesShared userRole={user.role} />;

@@ -33,7 +33,7 @@ interface MortalityRecord {
   id: number; livestock_id?: string; animal_type: string; breed?: string;
   owner_name: string; barangay: string; quantity: number; cause: string;
   date_reported: string; investigation_status: string; notes?: string;
-  photo_url?: string; record_kind?: 'Livestock' | 'Pet'; pet_id?: string;
+  photo_url?: string;
   reported_by?: string; reported_by_role?: string; created_by?: string;
   validation_status?: 'Pending' | 'Verified' | 'Rejected';
   validated_by?: string; validated_at?: string; validation_notes?: string;
@@ -621,7 +621,7 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
   const [viewItem, setViewItem] = useState<Livestock|null>(null);
   const [showMF, setShowMF]     = useState(false);
   const [showDF, setShowDF]     = useState(false);
-  const [mf, setMf] = useState({ recordKind:'Livestock' as 'Livestock'|'Pet', animalType:'', breed:'', ownerName:'', barangay:'', quantity:'1', cause:'', dateReported:new Date().toISOString().split('T')[0], notes:'', photoUrl:'' });
+  const [mf, setMf] = useState({ animalType:'', breed:'', ownerName:'', barangay:'', quantity:'1', cause:'', dateReported:new Date().toISOString().split('T')[0], notes:'', photoUrl:'' });
   const mortalityFileRef = useRef<HTMLInputElement>(null);
   const onMortalityPhoto = (e: { target: HTMLInputElement }) => {
     const f = e.target.files?.[0];
@@ -728,7 +728,7 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
       await api.addMortality({...mf,quantity:parseInt(mf.quantity)||1});
       await loadAll();
       setShowMF(false);
-      setMf({recordKind:'Livestock',animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:'',photoUrl:''});
+      setMf({animalType:'',breed:'',ownerName:'',barangay:'',quantity:'1',cause:'',dateReported:new Date().toISOString().split('T')[0],notes:'',photoUrl:''});
     } catch(e:any){ alert('Error: '+e.message); }
     finally { setSaving(false); }
   };
@@ -740,22 +740,6 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
 
   const handleUpdateMortalityStatus = async(id:number, status:string, notes:string)=>{
     try { await api.updateMortality(id,{investigationStatus:status,notes}); await loadAll(); } catch(e:any){ alert('Error: '+e.message); }
-  };
-
-  const [validatingId, setValidatingId] = useState<number|null>(null);
-  const handleValidateMortality = async(id:number, validationStatus:'Verified'|'Rejected')=>{
-    let validationNotes = '';
-    if (validationStatus === 'Rejected') {
-      const input = prompt('Optional: reason for rejecting this death/expired report');
-      if (input === null) return; // user cancelled
-      validationNotes = input;
-    }
-    setValidatingId(id);
-    try {
-      await api.validateMortality(id, { validationStatus, validationNotes: validationNotes || undefined });
-      await loadAll();
-    } catch(e:any){ alert('Error: '+e.message); }
-    finally { setValidatingId(null); }
   };
 
   const handleAddDisease = async()=>{
@@ -1176,25 +1160,15 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
           </div>
           {showMF&&(
             <div className="bg-red-50 border border-red-200 rounded-2xl p-5 space-y-3">
-              <p className="font-bold text-red-800 flex items-center gap-2"><Skull className="w-4 h-4"/>Report Death / Expired Record</p>
+              <p className="font-bold text-red-800 flex items-center gap-2"><Skull className="w-4 h-4"/>Report Livestock Death</p>
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 flex gap-2">
-                  {(['Livestock','Pet'] as const).map(k=>(
-                    <button key={k} type="button" onClick={()=>setMf(p=>({...p,recordKind:k}))}
-                      className={`flex-1 py-2 rounded-xl text-sm font-bold border-2 ${mf.recordKind===k?'bg-red-600 text-white border-red-600':'bg-white text-gray-500 border-gray-200'}`}>
-                      {k==='Livestock'?'Livestock Death':'Pet Died / Expired'}
-                    </button>
-                  ))}
-                </div>
-                {mf.recordKind==='Livestock'
-                  ? <SelectField label="Animal Type *" value={mf.animalType} onChange={(v:string)=>setMf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
-                  : <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Species *</label><input value={mf.animalType} onChange={e=>setMf(p=>({...p,animalType:e.target.value}))} className={INPUT} placeholder="e.g. Dog, Cat"/></div>}
+                <SelectField label="Animal Type *" value={mf.animalType} onChange={(v:string)=>setMf(p=>({...p,animalType:v}))} options={['',...ANIMAL_TYPES]}/>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Breed</label><input value={mf.breed} onChange={e=>setMf(p=>({...p,breed:e.target.value}))} className={INPUT} placeholder="Optional"/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Owner Name *</label><input value={mf.ownerName} onChange={e=>setMf(p=>({...p,ownerName:e.target.value}))} className={INPUT}/></div>
                 {isBahw
                   ? <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Barangay</label><input value={mf.barangay || 'Your assigned barangay'} disabled className={INPUT+' bg-gray-100 text-gray-500'}/></div>
                   : <SelectField label="Barangay *" value={mf.barangay} onChange={(v:string)=>setMf(p=>({...p,barangay:v}))} options={['',...CALACA_BARANGAYS]}/>}
-                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity Dead *</label><input type="number" min="1" value={mf.quantity} onChange={e=>setMf(p=>({...p,quantity:e.target.value}))} className={INPUT} disabled={mf.recordKind==='Pet'}/></div>
+                <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Quantity Dead *</label><input type="number" min="1" value={mf.quantity} onChange={e=>setMf(p=>({...p,quantity:e.target.value}))} className={INPUT}/></div>
                 <div><label className="block text-xs font-semibold text-gray-600 mb-1.5">Date Reported</label><input type="date" value={mf.dateReported} onChange={e=>setMf(p=>({...p,dateReported:e.target.value}))} className={INPUT}/></div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Cause of Death *</label><input value={mf.cause} onChange={e=>setMf(p=>({...p,cause:e.target.value}))} className={INPUT} placeholder="Disease, accident, unknown…"/></div>
                 <div className="col-span-2"><label className="block text-xs font-semibold text-gray-600 mb-1.5">Notes</label><textarea value={mf.notes} onChange={e=>setMf(p=>({...p,notes:e.target.value}))} rows={2} className={INPUT+' resize-none'}/></div>
@@ -1226,11 +1200,10 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
             :<>
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Kind','Type','Breed','Owner','Reported By','Barangay','Qty Dead','Cause','Date','Photo','Validation','Investigation',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
+              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Type','Breed','Owner','Reported By','Barangay','Qty Dead','Cause','Date','Photo','Validation','Investigation',''].map(h=><th key={h} className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody className="divide-y divide-gray-50">
                 {mortality.map(m=>(
                   <tr key={m.id} className="hover:bg-red-50/20">
-                    <td className="py-3 px-3 text-xs font-bold whitespace-nowrap">{m.record_kind==='Pet'?'🐾 Pet':'🐄 Livestock'}</td>
                     <td className="py-3 px-3 text-sm font-semibold">{m.animal_type}</td>
                     <td className="py-3 px-3 text-sm text-gray-600">{m.breed||'—'}</td>
                     <td className="py-3 px-3 text-sm text-gray-700">{m.owner_name}</td>
@@ -1251,17 +1224,8 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${m.validation_status==='Verified'?'bg-green-100 text-green-700':m.validation_status==='Rejected'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}`}>
                         {m.validation_status || 'Pending'}
                       </span>
-                      {m.validation_status==='Pending' && (
-                        <div className="flex gap-1 mt-1.5">
-                          <button onClick={()=>handleValidateMortality(m.id,'Verified')} disabled={validatingId===m.id}
-                            className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded-lg text-[11px] font-bold hover:bg-green-700 disabled:opacity-50">
-                            <CheckCircle className="w-3 h-3"/>Verify
-                          </button>
-                          <button onClick={()=>handleValidateMortality(m.id,'Rejected')} disabled={validatingId===m.id}
-                            className="flex items-center gap-1 px-2 py-1 bg-red-600 text-white rounded-lg text-[11px] font-bold hover:bg-red-700 disabled:opacity-50">
-                            <X className="w-3 h-3"/>Reject
-                          </button>
-                        </div>
+                      {(m.validation_status||'Pending')==='Pending' && (
+                        <p className="text-[10px] text-gray-400 mt-1">Validate in “Validate Livestock Deaths”</p>
                       )}
                       {m.validated_by && m.validation_status!=='Pending' && (
                         <p className="text-[10px] text-gray-400 mt-1">by {m.validated_by}</p>
@@ -1287,7 +1251,7 @@ export function LivestockManagement({ userRole }: { userRole?: string } = {}) {
               </tbody>
               <tfoot>
                 <tr className="bg-red-50 border-t-2 border-red-100">
-                  <td colSpan={6} className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wide">Total Deaths ({mortality.length} incident{mortality.length!==1?'s':''})</td>
+                  <td colSpan={5} className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wide">Total Deaths ({mortality.length} incident{mortality.length!==1?'s':''})</td>
                   <td className="py-3 px-3 font-black text-red-700 text-base">{mortality.reduce((s,m)=>s+(m.quantity||1),0)}</td>
                   <td colSpan={6}/>
                 </tr>

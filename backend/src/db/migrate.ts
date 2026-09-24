@@ -137,6 +137,12 @@ export const createTables = async () => {
     // ── Death/expired report enhancements: photo document + pet support ────
     // record_kind distinguishes a Livestock death report from a Pet death report
     // (pets use pet_id + species stored in animal_type for a single unified table).
+    // Safety net: older deployments may have created this table before
+    // created_at/updated_at were part of the CREATE TABLE statement above.
+    // CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so those
+    // columns need to be backfilled explicitly.
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+    await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS photo_url TEXT`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS record_kind VARCHAR(20) DEFAULT 'Livestock'`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS pet_id VARCHAR(50)`);
@@ -148,6 +154,55 @@ export const createTables = async () => {
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validated_by VARCHAR(255)`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ`);
     await client.query(`ALTER TABLE livestock_mortality ADD COLUMN IF NOT EXISTS validation_notes TEXT`);
+
+    // ── Pet death reports: their own table + module ────────────────────────
+    // Pet and livestock death validation used to share livestock_mortality
+    // (distinguished only by record_kind), which mixed pets into livestock
+    // mortality counts, alerts and validation queues. Pets now live in
+    // pet_death_reports; livestock_mortality holds livestock only.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pet_death_reports (
+        id SERIAL PRIMARY KEY,
+        pet_id VARCHAR(50),
+        pet_name VARCHAR(255),
+        species VARCHAR(100) NOT NULL,
+        breed VARCHAR(255),
+        owner_name VARCHAR(255),
+        barangay VARCHAR(255),
+        cause VARCHAR(255),
+        date_of_death DATE DEFAULT CURRENT_DATE,
+        notes TEXT,
+        photo_url TEXT,
+        reported_by VARCHAR(255),
+        reported_by_role VARCHAR(50),
+        validation_status VARCHAR(20) DEFAULT 'Pending',
+        validated_by VARCHAR(255),
+        validated_at TIMESTAMPTZ,
+        validation_notes TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pet_death_barangay ON pet_death_reports (barangay)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pet_death_status ON pet_death_reports (validation_status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pet_death_pet ON pet_death_reports (pet_id)`);
+    // One-time (idempotent) move of legacy pet rows out of livestock_mortality.
+    // Single statement, so rows are never deleted without being copied.
+    await client.query(`
+      WITH moved AS (
+        DELETE FROM livestock_mortality WHERE record_kind = 'Pet' RETURNING *
+      )
+      INSERT INTO pet_death_reports
+        (pet_id, pet_name, species, breed, owner_name, barangay, cause, date_of_death,
+         notes, photo_url, reported_by, reported_by_role, validation_status,
+         validated_by, validated_at, validation_notes, created_at, updated_at)
+      SELECT m.pet_id, p.pet_name, m.animal_type, m.breed, m.owner_name, m.barangay, m.cause,
+             m.date_reported, m.notes, m.photo_url, COALESCE(m.reported_by, m.created_by),
+             m.reported_by_role, COALESCE(m.validation_status, 'Pending'),
+             m.validated_by, m.validated_at, m.validation_notes,
+             COALESCE(m.created_at, NOW()), COALESCE(m.updated_at, NOW())
+      FROM moved m LEFT JOIN pets p ON p.id = m.pet_id
+    `);
 
     // ── Livestock disease alerts table ─────────────────────────────────────
     await client.query(`

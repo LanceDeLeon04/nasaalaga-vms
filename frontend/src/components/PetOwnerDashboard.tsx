@@ -346,16 +346,10 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
     if (!deathTargetPet || !deathForm.cause || savingDeath) return;
     setSavingDeath(true);
     try {
-      await api.addMortality({
-        recordKind: 'Pet',
+      await api.addPetDeath({
         petId: deathTargetPet.id,
-        animalType: deathTargetPet.species,
-        breed: deathTargetPet.breed,
-        ownerName: deathTargetPet.ownerName || user.username,
-        barangay: deathTargetPet.barangay,
-        quantity: 1,
         cause: deathForm.cause,
-        dateReported: deathForm.dateReported,
+        dateOfDeath: deathForm.dateReported,
         notes: deathForm.notes,
         photoUrl: deathForm.photoUrl || undefined,
       });

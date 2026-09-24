@@ -7,6 +7,7 @@ import authRoutes from './routes/auth';
 import { verifyEmailConnection } from './services/email';
 import petsRoutes from './routes/pets';
 import livestockRoutes from './routes/livestock';
+import petDeathRoutes from './routes/petDeaths';
 import lostFoundRoutes from './routes/lostFound';
 import apiRoutes from './routes/api';
 import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns } from './db/migrate';
@@ -36,6 +37,7 @@ const API = '/api';
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/pets`, petsRoutes);
 app.use(`${API}/livestock`, livestockRoutes);
+app.use(`${API}/pet-deaths`, petDeathRoutes);
 app.use(`${API}/lost-found`, lostFoundRoutes);
 app.use(`${API}`, apiRoutes);
 

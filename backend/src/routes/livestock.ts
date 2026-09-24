@@ -208,14 +208,19 @@ router.post('/:id/health-records', authenticate, async (req: AuthRequest, res: R
   }
 });
 
-// ── Mortality / Death Reports (livestock AND pets, with photo document) ───
+// ── Livestock Mortality / Death Reports (with photo document) ─────────────
+// LIVESTOCK ONLY. Pet death reports live in their own module/table
+// (routes/petDeaths.ts → /api/pet-deaths) so the two validation queues,
+// counts and status side-effects can never be mixed up.
 // BAHW is scoped to records reported in their own barangay.
+const LIVESTOCK_ONLY = `COALESCE(record_kind,'Livestock')='Livestock'`;
+
 router.get('/mortality/all', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const isBahw = req.user?.role === 'bahw';
     const sql = isBahw
-      ? 'SELECT * FROM livestock_mortality WHERE barangay=$1 ORDER BY date_reported DESC'
-      : 'SELECT * FROM livestock_mortality ORDER BY date_reported DESC';
+      ? `SELECT * FROM livestock_mortality WHERE ${LIVESTOCK_ONLY} AND barangay=$1 ORDER BY date_reported DESC`
+      : `SELECT * FROM livestock_mortality WHERE ${LIVESTOCK_ONLY} ORDER BY date_reported DESC`;
     const result = await query(sql, isBahw ? [req.user?.barangay] : []);
     return res.json({ mortality: result.rows });
   } catch (err: any) {
@@ -223,22 +228,23 @@ router.get('/mortality/all', authenticate, async (req: AuthRequest, res: Respons
   }
 });
 
-// Roles allowed to validate (verify/reject) a death/expired report.
+// Roles allowed to validate (verify/reject) a livestock death report.
 const MORTALITY_VALIDATOR_ROLES = ['bahw', 'admin', 'superadmin', 'cvoStaff'];
 // Reports filed by staff (BAHW/CVO/admin) are auto-verified since they already
 // require a photo document; reports filed by owners need staff review.
 const STAFF_REPORTER_ROLES = ['bahw', 'admin', 'superadmin', 'cvoStaff'];
 
-// Report a death (livestock) or an expired/deceased pet, with an optional
-// photo document. Kind is 'Livestock' (default) or 'Pet'.
+// Report a livestock death, with an optional photo document.
 // BAHW accounts are always pinned to their own assigned barangay, and must
 // attach a photo document to substantiate the report.
 router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
+    if (d.recordKind === 'Pet' || d.petId) {
+      return res.status(400).json({ error: 'Pet death reports are filed under Pet Death Validation (/api/pet-deaths), not livestock mortality.' });
+    }
     const isBahw = req.user?.role === 'bahw';
     const isStaffReporter = STAFF_REPORTER_ROLES.includes(req.user?.role || '');
-    const recordKind = d.recordKind === 'Pet' ? 'Pet' : 'Livestock';
     const barangay = isBahw ? req.user?.barangay : d.barangay;
     if (!barangay) return res.status(400).json({ error: 'Barangay is required' });
     if (isBahw && !d.photoUrl) {
@@ -255,9 +261,9 @@ router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) 
       `INSERT INTO livestock_mortality
         (livestock_id, animal_type, breed, owner_name, barangay, quantity,
          cause, date_reported, investigation_status, notes, created_by,
-         photo_url, record_kind, pet_id, reported_by, reported_by_role,
+         photo_url, record_kind, reported_by, reported_by_role,
          validation_status, validated_by, validated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Livestock',$13,$14,$15,$16,$17)
        ON CONFLICT (animal_type, owner_name, barangay, cause, date_reported)
        DO UPDATE SET quantity = EXCLUDED.quantity, notes = EXCLUDED.notes,
          photo_url = COALESCE(EXCLUDED.photo_url, livestock_mortality.photo_url), updated_at = NOW()
@@ -265,17 +271,13 @@ router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) 
       [d.livestockId || null, d.animalType, d.breed || null, d.ownerName, barangay,
        d.quantity || 1, d.cause, d.dateReported || new Date().toISOString().split('T')[0],
        d.investigationStatus || 'Pending', d.notes || null, req.user?.username || d.createdBy || 'Admin',
-       d.photoUrl || null, recordKind, d.petId || null, req.user?.username || null, req.user?.role || null,
+       d.photoUrl || null, req.user?.username || null, req.user?.role || null,
        validationStatus, validatedBy, validatedAt]
     );
     // If linked to a livestock record, update its health status
     if (d.livestockId) {
       await query('UPDATE livestock SET health_status=$1, updated_at=NOW() WHERE id=$2',
         ['Dead', d.livestockId]);
-    }
-    // If linked to a registered pet, mark it Deceased
-    if (recordKind === 'Pet' && d.petId) {
-      await query(`UPDATE pets SET status='Deceased', updated_at=NOW() WHERE id=$1`, [d.petId]);
     }
     return res.json({ record: result.rows[0], success: true });
   } catch (err: any) {
@@ -285,21 +287,24 @@ router.post('/mortality', authenticate, async (req: AuthRequest, res: Response) 
 
 router.delete('/mortality/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    await query('DELETE FROM livestock_mortality WHERE id=$1', [req.params.id]);
+    if (!req.user || !MORTALITY_VALIDATOR_ROLES.includes(req.user.role || '')) {
+      return res.status(403).json({ error: 'Only BAHW or CVO staff can delete death reports' });
+    }
+    await query(`DELETE FROM livestock_mortality WHERE id=$1 AND ${LIVESTOCK_ONLY}`, [req.params.id]);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-// Validate (verify/reject) a death/expired report filed by an owner.
+// Validate (verify/reject) a livestock death report filed by an owner.
 // BAHW accounts may only validate reports filed in their own barangay.
-// Rejecting a report reverts the linked livestock/pet record's status,
+// Rejecting a report reverts the linked livestock record's status,
 // since the death is no longer considered substantiated.
 router.put('/mortality/:id/validate', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user || !MORTALITY_VALIDATOR_ROLES.includes(req.user.role || '')) {
-      return res.status(403).json({ error: 'Only BAHW or CVO staff can validate death/expired reports' });
+      return res.status(403).json({ error: 'Only BAHW or CVO staff can validate livestock death reports' });
     }
     const { id } = req.params;
     const { validationStatus, validationNotes } = req.body;
@@ -307,8 +312,8 @@ router.put('/mortality/:id/validate', authenticate, async (req: AuthRequest, res
       return res.status(400).json({ error: "validationStatus must be 'Verified' or 'Rejected'" });
     }
 
-    const existing = await query('SELECT * FROM livestock_mortality WHERE id=$1', [id]);
-    if (existing.rows.length === 0) return res.status(404).json({ error: 'Record not found' });
+    const existing = await query(`SELECT * FROM livestock_mortality WHERE id=$1 AND ${LIVESTOCK_ONLY}`, [id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Livestock death report not found' });
     const record = existing.rows[0];
 
     if (req.user.role === 'bahw' && req.user.barangay) {
@@ -325,13 +330,9 @@ router.put('/mortality/:id/validate', authenticate, async (req: AuthRequest, res
     );
 
     // A rejected report means the death is not substantiated — undo the
-    // automatic status change so the animal/pet reverts to its prior status.
-    if (validationStatus === 'Rejected') {
-      if (record.record_kind === 'Pet' && record.pet_id) {
-        await query(`UPDATE pets SET status='Active', updated_at=NOW() WHERE id=$1 AND status='Deceased'`, [record.pet_id]);
-      } else if (record.livestock_id) {
-        await query(`UPDATE livestock SET health_status='Healthy', updated_at=NOW() WHERE id=$1 AND health_status='Dead'`, [record.livestock_id]);
-      }
+    // automatic status change so the livestock record reverts.
+    if (validationStatus === 'Rejected' && record.livestock_id) {
+      await query(`UPDATE livestock SET health_status='Healthy', updated_at=NOW() WHERE id=$1 AND health_status='Dead'`, [record.livestock_id]);
     }
 
     return res.json({ record: result.rows[0], success: true });
@@ -345,7 +346,7 @@ router.put('/mortality/:id', authenticate, async (req: AuthRequest, res: Respons
     const d = req.body;
     const result = await query(
       `UPDATE livestock_mortality SET investigation_status=$1, notes=$2, updated_at=NOW()
-       WHERE id=$3 RETURNING *`,
+       WHERE id=$3 AND ${LIVESTOCK_ONLY} RETURNING *`,
       [d.investigationStatus, d.notes || null, req.params.id]
     );
     return res.json({ record: result.rows[0], success: true });
