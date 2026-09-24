@@ -327,7 +327,8 @@ router.post('/validate/:preRegNumber', authenticate, async (req: AuthRequest, re
 // any ?barangay= passed in the URL is ignored for that role.
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { ownerId } = req.query;
+    const OWNER_ROLES = ['petOwner', 'livestockManager', 'both', 'owner'];
+    const ownerId = OWNER_ROLES.includes(req.user?.role || '') ? (req.user?.ownerId || '__none__') : req.query.ownerId;
     const barangay = req.user?.role === 'bahw' ? req.user?.barangay : req.query.barangay;
     const conditions: string[] = [];
     const params: any[] = [];

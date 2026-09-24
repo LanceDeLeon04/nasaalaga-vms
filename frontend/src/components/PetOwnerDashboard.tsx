@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
 import { Footer } from './Footer';
@@ -105,17 +105,22 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
     description: '',
   });
 
-  const [notifications] = useState<Notification[]>([
-    {
-      id: 'N-001',
-      petId: 'BLU-000-00001',
-      petName: 'Brownie',
-      type: 'vaccination',
-      message: 'Rabies vaccination due soon',
-      date: '2025-02-17',
-      read: false,
-    },
-  ]);
+  // Derived from THIS owner's own pets only (no shared/hardcoded data)
+  const notifications = useMemo<Notification[]>(() => {
+    const out: Notification[] = [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    pets.forEach(p => {
+      if (p.ownerId && user.ownerId && p.ownerId !== user.ownerId) return;
+      const next = p.nextVaccinationDate ? new Date(p.nextVaccinationDate) : null;
+      const days = next && !isNaN(next.getTime()) ? Math.ceil((next.getTime() - today.getTime()) / 864e5) : null;
+      let msg = '';
+      if (days !== null && days < 0) msg = 'Vaccination overdue';
+      else if (days !== null && days <= 30) msg = 'Vaccination due soon';
+      else if (p.vaccinationStatus === 'Due Soon') msg = 'Vaccination due soon';
+      if (msg) out.push({ id: `vax-${p.id}`, petId: p.id, petName: p.petName, type: 'vaccination', message: msg, date: p.nextVaccinationDate || '', read: false });
+    });
+    return out;
+  }, [pets, user.ownerId]);
 
   // Fetch user's pets from Supabase
   useEffect(() => {

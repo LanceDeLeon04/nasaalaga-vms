@@ -695,8 +695,8 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const visibleSchedules = isAdmin
     ? schedules
     : schedules.filter(s =>
-        s.isAdminCreated ||  // public events
-        s.requestedBy === (user.ownerId || user.email)
+        s.requestedBy === (user.ownerId || user.email) ||
+        (s.isAdminCreated && (!s.barangay || s.barangay.toLowerCase() === (user.barangay || '').toLowerCase()))
       );
 
   const filteredSchedules = visibleSchedules.filter(s =>
@@ -1043,7 +1043,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
           </div>
           <div className="divide-y divide-gray-50">
             {unavailableBlocks
-              .filter(b => isAdmin || b.userId === (user.ownerId || user.email))
+              .filter(b => isAdmin || ((b as any).userId ?? (b as any).user_id) === (user.ownerId || user.email))
               .map(b => (
                 <div key={b.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
                   <div className="flex-1 min-w-0">

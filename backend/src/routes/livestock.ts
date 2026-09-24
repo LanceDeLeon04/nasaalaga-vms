@@ -11,7 +11,9 @@ const router = Router();
 // can never page through another barangay's records by tampering with the URL.
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { ownerId, type, status } = req.query;
+    const { type, status } = req.query;
+    const OWNER_ROLES = ['petOwner', 'livestockManager', 'both', 'owner'];
+    const ownerId = OWNER_ROLES.includes(req.user?.role || '') ? (req.user?.ownerId || '__none__') : req.query.ownerId;
     const barangay = req.user?.role === 'bahw' ? req.user?.barangay : req.query.barangay;
     let sql = 'SELECT * FROM livestock WHERE 1=1';
     const params: any[] = [];
