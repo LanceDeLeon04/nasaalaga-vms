@@ -2,8 +2,9 @@ import {
   LayoutDashboard, Package, Syringe, AlertTriangle, FileText, Award,
   Users, ScrollText, MessageSquare, Lock, ShieldCheck, Bird,
   ClipboardList, Settings, X, FlaskConical, AlertCircle, PawPrint, DollarSign, UserCircle,
-  CalendarClock
-} from 'lucide-react';import type { ActiveView } from './AdminDashboard';
+  CalendarClock, ChevronDown, Building2, Activity
+} from 'lucide-react';
+import type { ActiveView } from './AdminDashboard';
 import type { UserRole } from '../App';
 import { useState, useEffect } from 'react';
 import { useBackupStatus, timeAgo, HEALTH_LABEL, HEALTH_COLOR, HEALTH_DOT } from '../hooks/useBackupStatus';
@@ -54,11 +55,101 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
     { id: 'settings'  as ActiveView, label: 'SuperAdmin Panel', icon: Settings,    roles: ['superadmin'] },
   ];
 
+  // ── Sidebar categories ───────────────────────────────────────────────
+  // Every menu item id must appear in exactly one place: either as a standalone
+  // entry (top-level) or inside a group. Ids not listed here are appended to the
+  // end as standalone items so a newly added module never silently disappears.
+  const STANDALONE_TOP: ActiveView[] = ['dashboard'];
+  const STANDALONE_BOTTOM: ActiveView[] = ['my-profile'];
+  const menuGroups: { key: string; label: string; icon: typeof Package; ids: ActiveView[] }[] = [
+    { key: 'livestock', label: 'Livestock', icon: Package,
+      ids: ['livestock', 'livestock-prereg', 'lost-livestock', 'livestock-death-validation'] },
+    { key: 'pets', label: 'Pets', icon: PawPrint,
+      ids: ['rabies', 'preregistered', 'pet-death-validation'] },
+    { key: 'health', label: 'Health & Field Work', icon: Activity,
+      ids: ['vaccination', 'pre-registration', 'schedule', 'outbreak', 'wildlife'] },
+    { key: 'office', label: 'CVO Office', icon: Building2,
+      ids: ['services', 'inventory', 'budget', 'reports', 'feedback'] },
+    { key: 'admin', label: 'Administration', icon: Settings,
+      ids: ['users', 'audit', 'settings'] },
+  ];
+
+  const canSee = (item: { roles: string[] }) => item.roles.includes(userRole!);
+  const byId = (id: ActiveView) => menuItems.find(m => m.id === id);
+  // Allowed items first, locked (no access) items after — same ordering as before.
+  const sortAllowedFirst = <T extends { roles: string[] }>(items: T[]) => [
+    ...items.filter(canSee),
+    ...items.filter(i => !canSee(i)),
+  ];
+
+  const groupedIds = new Set<ActiveView>([
+    ...STANDALONE_TOP, ...STANDALONE_BOTTOM, ...menuGroups.flatMap(g => g.ids),
+  ]);
+  const ungroupedItems = menuItems.filter(m => !groupedIds.has(m.id));
+
+  // Open/closed state. Several dropdowns can be open at the same time and the
+  // choice is remembered between visits.
+  const OPEN_KEY = 'nasaalaga_sidebar_open_groups';
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(OPEN_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const persistOpen = (next: Record<string, boolean>) => {
+    setOpenGroups(next);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
+  const toggleGroup = (key: string) => persistOpen({ ...openGroups, [key]: !openGroups[key] });
+
+  // Whenever the active view changes (sidebar click, dashboard card, deep link),
+  // make sure the dropdown that contains it is open so the user can see where they are.
+  useEffect(() => {
+    const owner = menuGroups.find(g => g.ids.includes(activeView));
+    if (owner && !openGroups[owner.key]) {
+      persistOpen({ ...openGroups, [owner.key]: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
+
   const handleMenuItemClick = (itemId: ActiveView, isAllowed: boolean) => {
     if (isAllowed) {
       setActiveView(itemId);
       if (onClose) onClose();
     }
+  };
+
+  const renderItem = (
+    item: (typeof menuItems)[number],
+    nested = false,
+    hidden = false,
+  ) => {
+    const isAllowed = canSee(item);
+    const isActive = activeView === item.id;
+    const Icon = item.icon;
+    return (
+      <li key={item.id}>
+        <button
+          onClick={() => handleMenuItemClick(item.id, isAllowed)}
+          disabled={!isAllowed}
+          tabIndex={hidden ? -1 : undefined}
+          className={`w-full flex items-center gap-3 rounded-xl transition-all duration-200 ${
+            nested ? 'px-3 py-2.5' : 'px-4 py-3.5'
+          } ${
+            isActive
+              ? 'bg-white text-[#60A85C] shadow-lg scale-[1.02]'
+              : isAllowed
+              ? 'hover:bg-white/15 text-white'
+              : 'opacity-40 cursor-not-allowed text-gray-300'
+          }`}
+        >
+          <Icon className={nested ? 'w-4 h-4' : 'w-5 h-5'} />
+          <span className="text-sm flex-1 text-left">{item.label}</span>
+          {!isAllowed && <Lock className="w-3 h-3" />}
+          {isActive && <div className="w-2 h-2 bg-[#60A85C] rounded-full" />}
+        </button>
+      </li>
+    );
   };
 
   return (
@@ -82,34 +173,54 @@ export function Sidebar({ activeView, setActiveView, userRole, isOpen = true, on
         )}
         <nav className="p-4">
           <ul className="space-y-1.5">
-            {[
-              ...menuItems.filter(item => item.roles.includes(userRole!)),
-              ...menuItems.filter(item => !item.roles.includes(userRole!)),
-            ].map((item) => {
-              const isAllowed = item.roles.includes(userRole!);
-              const isActive = activeView === item.id;
-              const Icon = item.icon;
+            {STANDALONE_TOP.map(id => byId(id)).filter((i): i is NonNullable<typeof i> => !!i && canSee(i)).map(i => renderItem(i))}
+
+            {menuGroups.map(group => {
+              const items = sortAllowedFirst(
+                group.ids.map(byId).filter((i): i is NonNullable<typeof i> => !!i)
+              );
+              // Hide a category entirely when the role can't use anything in it.
+              if (!items.some(canSee)) return null;
+
+              const isOpen = !!openGroups[group.key];
+              const hasActive = items.some(i => i.id === activeView);
+              const GroupIcon = group.icon;
+              const panelId = `sidebar-group-${group.key}`;
               return (
-                <li key={item.id}>
+                <li key={group.key}>
                   <button
-                    onClick={() => handleMenuItemClick(item.id, isAllowed)}
-                    disabled={!isAllowed}
+                    type="button"
+                    onClick={() => toggleGroup(group.key)}
+                    aria-expanded={isOpen}
+                    aria-controls={panelId}
                     className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 ${
-                      isActive
-                        ? 'bg-white text-[#60A85C] shadow-lg scale-[1.02]'
-                        : isAllowed
-                        ? 'hover:bg-white/15 text-white hover:pl-5'
-                        : 'opacity-40 cursor-not-allowed text-gray-300'
+                      hasActive && !isOpen ? 'bg-white/25 text-white' : 'hover:bg-white/15 text-white'
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-sm flex-1 text-left">{item.label}</span>
-                    {!isAllowed && <Lock className="w-3 h-3" />}
-                    {isActive && <div className="w-2 h-2 bg-[#60A85C] rounded-full" />}
+                    <GroupIcon className="w-5 h-5" />
+                    <span className="text-sm flex-1 text-left font-medium">{group.label}</span>
+                    {hasActive && !isOpen && <div className="w-2 h-2 bg-white rounded-full" />}
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    />
                   </button>
+                  {/* grid-rows trick animates height without measuring the content */}
+                  <div
+                    id={panelId}
+                    className={`grid transition-all duration-200 ease-in-out ${
+                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <ul className="overflow-hidden ml-6 pl-3 border-l border-white/25 space-y-1">
+                      {items.map(item => renderItem(item, true, !isOpen))}
+                    </ul>
+                  </div>
                 </li>
               );
             })}
+
+            {ungroupedItems.filter(canSee).map(i => renderItem(i))}
+            {STANDALONE_BOTTOM.map(id => byId(id)).filter((i): i is NonNullable<typeof i> => !!i && canSee(i)).map(i => renderItem(i))}
           </ul>
         </nav>
         {(userRole === 'admin' || userRole === 'superadmin') && (

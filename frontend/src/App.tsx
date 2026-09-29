@@ -7,6 +7,8 @@ import { useSessionTimeout } from './hooks/useSessionTimeout';
 import { SessionWarningModal, SessionExpiredModal } from './components/SessionTimeoutModals';
 import PwaUpdater from './components/PwaUpdater';
 import HelpButton from './components/HelpButton';
+import OfflineStatus from './components/OfflineStatus';
+import { endSession } from './offline';
 
 export type UserRole = 'admin' | 'superadmin' | 'bahw' | 'petOwner' | 'livestockManager' | 'owner' | 'guest' | 'cityHealth' | 'both' | 'cvoStaff' | null;
 
@@ -183,17 +185,14 @@ function SessionTimeoutWrapper({ children }: { children: ReactNode }) {
   const isLoggedIn = !!sessionStorage.getItem('nasaalaga_user');
 
   const handleExpiredOk = useCallback(() => {
-    // Clear session data and redirect to login
-    sessionStorage.removeItem('nasaalaga_user');
-    sessionStorage.removeItem('nasaalaga_token');
+    // Idle time-out: sign out but keep the offline copy of the session so staff without signal can resume.
     acknowledgeExpiry();
-    window.location.href = '/';
+    endSession({ keepOffline: true }).finally(() => { window.location.href = '/'; });
   }, [acknowledgeExpiry]);
 
   const handleLogoutNow = useCallback(() => {
-    sessionStorage.removeItem('nasaalaga_user');
-    sessionStorage.removeItem('nasaalaga_token');
-    window.location.href = '/';
+    // Explicit logout: also wipes the offline session and cached data from this device (queued uploads are kept).
+    endSession({ keepOffline: false }).finally(() => { window.location.href = '/'; });
   }, []);
 
   return (
@@ -266,6 +265,7 @@ export default function App() {
       <RouterProvider router={router} />
       <Toaster />
       <PwaUpdater />
+      <OfflineStatus />
       <HelpButton />
     </SessionTimeoutWrapper>
   );

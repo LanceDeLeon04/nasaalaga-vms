@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'
 import App from './App.tsx'
+import { initOffline } from './offline'
 
 // ── Startup: evict any oversized JWT left over from before the avatar-in-token bug was fixed.
 // A normal lean token is ~300–500 bytes. Anything over 6 KB means the old avatar-bloated
@@ -18,21 +19,9 @@ import App from './App.tsx'
   } catch {}
 })();
 
-// Global fetch interceptor – inject JWT token automatically
-const _origFetch = window.fetch.bind(window);
-window.fetch = function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const token = sessionStorage.getItem('nasaalaga_token');
-  // Safety: never send a token that would cause HTTP 431 (header too large)
-  const safeToken = token && token.length <= 6144 ? token : null;
-  if (safeToken && typeof input === 'string' && input.startsWith('/api')) {
-    init = init || {};
-    init.headers = {
-      ...(init.headers || {}),
-      'Authorization': `Bearer ${safeToken}`,
-    };
-  }
-  return _origFetch(input, init);
-};
+// Offline mode: replaces the old global fetch interceptor. It still attaches the JWT to /api calls, and adds
+// cached reads, an offline write queue with auto-upload, and offline-session helpers (see src/offline/).
+initOffline();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

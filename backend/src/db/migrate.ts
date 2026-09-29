@@ -1385,6 +1385,7 @@ if (isMain) {
     .then(() => migrateNotifications())
     .then(() => migrateBackups())
     .then(() => migratePetArchive())
+    .then(() => migrateIdempotency())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1613,4 +1614,20 @@ export async function migratePetArchive() {
   } finally {
     client.release();
   }
+}
+
+// ── Offline sync: de-duplication of replayed writes (see middleware/idempotency.ts) ──
+export async function migrateIdempotency() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key           VARCHAR(200) PRIMARY KEY,
+      method        VARCHAR(10),
+      path          TEXT,
+      state         VARCHAR(10) NOT NULL DEFAULT 'pending',
+      status_code   INT,
+      response_body JSONB,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created ON idempotency_keys(created_at);`);
 }

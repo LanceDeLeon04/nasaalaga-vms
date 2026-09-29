@@ -74,3 +74,29 @@ API: `GET /api/backup/status` (admin+), everything else under `/api/backup` is s
 - **Renew / Restore:** staff (Admin, Super Admin, CVO Staff, BAHW for their barangay) use *Renew* on the Pet Records tab or pet detail. Early renewals keep unused time. Restoring an archived pet renews it. History is stored in `pet_renewals`.
 - Auto-archive can be switched off in Super Admin → System Settings.
 - Pet owners see a renewal warning (≤30 days) or an "archived" notice on their dashboard.
+
+## Offline mode (PWA)
+
+NASaAlaga works with no connection once it has been opened at least once online:
+
+- **App shell** — the service worker (`vite-plugin-pwa`, see `frontend/vite.config.ts`) precaches the built
+  JS/CSS/HTML, icons, and pins fonts/Leaflet/map-tile/PSGC assets, so the UI itself loads offline.
+- **Cached data** — successful `GET` responses (pets, livestock, barangays, schedules, inventory, dashboard
+  summary, …) are copied into IndexedDB per signed-in account and served back when the network is down.
+  Right after sign-in the app also quietly pre-fetches the main lists in the background for staff roles
+  (BAHW/admin/CVO staff) so they're ready even for screens not yet opened.
+- **Offline writes** — field data entry (pet/livestock registration and updates, health/vaccination records,
+  death reports, disease events) is saved to an on-device **outbox** while offline and shows up immediately
+  (marked "pending") in the current list. It **uploads automatically**, in order, the moment the connection
+  returns — no user action required. A status pill at the top of the screen shows what's waiting and lets
+  staff retry or discard anything the server rejects (e.g. a duplicate tag ID) without losing the record.
+  Every queued write carries an `Idempotency-Key` (backend: `middleware/idempotency.ts`,
+  table `idempotency_keys`) so a retried upload can never be applied twice.
+  Not deferrable — these still require a live connection: login, OTP, admin/user management, backup &
+  restore, inventory/budget/finance changes, and any delete/approve/reject action.
+- **Offline session** — if the connection drops mid-shift, the signed-in session survives (an idle time-out
+  keeps it; only an explicit **Log out** clears it and wipes cached data from the device — queued uploads
+  are kept either way and go up under the same account next time it's online). The login screen offers
+  **"Resume offline session"** when the device has no connection and a session was saved on it.
+
+See `frontend/src/offline/` for the implementation (`config.ts` lists exactly which writes are queued).

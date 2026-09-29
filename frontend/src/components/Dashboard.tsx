@@ -7,6 +7,7 @@ import { LivestockOwnerDashboard } from './LivestockOwnerDashboard';
 import { GuestDashboard } from './GuestDashboard';
 import { CityHealthDashboard } from './CityHealthDashboard';
 import type { User } from '../App';
+import { endSession, hasPendingFor } from '../offline';
 
 // Combined dashboard for users who are both pet owners and livestock managers
 function BothDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -68,8 +69,16 @@ export function Dashboard() {
     return () => window.removeEventListener('nasaalaga_profile_updated', loadUserFromStorage);
   }, [navigate]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('nasaalaga_user');
+  const handleLogout = async () => {
+    // Records saved offline stay on this device; make sure nobody logs out unaware they haven't uploaded yet.
+    if (await hasPendingFor()) {
+      const ok = window.confirm(
+        'Some records saved on this device have not been uploaded yet.\n\n' +
+        'If you log out now they stay on this device and upload the next time you sign in with this account while online.\n\nLog out anyway?'
+      );
+      if (!ok) return;
+    }
+    await endSession({ keepOffline: false });
     setUser(null);
     navigate('/');
   };

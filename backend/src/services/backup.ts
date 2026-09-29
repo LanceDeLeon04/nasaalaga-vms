@@ -27,7 +27,7 @@ export const BACKUP_FORMAT = 'nasaalaga-backup';
 export const BACKUP_VERSION = 1;
 
 /** Never snapshotted / restored: the backups themselves + short-lived OTP codes. */
-const EXCLUDED_TABLES = new Set(['backups', 'otp_store']);
+const EXCLUDED_TABLES = new Set(['backups', 'otp_store', 'idempotency_keys']);
 
 const INSERT_CHUNK = 500;
 const SCHEDULER_TICK_MS = 5 * 60 * 1000;   // check every 5 minutes

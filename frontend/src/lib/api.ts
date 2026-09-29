@@ -13,7 +13,18 @@ async function request(path: string, options: RequestInit = {}) {
     ...(options.headers as Record<string, string>),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (e: any) {
+    // Network failure (fetch throws TypeError). Give a clear message instead of "Failed to fetch".
+    if (e?.name === 'AbortError') throw e;
+    throw new Error(
+      typeof navigator !== 'undefined' && navigator.onLine === false
+        ? 'You are offline. This action needs an internet connection.'
+        : 'Cannot reach the server. Check your connection and try again.'
+    );
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(err.error || `HTTP ${res.status}`);

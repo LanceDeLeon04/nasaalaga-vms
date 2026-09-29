@@ -6,6 +6,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import type { UserRole } from "../App";
+import { getOfflineSessionInfo, restoreOfflineSession, useOffline } from "../offline";
 
 /* ──────────────────────────────────────────────────────────────
    SLIDES
@@ -668,6 +669,14 @@ export function Login() {
     navigate("/dashboard");
   };
 
+  /* offline: resume the last session on this device (only offered while there is no connection) */
+  const { online } = useOffline();
+  const offlineSession = !online ? getOfflineSessionInfo() : null;
+  const handleResumeOffline = () => {
+    if (restoreOfflineSession()) navigate("/dashboard");
+    else addToast("error", "The saved offline session has expired. Connect to the internet and sign in again.");
+  };
+
   const handleGuestLogin = () => {
     sessionStorage.setItem("nasaalaga_user", JSON.stringify({ username: "Guest", role: "guest" as UserRole }));
     navigate("/dashboard");
@@ -808,6 +817,17 @@ export function Login() {
               </form>
 
               {/* guest + signup */}
+              {!online && (
+                <div className="login-error" style={{ marginBottom: 8 }}>
+                  You're offline — signing in needs an internet connection.
+                  {offlineSession ? "" : " No saved session on this device."}
+                </div>
+              )}
+              {offlineSession && (
+                <button className="login-btn" type="button" style={{ marginBottom: 8 }} onClick={handleResumeOffline}>
+                  Resume offline session as {offlineSession.username}
+                </button>
+              )}
               <div className="login-footer-actions">
                 <button className="login-guest-btn" onClick={handleGuestLogin}>Continue as Guest</button>
                 <button className="login-signup-btn" onClick={() => navigate("/signup")}>Create Account →</button>

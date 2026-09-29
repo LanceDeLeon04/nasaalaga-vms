@@ -11,9 +11,11 @@ import petDeathRoutes from './routes/petDeaths';
 import lostFoundRoutes from './routes/lostFound';
 import backupRoutes from './routes/backup';
 import apiRoutes from './routes/api';
+import { optionalAuthenticate } from './middleware/auth';
+import { idempotency } from './middleware/idempotency';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup';
 import { startPetArchiveScheduler, stopPetArchiveScheduler } from './services/petArchive';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups, migratePetArchive } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups, migratePetArchive, migrateIdempotency } from './db/migrate';
 
 dotenv.config();
 
@@ -36,6 +38,9 @@ app.use((req, res, next) => {
 
 // ── API Routes ─────────────────────────────────────────────────────────────
 const API = '/api';
+
+// Offline-sync support: replayed writes carrying an Idempotency-Key are applied at most once.
+app.use(API, optionalAuthenticate, idempotency);
 
 app.use(`${API}/auth`, authRoutes);
 app.use(`${API}/pets`, petsRoutes);
@@ -82,6 +87,7 @@ const runMigrations = async () => {
   await migrateNotifications();
   await migrateBackups();
   await migratePetArchive();
+  await migrateIdempotency();
 };
 
 async function start() {
