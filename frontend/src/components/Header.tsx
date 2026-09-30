@@ -17,9 +17,18 @@ interface HeaderProps {
   onLogout: () => void;
   onMenuClick?: () => void;
   onProfileClick?: () => void;
+  /** Optional alert badge (used by BAHW). When undefined the bell behaves as before. */
+  alertCount?: number;
+  alertCritical?: boolean;
+  onBellClick?: () => void;
+  /** 'light' = white bar for the owner portal; default 'brand' keeps the blue bar used by every other role. */
+  variant?: 'brand' | 'light';
+  /** Hides the status pills and ISO strip (owners don't need them up top). */
+  compact?: boolean;
 }
 
-export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderProps) {
+export function Header({ user, onLogout, onMenuClick, onProfileClick, alertCount, alertCritical, onBellClick, variant = 'brand', compact = false }: HeaderProps) {
+  const light = variant === 'light';
   const [dropOpen, setDropOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const backup = useBackupStatus(user.role);
@@ -50,10 +59,10 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
     <div style={{
       width: size, height: size, borderRadius: '50%',
       overflow: 'hidden', flexShrink: 0,
-      background: avatar ? 'transparent' : 'rgba(255,255,255,0.25)',
+      background: avatar ? 'transparent' : (light ? '#2B5EA6' : 'rgba(255,255,255,0.25)'),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      border: '2px solid rgba(255,255,255,0.5)',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+      border: light ? '2px solid #e1e6de' : '2px solid rgba(255,255,255,0.5)',
+      boxShadow: light ? 'none' : '0 2px 8px rgba(0,0,0,0.2)',
     }}>
       {avatar
         ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -63,30 +72,30 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
   );
 
   return (
-    <header className="bg-gradient-to-r from-[#2B5EA6] to-[#3d7ac7] text-white shadow-xl">
-      <div className="px-3 py-3 sm:px-6 sm:py-4">
+    <header className={light ? 'bg-white text-[#16263d] border-b border-[#e1e6de]' : 'bg-gradient-to-r from-[#2B5EA6] to-[#3d7ac7] text-white shadow-xl'}>
+      <div className={compact ? 'px-3 py-2 sm:px-6 sm:py-3' : 'px-3 py-3 sm:px-6 sm:py-4'}>
         <div className="flex items-center justify-between gap-2">
           {/* Left — logo + title */}
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             {onMenuClick && (
               <button onClick={onMenuClick}
-                className="lg:hidden p-2 -ml-1 hover:bg-white/20 rounded-lg transition-all duration-200 shrink-0"
+                className={`lg:hidden p-2 -ml-1 rounded-lg transition-all duration-200 shrink-0 ${light ? 'hover:bg-black/5' : 'hover:bg-white/20'}`}
                 aria-label="Toggle menu">
                 <Menu className="w-6 h-6" />
               </button>
             )}
             <img src={logoImage} alt="Calaca City Logo"
               onError={e => { e.currentTarget.style.opacity = '0'; }}
-              className="w-9 h-9 sm:w-14 sm:h-14 drop-shadow-lg shrink-0" />
+              className={`${compact ? 'w-9 h-9 sm:w-11 sm:h-11' : 'w-9 h-9 sm:w-14 sm:h-14'} ${light ? '' : 'drop-shadow-lg'} shrink-0`} />
             <div className="flex flex-col min-w-0">
-              <h1 className="text-base sm:text-xl font-bold text-white drop-shadow-md truncate">NASaAlaga</h1>
-              <p className="text-xs text-blue-100 hidden sm:block">Veterinary Management System</p>
+              <h1 className={`text-base sm:text-xl font-bold truncate ${light ? 'text-[#16263d]' : 'text-white drop-shadow-md'}`} style={light ? { fontFamily: 'var(--o-font-display)' } : undefined}>NASaAlaga</h1>
+              <p className={`text-xs hidden sm:block ${light ? 'text-[#4a586b]' : 'text-blue-100'}`}>{light ? 'Calaca City Veterinary Office' : 'Veterinary Management System'}</p>
             </div>
           </div>
 
           {/* Right — status badges + user dropdown */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full">
+            <div className={`${compact ? 'hidden' : 'hidden md:flex'} items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full`}>
               <CheckCircle className="w-4 h-4 text-green-300" />
               <span className="text-sm text-green-100">System Online</span>
             </div>
@@ -103,9 +112,16 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
             )}
 
             {/* Notifications */}
-            <button className="relative p-2 sm:p-2.5 hover:bg-white/20 rounded-full transition-all duration-200">
+            <button
+              onClick={onBellClick}
+              title={alertCount === undefined ? 'Notifications' : alertCount > 0 ? `${alertCount} alert${alertCount === 1 ? '' : 's'} need your attention` : 'No active alerts'}
+              className={`relative p-2.5 rounded-full transition-all duration-200 ${light ? 'hover:bg-black/5' : 'hover:bg-white/20'}`}>
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F39C3A] rounded-full animate-pulse" />
+              {alertCount === undefined ? (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-[#F39C3A] rounded-full animate-pulse" />
+              ) : alertCount > 0 ? (
+                <span className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black text-white flex items-center justify-center ${alertCritical ? 'bg-red-500 animate-pulse' : 'bg-[#F39C3A]'}`}>{alertCount > 9 ? '9+' : alertCount}</span>
+              ) : null}
             </button>
 
             {/* User dropdown */}
@@ -115,19 +131,19 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '4px 10px 4px 4px',
-                  background: 'rgba(255,255,255,0.15)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 50, cursor: 'pointer', color: 'white',
+                  background: light ? 'transparent' : 'rgba(255,255,255,0.15)',
+                  backdropFilter: light ? undefined : 'blur(8px)',
+                  border: light ? '1px solid #e1e6de' : '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: 50, cursor: 'pointer', color: light ? '#16263d' : 'white',
                   transition: 'background .2s',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.22)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
+                onMouseEnter={e => (e.currentTarget.style.background = light ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.22)')}
+                onMouseLeave={e => (e.currentTarget.style.background = light ? 'transparent' : 'rgba(255,255,255,0.15)')}
               >
                 <AvatarCircle size={34} />
                 <div style={{ textAlign: 'left', lineHeight: 1.3 }} className="hidden sm:block">
-                  <p style={{ fontSize: 13, fontWeight: 700, color: 'white', margin: 0 }}>{user.username}</p>
-                  <p style={{ fontSize: 11, color: 'rgba(219,234,254,0.9)', margin: 0 }}>{roleLabel}</p>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: light ? '#16263d' : 'white', margin: 0 }}>{user.username}</p>
+                  <p style={{ fontSize: 11, color: light ? '#4a586b' : 'rgba(219,234,254,0.9)', margin: 0 }}>{roleLabel}</p>
                 </div>
                 <ChevronDown style={{
                   width: 15, height: 15, opacity: 0.8,
@@ -208,12 +224,12 @@ export function Header({ user, onLogout, onMenuClick, onProfileClick }: HeaderPr
       </div>
 
       {/* ISO Compliance Banner */}
-      <div className="bg-black/10 backdrop-blur-sm px-3 py-1.5 sm:px-6 sm:py-2 text-[10px] sm:text-xs text-blue-50 flex items-center justify-center gap-3 sm:gap-8 flex-wrap">
+      {!compact && <div className="bg-black/10 backdrop-blur-sm px-3 py-1.5 sm:px-6 sm:py-2 text-[10px] sm:text-xs text-blue-50 flex items-center justify-center gap-3 sm:gap-8 flex-wrap">
         <span className="flex items-center gap-1">✓ ISO 9001:2015</span>
         <span className="flex items-center gap-1">✓ ISO 27001</span>
         <span className="flex items-center gap-1">✓ ISO 22301</span>
         <span className="flex items-center gap-1">✓ ARTA Compliant</span>
-      </div>
+      </div>}
     </header>
   );
 }

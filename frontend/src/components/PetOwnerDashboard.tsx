@@ -11,6 +11,7 @@ import { PetPreRegistration } from './PetPreRegistration';
 import { VaccinationCard } from './VaccinationCard';
 import { ScheduleModule } from './ScheduleModule';
 import { PreRegistrationModule } from './PreRegistrationModule';
+import { AnimalCard, CardSkeleton, PageHeading, petToCard } from './OwnerUI';
 import { api } from '../lib/api';
 import type { User as UserType } from '../App';
 
@@ -18,6 +19,10 @@ import type { User as UserType } from '../App';
 interface PetOwnerDashboardProps {
   user: UserType;
   onLogout: () => void;
+  /** When true, renders only the requested module (no header / menu / footer) so it can live inside OwnerPortal. */
+  embedded?: boolean;
+  section?: string;
+  onNavigate?: (section: string) => void;
 }
 
 interface Pet {
@@ -74,8 +79,10 @@ interface Notification {
   read: boolean;
 }
 
-export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'feedback' | 'schedule'>('dashboard');
+export function PetOwnerDashboard({ user, onLogout, embedded = false, section, onNavigate }: PetOwnerDashboardProps) {
+  const [activeSectionState, setActiveSectionState] = useState<'dashboard' | 'pets' | 'preregistration' | 'profile' | 'notifications' | 'cvoservices' | 'lostfound' | 'feedback' | 'schedule'>('dashboard');
+  const activeSection = ((embedded && section) ? section : activeSectionState) as typeof activeSectionState;
+  const setActiveSection = (next: typeof activeSectionState) => { if (embedded) onNavigate?.(next as string); else setActiveSectionState(next); };
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   const [showPetDetails, setShowPetDetails] = useState(false);
   const [selectedLostFoundReport, setSelectedLostFoundReport] = useState<LostFoundReport | null>(null);
@@ -567,127 +574,43 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
   const renderPets = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-1">My Pets</h2>
-          <p className="text-gray-600">View and manage your registered pets</p>
-        </div>
-      </div>
+      <PageHeading
+        title="My Pets"
+        subtitle={pets.length > 0 ? `${pets.length} registered ${pets.length === 1 ? 'pet' : 'pets'}` : 'View and manage your registered pets'}
+        action={<button onClick={() => setActiveSection('preregistration')} className="o-btn o-btn-quiet"><Plus className="h-4 w-4" />Register a pet</button>}
+      />
 
       {isLoadingPets ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <div className="w-12 h-12 border-4 border-[#2B5EA6] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading your pets...</p>
-        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"><CardSkeleton /><CardSkeleton /><CardSkeleton /></div>
       ) : pets.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <PawPrint className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No pets registered yet</p>
-          <p className="text-sm text-gray-400 mt-2">Contact the City Veterinary Office to register your pets</p>
+        <div className="o-card px-6 py-14 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: 'var(--o-blue-tint)', color: 'var(--o-blue)' }}><PawPrint className="h-7 w-7" /></span>
+          <p className="o-display text-xl font-semibold">No pets registered yet</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm" style={{ color: 'var(--o-ink-soft)' }}>Register your pet to get a CVO tag, a vaccination card, and reminders when shots are due.</p>
+          <button onClick={() => setActiveSection('preregistration')} className="o-btn o-btn-primary mt-5"><Plus className="h-4 w-4" />Register a pet</button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {pets.map(pet => (
-            <div key={pet.id} className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow">
-              <div className={`h-2 ${
-                pet.status === 'Lost' ? 'bg-red-500' : 
-                pet.status === 'Found' ? 'bg-green-500' : 
-                pet.status === 'Deceased' ? 'bg-gray-500' :
-                'bg-[#2B5EA6]'
-              }`}></div>
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">{pet.petName}</h3>
-                    <p className="text-sm text-gray-500">{pet.id}</p>
-                    {pet.petTagId && (() => {
-                      const prefix = pet.petTagId.split('-')[0];
-                      const colorMap: Record<string,string> = {BLU:'#2B5EA6',PRP:'#8B5CF6',RED:'#E85D3B',GRY:'#6B7280'};
-                      const bg = colorMap[prefix] || '#6B7280';
-                      return <span style={{display:'inline-block',marginTop:2,padding:'2px 8px',borderRadius:4,fontSize:10,fontWeight:700,color:'#fff',background:bg,letterSpacing:'0.04em'}}>{pet.petTagId}</span>;
-                    })()}
-                  </div>
-                  <PawPrint className="w-6 h-6 text-gray-400" />
-                </div>
-
-                <div className="space-y-2 text-sm text-gray-600 mb-4">
-                  <p><strong>Species:</strong> {pet.species}</p>
-                  <p><strong>Breed:</strong> {pet.breed}</p>
-                  <p><strong>Age:</strong> {pet.age}</p>
-                  <p><strong>Color:</strong> {pet.color}</p>
-                  <div className="pt-2 border-t border-gray-200">
-                    <span className={`inline-block px-2 py-1 text-xs rounded-full ${
-                      pet.vaccinationStatus === 'Vaccinated' ? 'bg-green-100 text-green-800' :
-                      pet.vaccinationStatus === 'Due Soon' ? 'bg-orange-100 text-orange-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {pet.vaccinationStatus}
-                    </span>
-                    {pet.status !== 'Active' && (
-                      <span className={`inline-block ml-2 px-2 py-1 text-xs rounded-full ${
-                        pet.status === 'Lost' ? 'bg-red-100 text-red-800' :
-                        pet.status === 'Deceased' ? 'bg-gray-200 text-gray-700' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {pet.status}
-                      </span>
-                    )}
-                    {pet.isArchived && (
-                      <div className="mt-2 rounded-lg bg-gray-100 border border-gray-300 px-3 py-2 text-xs text-gray-700">
-                        <strong>Registration archived</strong> — not renewed within 12 months. Please visit the City Veterinary Office to renew and reactivate this pet's record.
-                      </div>
-                    )}
-                    {!pet.isArchived && pet.renewalDueDate && (new Date(pet.renewalDueDate).getTime() - Date.now()) / 86400000 <= 30 && (
-                      <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                        Registration {new Date(pet.renewalDueDate).getTime() < Date.now() ? 'expired' : 'expires'} on <strong>{new Date(pet.renewalDueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>. Renew at the City Veterinary Office to avoid archiving.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedPet(pet);
-                      setShowPetDetails(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#2B5EA6] text-white rounded-md hover:bg-[#234a85] transition-colors text-sm"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View
-                  </button>
-                  <button
-                    onClick={() => handleDownloadCertificate(pet)}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-[#60A85C] text-[#60A85C] rounded-md hover:bg-[#60A85C] hover:text-white transition-colors text-sm"
-                  >
-                    <Download className="w-4 h-4" />
-                    Certificate
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const h = await api.getVaccinationHistory(pet.id);
-                        setVaxCardPet(pet);
-                        setVaxCardHistory(h.history || []);
-                      } catch { toast.error('Could not load vaccination card'); }
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-amber-500 text-amber-600 rounded-md hover:bg-amber-500 hover:text-white transition-colors text-sm"
-                  >
-                    <Syringe className="w-4 h-4" />
-                    Vax Card
-                  </button>
-                </div>
-                {pet.status !== 'Deceased' && (
-                  <button
-                    onClick={() => openDeathModal(pet)}
-                    className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-400 text-gray-600 rounded-md hover:bg-gray-600 hover:text-white transition-colors text-sm"
-                  >
-                    <Skull className="w-4 h-4" />
-                    Report Death / Expired
-                  </button>
-                )}
-              </div>
-            </div>
+            <AnimalCard
+              key={pet.id}
+              data={petToCard(pet)}
+              primary={{ label: 'View details', icon: Eye, onClick: () => { setSelectedPet(pet); setShowPetDetails(true); } }}
+              actions={[
+                { label: 'Download certificate', icon: Download, onClick: () => handleDownloadCertificate(pet) },
+                {
+                  label: 'Open vaccination card', icon: Syringe,
+                  onClick: async () => {
+                    try {
+                      const h = await api.getVaccinationHistory(pet.id);
+                      setVaxCardPet(pet);
+                      setVaxCardHistory(h.history || []);
+                    } catch { toast.error('Could not load vaccination card'); }
+                  },
+                },
+                ...(pet.status !== 'Deceased' ? [{ label: 'Report death or expiry', icon: Skull, onClick: () => openDeathModal(pet), destructive: true }] : []),
+              ]}
+            />
           ))}
         </div>
       )}
@@ -980,9 +903,10 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
+      {!embedded && <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />}
       
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 py-8'}>
+        {!embedded && (<>
         <div className="md:hidden mb-4">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1199,6 +1123,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
             </button>
           </div>
         </div>
+        </>)}
 
         {activeSection === 'dashboard' && renderDashboard()}
         {activeSection === 'pets' && renderPets()}
@@ -1521,7 +1446,7 @@ export function PetOwnerDashboard({ user, onLogout }: PetOwnerDashboardProps) {
         </div>
       )}
 
-      <Footer />
+      {!embedded && <Footer />}
     </>
   );
 }

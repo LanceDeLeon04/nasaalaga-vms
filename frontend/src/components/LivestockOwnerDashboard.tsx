@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { AnimalCard, CardSkeleton, PageHeading, livestockToCard } from './OwnerUI';
 import { api } from '../lib/api';
 import { Header } from './Header';
 import { MyProfile } from './MyProfile';
@@ -14,6 +15,10 @@ import type { User as UserType } from '../App';
 interface LivestockOwnerDashboardProps {
   user: UserType;
   onLogout: () => void;
+  /** When true, renders only the requested module (no header / menu / footer) so it can live inside OwnerPortal. */
+  embedded?: boolean;
+  section?: string;
+  onNavigate?: (section: string) => void;
 }
 
 interface Livestock {
@@ -59,8 +64,10 @@ interface LostFoundReport {
   photo?: string;
 }
 
-export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashboardProps) {
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback' | 'schedule' | 'lostfound'>('dashboard');
+export function LivestockOwnerDashboard({ user, onLogout, embedded = false, section, onNavigate }: LivestockOwnerDashboardProps) {
+  const [activeSectionState, setActiveSectionState] = useState<'dashboard' | 'livestock' | 'preregistration' | 'profile' | 'notifications' | 'feedback' | 'schedule' | 'lostfound'>('dashboard');
+  const activeSection = ((embedded && section) ? section : activeSectionState) as typeof activeSectionState;
+  const setActiveSection = (next: typeof activeSectionState) => { if (embedded) onNavigate?.(next as string); else setActiveSectionState(next); };
   const [selectedLivestock, setSelectedLivestock] = useState<Livestock | null>(null);
   const [showLivestockDetails, setShowLivestockDetails] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -522,108 +529,35 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
 
   const renderLivestock = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-gray-800 mb-1">My Livestock</h2>
-          <p className="text-gray-600">View and manage your registered livestock</p>
-        </div>
-      </div>
+      <PageHeading
+        title="My Livestock"
+        subtitle={livestock.length > 0 ? `${totalAnimals} animals across ${livestock.length} ${livestock.length === 1 ? 'record' : 'records'}` : 'View and manage your registered livestock'}
+        action={<button onClick={() => setActiveSection('preregistration')} className="o-btn o-btn-quiet"><Plus className="h-4 w-4" />Register livestock</button>}
+      />
 
       {livestockLoading ? (
-        <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
-          <Activity className="w-4 h-4 animate-pulse" />
-          Loading your livestock records…
-        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"><CardSkeleton /><CardSkeleton /><CardSkeleton /></div>
       ) : livestock.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
-          <Beef className="w-12 h-12 opacity-30" />
-          <p className="text-sm">No livestock records yet. Use Pre-Registration to get started.</p>
+        <div className="o-card px-6 py-14 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: 'var(--o-field-tint)', color: 'var(--o-field)' }}><Beef className="h-7 w-7" /></span>
+          <p className="o-display text-xl font-semibold">No livestock records yet</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm" style={{ color: 'var(--o-ink-soft)' }}>Register your animals to get inspection dates, vaccination reminders, and a registration certificate.</p>
+          <button onClick={() => setActiveSection('preregistration')} className="o-btn o-btn-field mt-5"><Plus className="h-4 w-4" />Register livestock</button>
         </div>
       ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {livestock.map(item => (
-          <div key={item.id} className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 bg-gradient-to-br from-[#2B5EA6] to-[#60A85C] rounded-full flex items-center justify-center">
-                    <Beef className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-gray-800 font-medium">{item.type}</h3>
-                    <p className="text-sm text-gray-500">{item.count} head(s)</p>
-                  </div>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  item.healthStatus === 'Healthy' ? 'bg-green-100 text-green-700' :
-                  item.healthStatus === 'Under Observation' ? 'bg-orange-100 text-orange-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {item.healthStatus}
-                </span>
-              </div>
-
-              <div className="space-y-2 text-sm mb-4">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Registration ID:</span>
-                  <span className="font-medium text-gray-800">{item.id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Location:</span>
-                  <span className="font-medium text-gray-800">{item.barangay}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Last Inspection:</span>
-                  <span className="font-medium text-gray-800">{item.lastInspection}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Next Inspection:</span>
-                  <span className="font-medium text-gray-800">{item.nextInspection}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Vaccination Status:</span>
-                  <span className={`font-medium ${
-                    item.vaccinationStatus === 'Up to Date' ? 'text-green-600' :
-                    item.vaccinationStatus === 'Due Soon' ? 'text-orange-600' :
-                    'text-red-600'
-                  }`}>
-                    {item.vaccinationStatus}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setSelectedLivestock(item);
-                    setShowLivestockDetails(true);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-[#2B5EA6] text-[#2B5EA6] rounded-md hover:bg-[#2B5EA6] hover:text-white transition-colors"
-                >
-                  <Eye className="w-4 h-4" />
-                  View Details
-                </button>
-                <button
-                  onClick={() => handleDownloadCertificate(item)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#60A85C] text-white rounded-md hover:bg-[#4a8a47] transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  Certificate
-                </button>
-              </div>
-              {item.healthStatus !== 'Dead' && (
-                <button
-                  onClick={() => openDeathModal(item)}
-                  className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-400 text-gray-600 rounded-md hover:bg-gray-600 hover:text-white transition-colors text-sm"
-                >
-                  <Skull className="w-4 h-4" />
-                  Report Death / Expired
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {livestock.map(item => (
+            <AnimalCard
+              key={item.id}
+              data={livestockToCard(item)}
+              primary={{ label: 'View details', icon: Eye, onClick: () => { setSelectedLivestock(item); setShowLivestockDetails(true); } }}
+              actions={[
+                { label: 'Download certificate', icon: Download, onClick: () => handleDownloadCertificate(item) },
+                ...(item.healthStatus !== 'Dead' ? [{ label: 'Report death or expiry', icon: Skull, onClick: () => openDeathModal(item), destructive: true }] : []),
+              ]}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -863,10 +797,11 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
 
   return (
     <>
-      <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />
+      {!embedded && <Header user={user} onLogout={onLogout} onProfileClick={() => setActiveSection('profile')} />}
       
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 py-8'}>
         {/* Navigation */}
+        {!embedded && (
         <div className="mb-8">
           {/* Mobile Menu Button */}
           <div className="md:hidden flex items-center justify-between mb-4">
@@ -1061,6 +996,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
             </button>
           </div>
         </div>
+        )}
 
         {/* Content */}
         {activeSection === 'dashboard' && renderDashboard()}
@@ -1392,7 +1328,7 @@ export function LivestockOwnerDashboard({ user, onLogout }: LivestockOwnerDashbo
         </div>
       )}
 
-      <Footer />
+      {!embedded && <Footer />}
     </>
   );
 }

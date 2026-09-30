@@ -27,6 +27,7 @@ import {
   CircleDot,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { SmartAllocation } from "./SmartAllocation";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -846,6 +847,7 @@ function ModifyModal({
 export function ResourceDeployment() {
   const [deployments, setDeployments] = useState<DeploymentSuggestion[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const loadDeployments = async () => {
@@ -873,6 +875,7 @@ export function ResourceDeployment() {
             status: d.status || 'pending',
             deployedAt: d.deployed_at,
             completedAt: d.completed_at,
+            notes: d.notes || '',
           }));
           setDeployments(mapped);
         }
@@ -880,7 +883,7 @@ export function ResourceDeployment() {
       setDbLoading(false);
     };
     loadDeployments();
-  }, []);
+  }, [reloadKey]);
 
   const [notifs, setNotifs] = useState<NotifMsg[]>([]);
   const [deployTarget, setDeployTarget] =
@@ -1364,6 +1367,9 @@ export function ResourceDeployment() {
             );
           })}
         </div>
+
+        {/* AI Smart Allocation */}
+        <SmartAllocation deployments={deployments as any} onApplied={() => setReloadKey(k => k + 1)} />
 
         {/* Optimization tip */}
         <div className="m-5 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">

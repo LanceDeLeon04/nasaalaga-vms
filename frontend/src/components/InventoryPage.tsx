@@ -5,11 +5,12 @@ import {
   CheckCircle, BarChart2, RefreshCw, X, Barcode, Calendar, Building2,
   ShieldAlert, BookOpen, LogIn, LogOut, DollarSign, Activity, Truck,
   ShoppingCart, ArrowRight, CheckSquare, Briefcase, Hash,
-  SendHorizonal, MapPin, Syringe, PawPrint, Archive, Info,
+  SendHorizonal, MapPin, Syringe, PawPrint, Archive, Info, Sparkles,
 } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { api } from '../lib/api';
 import type { UserRole } from '../App';
+import { InventoryAIAnalytics } from './InventoryAIAnalytics';
 import { fetchCalacaBarangays, CALACA_BARANGAYS_FALLBACK } from '../utils/barangays';
 
 interface Props { userRole: UserRole; currentUser?: { id?: string; username?: string; name?: string; role?: UserRole; barangay?: string; } }
@@ -1584,7 +1585,7 @@ function MedicineDetailModal({ medicine, suppliers, programs, transactions, onCl
 export function InventoryPage({ userRole, currentUser }: Props) {
   const canEdit=['admin','superadmin','cvoStaff'].includes(userRole);
   const isAdmin=['admin','superadmin'].includes(userRole);
-  type TabId='overview'|'medicines'|'supplies'|'office'|'orders'|'logbook'|'suppliers';
+  type TabId='overview'|'ai'|'medicines'|'supplies'|'office'|'orders'|'logbook'|'suppliers';
   const [tab,setTab]=useState<TabId>('overview');
   const [medicines,setMedicines]=useState<any[]>([]);
   const [supplies,setSupplies]=useState<any[]>([]);
@@ -1782,6 +1783,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
 
   const tabs=[
     {id:'overview',label:'Overview',icon:BarChart2},
+    {id:'ai',label:'AI Analytics',icon:Sparkles},
     {id:'medicines',label:`Medicines (${medicines.length})`,icon:FlaskConical},
     {id:'supplies',label:`Supplies (${supplies.length})`,icon:Package},
     {id:'office',label:`Office (${officeSupplies.length})`,icon:Briefcase},
@@ -1960,6 +1962,12 @@ export function InventoryPage({ userRole, currentUser }: Props) {
         )}
 
         {/* ── MEDICINES ── */}
+        {/* ── AI ANALYTICS ── */}
+        {tab==='ai'&&(
+          <InventoryAIAnalytics medicines={medicines} supplies={supplies} transactions={transactions} programs={programs} canEdit={canEdit}
+            onOrder={(pf:any)=>{setAddOrderPrefill(pf);setShowAddOrderModal(true);setTab('orders');}}/>
+        )}
+
         {tab==='medicines'&&(
           <div className="p-6 space-y-4">
             <div className="flex flex-col sm:flex-row gap-3 flex-wrap">

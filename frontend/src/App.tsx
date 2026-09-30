@@ -22,9 +22,9 @@ export interface User {
   avatar?: string;
 }
 
-// ── Secret bypass: Shift + Alt + S  A  (typed while holding Shift+Alt, press S then A)
-// Sequence window: 2 seconds between keys
-const SECRET_SEQUENCE = ['S', 'A'];
+// ── Secret bypass: Shift + Alt + A  (hold Shift+Alt, then press A)
+// Sequence window: 2 seconds between keys (only matters if the sequence has more than one key)
+const SECRET_SEQUENCE = ['A'];
 const REQUIRED_MODIFIERS = { shift: true, alt: true };
 
 function MaintenancePage({ onBypass }: { onBypass: () => void }) {
@@ -54,7 +54,8 @@ function MaintenancePage({ onBypass }: { onBypass: () => void }) {
         return;
       }
 
-      const key = e.key.toUpperCase();
+      // Use the physical key (e.code) so Alt combos still match on macOS, where Alt+A types 'å'.
+      const key = e.code.startsWith('Key') ? e.code.slice(3) : e.key.toUpperCase();
 
       // Only track keys that are part of the sequence
       if (!SECRET_SEQUENCE.includes(key)) {

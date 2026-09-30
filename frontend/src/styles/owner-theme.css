@@ -1,0 +1,133 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Owner portal theme (pet owners + livestock managers)
+   Scoped to `.owner-theme` so admin / BAHW / city-health screens are untouched.
+   `body:has(.owner-theme)` carries the font + tokens to portaled UI (menus, toasts).
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.owner-theme,
+body:has(.owner-theme) {
+  --o-ink: #16263d;
+  --o-ink-soft: #4a586b;
+  --o-mute: #6b7788;
+  --o-paper: #f3f5f1;
+  --o-card: #ffffff;
+  --o-line: #e1e6de;
+  --o-blue: #2b5ea6;
+  --o-blue-tint: #e6eef8;
+  --o-field: #2f6b2d;
+  --o-field-fill: #60a85c;
+  --o-field-tint: #e5f1e3;
+  --o-amber: #8f5400;
+  --o-amber-tint: #fcebcb;
+  --o-red: #b3321a;
+  --o-red-tint: #fbe2db;
+
+  --o-font-body: 'Public Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --o-font-display: 'Bricolage Grotesque Variable', 'Public Sans Variable', ui-sans-serif, system-ui, sans-serif;
+
+  font-family: var(--o-font-body);
+}
+
+.owner-theme {
+  color: var(--o-ink);
+  background: var(--o-paper);
+}
+
+.owner-theme :focus-visible {
+  outline: 2px solid var(--o-blue);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.o-display {
+  font-family: var(--o-font-display);
+  letter-spacing: -0.012em;
+}
+
+@layer components {
+  /* Surfaces — one radius for containers, one for controls */
+  .o-card {
+    background: var(--o-card);
+    border: 1px solid var(--o-line);
+    border-radius: 16px;
+  }
+  .o-card-flat {
+    background: var(--o-card);
+    border: 1px solid var(--o-line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .o-rule {
+    border-color: var(--o-line);
+  }
+
+  /* Status chips: text always says the status, colour only reinforces it */
+  .o-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+  .o-chip::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .o-chip[data-tone='ok'] { background: var(--o-field-tint); color: var(--o-field); }
+  .o-chip[data-tone='soon'] { background: var(--o-amber-tint); color: var(--o-amber); }
+  .o-chip[data-tone='urgent'] { background: var(--o-red-tint); color: var(--o-red); }
+  .o-chip[data-tone='info'] { background: var(--o-blue-tint); color: var(--o-blue); }
+  .o-chip[data-tone='muted'] { background: #eceff1; color: #4d5763; }
+
+  .o-tone-ok { color: var(--o-field); }
+  .o-tone-soon { color: var(--o-amber); }
+  .o-tone-urgent { color: var(--o-red); }
+  .o-tone-info { color: var(--o-blue); }
+  .o-tone-muted { color: var(--o-mute); }
+
+  /* Buttons */
+  .o-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    cursor: pointer;
+  }
+  .o-btn-primary { background: var(--o-blue); color: #fff; }
+  .o-btn-primary:hover { background: #234d8a; }
+  .o-btn-quiet { background: transparent; color: var(--o-blue); border: 1px solid var(--o-line); }
+  .o-btn-quiet:hover { background: var(--o-blue-tint); border-color: #c6d6ec; }
+  .o-btn-field { background: var(--o-field); color: #fff; }
+  .o-btn-field:hover { background: #255823; }
+  .o-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+}
+
+/* Mobile bottom tab bar: lift the floating help button above it */
+@media (max-width: 1023px) {
+  body:has(.owner-bottom-nav) .help-fab {
+    bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .owner-theme *,
+  .owner-theme *::before,
+  .owner-theme *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

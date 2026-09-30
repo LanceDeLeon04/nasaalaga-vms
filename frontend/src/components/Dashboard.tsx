@@ -2,52 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminDashboard } from './AdminDashboard';
 import { BAHWDashboard } from './BAHWDashboard';
-import { PetOwnerDashboard } from './PetOwnerDashboard';
-import { LivestockOwnerDashboard } from './LivestockOwnerDashboard';
+import { OwnerPortal } from './OwnerPortal';
 import { GuestDashboard } from './GuestDashboard';
 import { CityHealthDashboard } from './CityHealthDashboard';
 import type { User } from '../App';
 import { endSession, hasPendingFor } from '../offline';
-
-// Combined dashboard for users who are both pet owners and livestock managers
-function BothDashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<'pets' | 'livestock'>('pets');
-  return (
-    <div>
-      {/* Tab switcher */}
-      <div style={{
-        position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-        background: '#1f2937', borderRadius: 50, padding: '6px 8px',
-        display: 'flex', gap: 6, zIndex: 999, boxShadow: '0 8px 32px rgba(0,0,0,.35)'
-      }}>
-        <button
-          onClick={() => setActiveTab('pets')}
-          style={{
-            padding: '8px 20px', borderRadius: 50, border: 'none', cursor: 'pointer',
-            background: activeTab === 'pets' ? '#2B5EA6' : 'transparent',
-            color: activeTab === 'pets' ? '#fff' : '#9ca3af', fontSize: 13, fontWeight: 700,
-            transition: 'all .2s'
-          }}>
-          🐾 Pet Owner
-        </button>
-        <button
-          onClick={() => setActiveTab('livestock')}
-          style={{
-            padding: '8px 20px', borderRadius: 50, border: 'none', cursor: 'pointer',
-            background: activeTab === 'livestock' ? '#60A85C' : 'transparent',
-            color: activeTab === 'livestock' ? '#fff' : '#9ca3af', fontSize: 13, fontWeight: 700,
-            transition: 'all .2s'
-          }}>
-          🐄 Livestock
-        </button>
-      </div>
-      {activeTab === 'pets'
-        ? <PetOwnerDashboard user={user} onLogout={onLogout} />
-        : <LivestockOwnerDashboard user={user} onLogout={onLogout} />
-      }
-    </div>
-  );
-}
 
 export function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -104,12 +63,9 @@ export function Dashboard() {
         <BAHWDashboard user={user} onLogout={handleLogout} />
       ) : role === 'cityHealth' ? (
         <CityHealthDashboard user={user} onLogout={handleLogout} />
-      ) : role === 'both' ? (
-        <BothDashboard user={user} onLogout={handleLogout} />
-      ) : (role === 'petOwner' || role === 'owner') ? (
-        <PetOwnerDashboard user={user} onLogout={handleLogout} />
-      ) : role === 'livestockManager' ? (
-        <LivestockOwnerDashboard user={user} onLogout={handleLogout} />
+      ) : (role === 'petOwner' || role === 'owner' || role === 'livestockManager' || role === 'both') ? (
+        // One unified portal for every owner account: pet-only, livestock-only, or both.
+        <OwnerPortal user={user} onLogout={handleLogout} />
       ) : role === 'guest' ? (
         <GuestDashboard user={user} onLogout={handleLogout} />
       ) : (

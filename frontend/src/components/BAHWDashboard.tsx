@@ -20,6 +20,7 @@ import { LostLivestockValidation } from './LostLivestockValidation';
 import { PetDeathValidation } from './PetDeathValidation';
 import { LivestockDeathValidation } from './LivestockDeathValidation';
 import { api } from '../lib/api';
+import { BAHWAlertPanel, useBAHWAlerts, type BAHWAlertState } from './BAHWAlertCenter';
 import { toast } from 'sonner';
 import type { User } from '../App';
 import type { ActiveView } from './AdminDashboard';
@@ -31,7 +32,7 @@ interface BAHWDashboardProps {
 }
 
 // ── Barangay Stats Dashboard for BAHW ─────────────────────────────────────
-function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
+function BAHWBarangayDashboard({ barangay, alertState, onNavigate }: { barangay: string; alertState: BAHWAlertState; onNavigate: (v: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [preRegs, setPreRegs] = useState<any[]>([]);
@@ -53,7 +54,7 @@ function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
 
       const pets = petsRes.status === 'fulfilled' ? (petsRes.value.pets || []) : [];
       const ls = livestockRes.status === 'fulfilled' ? (livestockRes.value.livestock || []) : [];
-      const alertList = alertsRes.status === 'fulfilled' ? (alertsRes.value.alerts || []) : [];
+      const alertList = alertsRes.status === 'fulfilled' ? (alertsRes.value.data || alertsRes.value.alerts || []) : [];
       const preRegList = preRegRes.status === 'fulfilled' ? (preRegRes.value.preRegistrations || []) : [];
 
       const vaccinated = pets.filter((p: any) => p.vaccination_status === 'Vaccinated' || p.vaccinationStatus === 'Vaccinated').length;
@@ -69,7 +70,7 @@ function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
         healthyLivestock: ls.filter((l: any) => l.health_status === 'Healthy').length,
       });
       setLivestock(ls.slice(0, 5));
-      setAlerts(alertList.filter((a: any) => !barangay || a.barangay === barangay || !a.barangay).slice(0, 4));
+      setAlerts(alertList.filter((a: any) => (!a.status || a.status === 'Active') && (!barangay || !(a.location || a.barangay) || String(a.location || a.barangay).toLowerCase() === barangay.toLowerCase() || /calaca|city/i.test(String(a.location || '')))).slice(0, 4));
       setPreRegs(preRegList.filter((p: any) => !barangay || p.barangay === barangay));
     } catch (err) {
       console.error(err);
@@ -118,6 +119,9 @@ function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
           <RefreshCw style={{ width: 14, height: 14 }} /> Refresh
         </button>
       </div>
+
+      {/* Alert centre */}
+      <BAHWAlertPanel state={alertState} barangay={barangay} onNavigate={onNavigate} />
 
       {/* Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
@@ -194,7 +198,7 @@ function BAHWBarangayDashboard({ barangay }: { barangay: string }) {
           ) : alerts.map((a: any, i: number) => (
             <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
               <p style={{ fontWeight: 700, color: '#dc2626', margin: 0 }}>{a.disease || a.alert_type}</p>
-              <p style={{ color: '#6b7280', margin: 0, fontSize: 12 }}>{a.barangay || 'General'} · {a.severity || 'Alert'}</p>
+              <p style={{ color: '#6b7280', margin: 0, fontSize: 12 }}>{a.location || a.barangay || 'General'} · {a.severity || 'Alert'}</p>
             </div>
           ))}
         </div>
@@ -244,12 +248,14 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const barangay = user.barangay || '';
+  const alertState = useBAHWAlerts(barangay, String((user as any).id || user.username || user.email || 'bahw'), !!barangay);
+  const goTo = (v: string) => { setActiveView(v as ActiveView); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
         // Show barangay-specific dashboard if barangay is assigned
-        return barangay ? <BAHWBarangayDashboard barangay={barangay} /> : <DashboardOverview />;
+        return barangay ? <BAHWBarangayDashboard barangay={barangay} alertState={alertState} onNavigate={goTo} /> : <DashboardOverview />;
       case 'livestock':
         return <LivestockManagement userRole={user.role} />;
       case 'lost-livestock':
@@ -282,13 +288,13 @@ export function BAHWDashboard({ user, onLogout }: BAHWDashboardProps) {
       case 'my-profile':
         return <MyProfile user={user} onUserUpdate={(u) => { const s = sessionStorage.getItem('nasaalaga_user'); if(s){try{const p=JSON.parse(s);Object.assign(p,u);sessionStorage.setItem('nasaalaga_user',JSON.stringify(p));window.dispatchEvent(new Event('nasaalaga_profile_updated'));}catch{}} }} />;
       default:
-        return barangay ? <BAHWBarangayDashboard barangay={barangay} /> : <DashboardOverview />;
+        return barangay ? <BAHWBarangayDashboard barangay={barangay} alertState={alertState} onNavigate={goTo} /> : <DashboardOverview />;
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} onProfileClick={() => setActiveView('my-profile')} />
+      <Header user={user} onLogout={onLogout} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} onProfileClick={() => setActiveView('my-profile')} alertCount={barangay ? alertState.activeCount : undefined} alertCritical={alertState.criticalCount > 0} onBellClick={() => goTo('dashboard')} />
       <div className="flex flex-1">
         <Sidebar 
           activeView={activeView} 
