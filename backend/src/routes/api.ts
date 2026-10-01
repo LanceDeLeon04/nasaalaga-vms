@@ -306,17 +306,21 @@ router.get('/schedules', optionalAuthenticate, async (req: AuthRequest, res: Res
     const isBahw = req.user?.role === 'bahw';
     const owner = await ownerCtx(req);
     const brgy = owner ? owner.barangay : (isBahw ? req.user?.barangay : '');
+    const withRsvp = `SELECT v.*,
+        COALESCE((SELECT SUM(head_count) FROM schedule_rsvps r WHERE r.schedule_id=v.id AND r.status='Going'),0)::int AS rsvp_count,
+        (SELECT row_to_json(m) FROM (SELECT status, animals, head_count FROM schedule_rsvps r WHERE r.schedule_id=v.id AND r.user_id=$1) m) AS my_rsvp
+      FROM vaccination_schedules v`;
     // BAHW / owners: own barangay drives (+ city-wide drives with no barangay)
     const result = (isBahw || owner)
-      ? await query(`SELECT * FROM vaccination_schedules WHERE barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($1) ORDER BY date ASC`, [brgy || '__none__'])
-      : await query('SELECT * FROM vaccination_schedules ORDER BY date ASC');
+      ? await query(`${withRsvp} WHERE COALESCE(v.barangay,'')='' OR LOWER(v.barangay)=LOWER($2) ORDER BY v.date ASC`, [req.user?.id || '', brgy || '__none__'])
+      : await query(`${withRsvp} ORDER BY v.date ASC`, [req.user?.id || '']);
     return res.json({ schedules: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.put('/schedules/:id', authenticate, requireRole('admin', 'superadmin', 'cvoStaff', 'bahw'), async (req: AuthRequest, res: Response) => {
   try {
     const { status, registered, notes } = req.body;
     const sets: string[] = [];
@@ -334,12 +338,12 @@ router.put('/schedules/:id', authenticate, async (req: AuthRequest, res: Respons
   }
 });
 
-router.post('/schedules', authenticate, async (req: AuthRequest, res: Response) => {
+router.post('/schedules', authenticate, requireRole('admin', 'superadmin', 'cvoStaff', 'bahw'), async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
     const countResult = await query('SELECT COUNT(*) FROM vaccination_schedules');
     const count = parseInt(countResult.rows[0].count);
-    const newId = `SCH-${String(count + 1).padStart(3, '0')}`;
+    const newId = `SCH-${String(count + 1).padStart(3, '0')}-${uuidv4().slice(0, 4).toUpperCase()}`;
     const result = await query(
       `INSERT INTO vaccination_schedules (id, barangay, date, time_start, time_end, venue, capacity, registered, status, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,0,'Scheduled',$8) RETURNING *`,
@@ -502,7 +506,7 @@ router.get('/users', authenticate, async (req: AuthRequest, res: Response) => {
     let sql = 'SELECT id, email, username, role, owner_id, barangay, verified, created_at FROM users';
     const vals: any[] = [];
     if (barangayFilter) {
-      sql += ' WHERE LOWER(barangay) = LOWER($1) AND is_active = true';
+      sql += ' WHERE LOWER(barangay) = LOWER($1)';
       vals.push(barangayFilter);
     }
     sql += ' ORDER BY created_at';
@@ -3377,26 +3381,103 @@ router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: 
 
 
 // ── Appointment Schedules ──────────────────────────────────────────────────────
+// Visibility rules for owner accounts (petOwner / livestockManager / both / owner):
+//   1. their OWN personal appointments, and
+//   2. admin-created schedules that are public (city-wide) or for THEIR barangay.
+// Staff-only schedules (interventions / outbreaks) and other people's appointments are never returned.
+// Owners cannot create events, block dates, or change anything except cancelling their own booking.
+const STAFF_ROLES = ['admin', 'superadmin', 'cvoStaff', 'bahw'];   // run schedules, confirm / complete bookings
+const VET_ROLES   = ['admin', 'superadmin', 'cvoStaff'];           // only vets may block dates
+const OWNER_BOOKABLE_TYPES = ['Vaccination', 'Checkup', 'Spay/Neuter'];
+const NON_RSVP_TYPES = ['Intervention', 'Outbreak'];
+const SLOT_CAPACITY = 2;       // max personal appointments per 15-min slot
+const BOOKING_WINDOW_DAYS = 7;
+
+const SLOTS: string[] = [];
+for (let h = 7; h <= 17; h++) {
+  SLOTS.push(`${String(h).padStart(2, '0')}:00`);
+  if (h < 17) SLOTS.push(`${String(h).padStart(2, '0')}:15`, `${String(h).padStart(2, '0')}:30`, `${String(h).padStart(2, '0')}:45`);
+}
+
+/** Today's date and time in Philippine time — the office runs on PHT regardless of server timezone. */
+function manilaNow() {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const g = (t: string) => parts.find(p => p.type === t)!.value;
+  const hh = g('hour') === '24' ? '00' : g('hour');
+  return { date: `${g('year')}-${g('month')}-${g('day')}`, time: `${hh}:${g('minute')}` };
+}
+function addDays(ymd: string, n: number) {
+  const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const isYmd = (v: any) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00Z').getTime());
+const normTime = (v: any) => String(v || '').replace(/\s*(AM|PM)$/i, '').trim();
+const shortId = (prefix: string) => `${prefix}-${uuidv4().replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+/** Slot usage for one date: personal appointments per slot + vet-blocked slots. */
+async function slotUsage(date: string, db: { query: typeof query } = { query }) {
+  const taken: Record<string, number> = {};
+  const booked = await db.query(
+    `SELECT time_slot, COUNT(*)::int AS n FROM appointment_schedules
+      WHERE date=$1 AND COALESCE(is_admin_created,false)=false AND status <> 'Cancelled' GROUP BY time_slot`, [date]);
+  for (const r of booked.rows) taken[normTime(r.time_slot)] = (taken[normTime(r.time_slot)] || 0) + r.n;
+  const blocks = (await db.query(`SELECT time_start, time_end FROM unavailable_blocks WHERE date=$1`, [date])).rows;
+  const isBlocked = (slot: string) => blocks.some((b: any) => slot >= normTime(b.time_start) && slot < normTime(b.time_end));
+  return { taken, isBlocked };
+}
+
+// Slot availability for a day — safe for owners (counts only, no other people's details)
+router.get('/appointment-slots', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const date = String(req.query.date || '');
+    if (!isYmd(date)) return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required' });
+    const now = manilaNow();
+    const { taken, isBlocked } = await slotUsage(date);
+    const slots = SLOTS.map(slot => {
+      const n = taken[slot] || 0;
+      const past = date < now.date || (date === now.date && slot <= now.time);
+      return { slot, taken: n, capacity: SLOT_CAPACITY, blocked: isBlocked(slot), past, available: !past && !isBlocked(slot) && n < SLOT_CAPACITY };
+    });
+    return res.json({ date, today: now.date, maxDate: addDays(now.date, BOOKING_WINDOW_DAYS), slots });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/appointment-schedules', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { requestedBy, status, type } = req.query;
-    let sql = 'SELECT * FROM appointment_schedules';
+    const { status, type } = req.query;
     const vals: any[] = [];
     const conds: string[] = [];
     const owner = await ownerCtx(req);
+    const rsvpUser = req.user?.id || '';
+    vals.push(rsvpUser);   // $1 — used only by the my_rsvp subquery
+
     if (owner) {
-      // Owners: only their own requests + admin-created drives for their barangay / city-wide
       vals.push(owner.ids); vals.push(owner.barangay || '__none__');
-      conds.push(`(requested_by = ANY($1) OR (is_admin_created = true AND (barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($2))))`);
+      conds.push(`(
+        (COALESCE(is_admin_created,false) = false AND requested_by = ANY($2))
+        OR (is_admin_created = true
+            AND COALESCE(visibility, CASE WHEN COALESCE(barangay,'')<>'' THEN 'barangay' ELSE 'public' END) <> 'staff'
+            AND schedule_type NOT IN ('Intervention','Outbreak')
+            AND (COALESCE(barangay,'')='' OR LOWER(barangay)=LOWER($3)))
+      )`);
     } else if (req.user?.role === 'bahw') {
       vals.push(req.user.barangay || '__none__');
-      conds.push(`(barangay IS NULL OR barangay='' OR LOWER(barangay)=LOWER($1))`);
+      conds.push(`(COALESCE(barangay,'')='' OR LOWER(barangay)=LOWER($${vals.length}))`);
+    } else if (!STAFF_ROLES.includes(req.user?.role || '')) {
+      return res.json({ schedules: [] });
     }
-    if (requestedBy) { conds.push(`requested_by=$${vals.length + 1}`); vals.push(requestedBy); }
-    if (status)      { conds.push(`status=$${vals.length + 1}`);       vals.push(status); }
-    if (type)        { conds.push(`schedule_type=$${vals.length + 1}`); vals.push(type); }
-    if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
-    sql += ' ORDER BY date ASC, time_slot ASC';
+    if (status) { vals.push(status); conds.push(`status=$${vals.length}`); }
+    if (type)   { vals.push(type);   conds.push(`schedule_type=$${vals.length}`); }
+
+    const sql = `
+      SELECT a.*,
+        COALESCE((SELECT SUM(head_count) FROM schedule_rsvps r WHERE r.schedule_id=a.id AND r.status='Going'),0)::int AS rsvp_count,
+        (SELECT row_to_json(m) FROM (SELECT status, animals, head_count FROM schedule_rsvps r WHERE r.schedule_id=a.id AND r.user_id=$1) m) AS my_rsvp
+      FROM appointment_schedules a
+      ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+      ORDER BY date ASC, time_slot ASC`;
     const result = await query(sql, vals);
     return res.json({ schedules: result.rows });
   } catch (err: any) {
@@ -3405,77 +3486,104 @@ router.get('/appointment-schedules', authenticate, async (req: AuthRequest, res:
 });
 
 router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res: Response) => {
+  const d = req.body || {};
+  const owner = await ownerCtx(req);
+  const role = req.user?.role || '';
+  if (!owner && !STAFF_ROLES.includes(role)) return res.status(403).json({ error: 'Insufficient permissions' });
+
+  const scheduleType: string = d.scheduleType || d.type || 'Vaccination';
+  const timeSlot = normTime(d.timeSlot || d.time_slot || '08:00');
+  if (!isYmd(d.date)) return res.status(400).json({ error: 'A valid date is required' });
+
+  // ── Owner: personal appointment — fully validated on the server ───────────
+  if (owner) {
+    const now = manilaNow();
+    if (!OWNER_BOOKABLE_TYPES.includes(scheduleType)) return res.status(400).json({ error: 'That service type cannot be requested' });
+    if (d.date < now.date || d.date > addDays(now.date, BOOKING_WINDOW_DAYS)) return res.status(400).json({ error: `Appointments can be booked from today up to ${BOOKING_WINDOW_DAYS} days ahead` });
+    if (!SLOTS.includes(timeSlot)) return res.status(400).json({ error: 'Invalid time slot' });
+    if (d.date === now.date && timeSlot <= now.time) return res.status(400).json({ error: 'That time has already passed' });
+
+    const petId = d.petId || d.pet_id;
+    if (!petId) return res.status(400).json({ error: 'Please choose which pet or livestock the appointment is for' });
+    const pet = await query(`SELECT id, pet_name AS name, species AS kind FROM pets WHERE id=$1 AND owner_id = ANY($2) AND is_archived IS NOT TRUE`, [petId, owner.ids]);
+    const ls = pet.rows.length ? { rows: [] as any[] } : await query(`SELECT id, animal_type AS kind FROM livestock WHERE id=$1 AND owner_id = ANY($2)`, [petId, owner.ids]);
+    const animal = pet.rows[0] || ls.rows[0];
+    if (!animal) return res.status(403).json({ error: 'That animal is not registered to your account' });
+    const isLivestock = !pet.rows.length;
+    if (scheduleType === 'Spay/Neuter' && isLivestock) return res.status(400).json({ error: 'Spay/Neuter is only available for pets' });
+    const animalName = isLivestock ? `${animal.kind} (${animal.id})` : animal.name;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialise bookings for this exact slot so two people can't take the last place at once
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`appt:${d.date}:${timeSlot}`]);
+      const { taken, isBlocked } = await slotUsage(d.date, client as any);
+      if (isBlocked(timeSlot)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'The veterinary office is unavailable at that time. Please pick another slot.' }); }
+      if ((taken[timeSlot] || 0) >= SLOT_CAPACITY) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'That slot was just taken. Please pick another time.' }); }
+      const dup = await client.query(
+        `SELECT 1 FROM appointment_schedules WHERE date=$1 AND time_slot=$2 AND requested_by = ANY($3) AND status <> 'Cancelled' AND COALESCE(is_admin_created,false)=false`,
+        [d.date, timeSlot, owner.ids]);
+      if (dup.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'You already have an appointment at that time.' }); }
+
+      const id = shortId('APPT');
+      const ins = await client.query(
+        `INSERT INTO appointment_schedules
+          (id, schedule_type, title, date, time_slot, status, requested_by, requested_by_name, notes, pet_name, pet_id, barangay, is_admin_created, created_by)
+         VALUES ($1,$2,$3,$4,$5,'Pending',$6,$7,$8,$9,$10,$11,false,$12) RETURNING *`,
+        [id, scheduleType, `${scheduleType} — ${animalName}`, d.date, timeSlot, owner.ids[0], req.user?.username || null,
+         d.notes || null, animalName, animal.id, owner.barangay || null, req.user?.username || null]);
+      await client.query('COMMIT');
+      return res.json({ schedule: ins.rows[0] });
+    } catch (err: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      return res.status(500).json({ error: err.message });
+    } finally { client.release(); }
+  }
+
+  // ── Staff: official schedule / drive ──────────────────────────────────────
   try {
-    const d = req.body;
-    const countResult = await query('SELECT COUNT(*) FROM appointment_schedules');
-    const count = parseInt(countResult.rows[0].count || '0');
-    const newId = `APPT-${String(count + 1).padStart(4, '0')}`;
-    const scheduleType = d.scheduleType || d.type || 'Vaccination';
-    const title = d.title || `${scheduleType} — ${d.barangay || 'CVO'}`;
-    const barangay: string | null = d.barangay || null;
-    const isAdminCreated: boolean = d.isAdminCreated ?? d.is_admin_created ?? false;
+    // A BAHW can only run schedules for their own barangay
+    const barangay: string | null = role === 'bahw' ? (req.user?.barangay || null) : (d.barangay || null);
+    if (role === 'bahw' && !barangay) return res.status(400).json({ error: 'Your account has no barangay assigned' });
+    const visibility: string = ['public', 'barangay', 'staff'].includes(d.visibility)
+      ? d.visibility
+      : (['Intervention', 'Outbreak'].includes(scheduleType) ? 'staff' : barangay ? 'barangay' : 'public');
+    if (visibility === 'barangay' && !barangay) return res.status(400).json({ error: 'Choose a barangay for a barangay-only schedule' });
+    const title = d.title || `${scheduleType} — ${barangay || 'CVO'}`;
+    const id = shortId('APPT');
     const result = await query(
       `INSERT INTO appointment_schedules
         (id, schedule_type, title, date, time_slot, status, requested_by, requested_by_name,
-         notes, pet_name, pet_id, barangay, venue, capacity, is_admin_created, linked_record_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [
-        newId, scheduleType, title, d.date,
-        d.timeSlot || d.time_slot || '08:00',
-        d.status || 'Pending',
-        d.requestedBy || d.requested_by || null,
-        d.requestedByName || d.requested_by_name || req.user?.username || null,
-        d.notes || null,
-        d.petName || d.pet_name || null,
-        d.petId || d.pet_id || null,
-        barangay,
-        d.venue || null,
-        d.capacity || null,
-        isAdminCreated,
-        d.linkedRecordId || d.linked_record_id || null,
-        req.user?.username || null,
-      ]
+         notes, barangay, venue, capacity, is_admin_created, visibility, linked_record_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9,$10,$11,true,$12,$13,$14) RETURNING *`,
+      [id, scheduleType, title, d.date, timeSlot, d.status || 'Confirmed', req.user?.username || null,
+       d.notes || null, barangay, d.venue || null, d.capacity || null, visibility,
+       d.linkedRecordId || d.linked_record_id || null, req.user?.username || null]
     );
     const saved = result.rows[0];
 
-    // ── Barangay-wide notification fanout ────────────────────────────────────
-    // If admin/staff created a schedule with a specific barangay, notify all
-    // users (residents, BAHWs, pet owners, livestock managers) tagged with it.
-    if (isAdminCreated && barangay) {
+    // Notify residents of that barangay — only for schedules they are allowed to see
+    let notified = 0;
+    if (barangay && visibility !== 'staff') {
       try {
-        // Find users whose barangay matches (case-insensitive). Also catch city-wide (no barangay filter).
-        const targetUsers = await query(
-          `SELECT id FROM users WHERE LOWER(barangay) = LOWER($1) AND is_active = true`,
-          [barangay]
-        );
-        if (targetUsers.rows.length > 0) {
-          const dateStr = d.date ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' }) : d.date;
-          const timeStr = (d.timeSlot || d.time_slot || '08:00').replace(/\s*(AM|PM)$/i, '');
-          const [hh, mm] = timeStr.split(':').map(Number);
-          const ampm = hh >= 12 ? 'PM' : 'AM';
-          const h12 = hh % 12 || 12;
-          const fmtTime = `${h12}:${String(mm).padStart(2,'0')} ${ampm}`;
-          const message = `A ${scheduleType} drive has been scheduled in Barangay ${barangay} on ${dateStr} at ${fmtTime}${d.venue ? ' at ' + d.venue : ''}. Please bring your pets/livestock for vaccination and registration.`;
-          const notifCountRes = await query('SELECT COUNT(*) FROM user_notifications');
-          let notifIdx = parseInt(notifCountRes.rows[0].count || '0');
-          for (const u of targetUsers.rows) {
-            notifIdx++;
-            const nid = `NOTIF-${String(notifIdx).padStart(5,'0')}`;
-            await query(
-              `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, schedule_id, is_read, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,false,NOW())`,
-              [nid, u.id, 'schedule', `📅 ${scheduleType} Drive — ${barangay}`, message, barangay, newId]
-            );
-          }
-          console.log(`✅ Notified ${targetUsers.rows.length} users in ${barangay} for schedule ${newId}`);
+        const targetUsers = await query(`SELECT id FROM users WHERE LOWER(barangay) = LOWER($1)`, [barangay]);
+        const dateStr = new Date(d.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+        const [hh, mm] = timeSlot.split(':').map(Number);
+        const fmtTime = `${hh % 12 || 12}:${String(mm).padStart(2, '0')} ${hh >= 12 ? 'PM' : 'AM'}`;
+        const message = `A ${scheduleType} schedule has been set for Barangay ${barangay} on ${dateStr} at ${fmtTime}${d.venue ? ' at ' + d.venue : ''}. Open Schedule to RSVP and bring your pets/livestock.`;
+        for (const u of targetUsers.rows) {
+          await query(
+            `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, schedule_id, is_read, created_at)
+             VALUES ($1,$2,'schedule',$3,$4,$5,$6,false,NOW())`,
+            [shortId('NOTIF'), u.id, `📅 ${scheduleType} — ${barangay}`, message, barangay, id]);
+          notified++;
         }
       } catch (notifErr) {
-        // Non-fatal: schedule was saved, notification fanout failed
-        console.error('⚠ Notification fanout error:', notifErr);
+        console.error('⚠ Notification fanout error:', notifErr);   // non-fatal: the schedule is saved
       }
     }
-
-    return res.json({ schedule: saved, notifiedBarangay: isAdminCreated ? barangay : null });
+    return res.json({ schedule: saved, notifiedBarangay: notified > 0 ? barangay : null });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3483,31 +3591,36 @@ router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res
 
 router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const d = req.body;
-    const sets: string[] = [];
-    const vals: any[] = [];
-    let i = 1;
-    const allowed = ['status','title','date','time_slot','notes','barangay','venue','capacity','schedule_type'];
+    const d = req.body || {};
+    const owner = await ownerCtx(req);
+
+    // Owners may do exactly one thing: cancel their own booking.
+    if (owner) {
+      if (d.status !== 'Cancelled') return res.status(403).json({ error: 'You can only cancel your own appointment' });
+      const r = await query(
+        `UPDATE appointment_schedules SET status='Cancelled', updated_at=NOW()
+          WHERE id=$1 AND requested_by = ANY($2) AND COALESCE(is_admin_created,false)=false AND status IN ('Pending','Confirmed')
+          RETURNING *`, [req.params.id, owner.ids]);
+      if (!r.rows.length) return res.status(404).json({ error: 'Appointment not found or can no longer be cancelled' });
+      return res.json({ schedule: r.rows[0] });
+    }
+    if (!STAFF_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Insufficient permissions' });
+
+    const sets: string[] = []; const vals: any[] = []; let i = 1;
     const map: Record<string, string> = {
-      status: 'status', title: 'title', date: 'date',
-      timeSlot: 'time_slot', time_slot: 'time_slot', notes: 'notes',
-      barangay: 'barangay', venue: 'venue', capacity: 'capacity',
-      scheduleType: 'schedule_type', schedule_type: 'schedule_type',
+      status: 'status', title: 'title', date: 'date', timeSlot: 'time_slot', time_slot: 'time_slot', notes: 'notes',
+      barangay: 'barangay', venue: 'venue', capacity: 'capacity', scheduleType: 'schedule_type', schedule_type: 'schedule_type', visibility: 'visibility',
     };
     for (const [key, col] of Object.entries(map)) {
-      if (d[key] !== undefined && allowed.includes(col)) {
-        sets.push(`${col}=$${i++}`); vals.push(d[key]);
-      }
+      if (d[key] !== undefined) { sets.push(`${col}=$${i++}`); vals.push(d[key]); }
     }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    sets.push('updated_at=NOW()');
     vals.push(req.params.id);
     let where = `id=$${i++}`;
-    const owner = await ownerCtx(req);
-    if (owner) { vals.push(owner.ids); where += ` AND requested_by = ANY($${i})`; }
-    const result = await query(
-      `UPDATE appointment_schedules SET ${sets.join(',')} WHERE ${where} RETURNING *`, vals
-    );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    if (req.user?.role === 'bahw') { vals.push(req.user.barangay || '__none__'); where += ` AND LOWER(COALESCE(barangay,''))=LOWER($${i++})`; }
+    const result = await query(`UPDATE appointment_schedules SET ${sets.join(',')} WHERE ${where} RETURNING *`, vals);
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     return res.json({ schedule: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3517,9 +3630,100 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
 router.delete('/appointment-schedules/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const owner = await ownerCtx(req);
-    if (owner) await query('DELETE FROM appointment_schedules WHERE id=$1 AND requested_by = ANY($2)', [req.params.id, owner.ids]);
-    else await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    if (owner) await query(`DELETE FROM appointment_schedules WHERE id=$1 AND requested_by = ANY($2) AND COALESCE(is_admin_created,false)=false AND status='Cancelled'`, [req.params.id, owner.ids]);
+    else if (VET_ROLES.includes(req.user?.role || '')) await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    else return res.status(403).json({ error: 'Insufficient permissions' });
+    await query('DELETE FROM schedule_rsvps WHERE schedule_id=$1 AND NOT EXISTS (SELECT 1 FROM appointment_schedules WHERE id=$1)', [req.params.id]).catch(() => {});
     return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── RSVP to a drive / mass schedule ───────────────────────────────────────────
+// Works for official schedules (appointment_schedules) and legacy barangay drives (vaccination_schedules).
+async function loadEvent(id: string) {
+  const a = await query(`SELECT id, schedule_type AS type, date, barangay, capacity, status, visibility, is_admin_created FROM appointment_schedules WHERE id=$1`, [id]);
+  if (a.rows[0]) return { ...a.rows[0], date: String(a.rows[0].date).slice(0, 10), official: !!a.rows[0].is_admin_created };
+  const v = await query(`SELECT id, 'Vaccination' AS type, date, barangay, capacity, status FROM vaccination_schedules WHERE id=$1`, [id]);
+  if (v.rows[0]) return { ...v.rows[0], date: String(v.rows[0].date).slice(0, 10), visibility: null, official: true };
+  return null;
+}
+
+router.post('/appointment-schedules/:id/rsvp', authenticate, async (req: AuthRequest, res: Response) => {
+  const owner = await ownerCtx(req);
+  if (!owner) return res.status(403).json({ error: 'Only pet and livestock owners can RSVP' });
+  const ev = await loadEvent(req.params.id);
+  if (!ev || !ev.official) return res.status(404).json({ error: 'Schedule not found' });
+
+  const evBrgy = String(ev.barangay || '');
+  const inScope = ev.visibility !== 'staff' && !NON_RSVP_TYPES.includes(ev.type) && (!evBrgy || evBrgy.toLowerCase() === owner.barangay.toLowerCase());
+  if (!inScope) return res.status(403).json({ error: 'This schedule is not open to your account' });
+  if (!['Confirmed', 'Scheduled'].includes(ev.status)) return res.status(409).json({ error: 'This schedule is no longer accepting RSVPs' });
+  if (ev.date < manilaNow().date) return res.status(409).json({ error: 'This schedule has already passed' });
+
+  const ids: string[] = Array.isArray(req.body?.animalIds) ? [...new Set<string>(req.body.animalIds.map(String))] : [];
+  if (!ids.length) return res.status(400).json({ error: 'Select at least one pet or livestock to bring' });
+  if (ids.length > 25) return res.status(400).json({ error: 'Too many animals selected' });
+
+  const pets = await query(`SELECT id, pet_name AS name, species AS kind FROM pets WHERE id = ANY($1) AND owner_id = ANY($2) AND is_archived IS NOT TRUE`, [ids, owner.ids]);
+  const stock = await query(`SELECT id, animal_type AS kind FROM livestock WHERE id = ANY($1) AND owner_id = ANY($2)`, [ids, owner.ids]);
+  const animals = [
+    ...pets.rows.map((p: any) => ({ id: p.id, name: p.name, kind: p.kind, group: 'pet' })),
+    ...stock.rows.map((l: any) => ({ id: l.id, name: `${l.kind} (${l.id})`, kind: l.kind, group: 'livestock' })),
+  ];
+  if (animals.length !== ids.length) return res.status(403).json({ error: 'One or more selected animals are not registered to your account' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`rsvp:${ev.id}`]);
+    if (ev.capacity) {
+      const used = await client.query(
+        `SELECT COALESCE(SUM(head_count),0)::int AS n FROM schedule_rsvps WHERE schedule_id=$1 AND status='Going' AND user_id <> $2`, [ev.id, req.user!.id]);
+      if (used.rows[0].n + animals.length > Number(ev.capacity)) {
+        await client.query('ROLLBACK');
+        const left = Math.max(0, Number(ev.capacity) - used.rows[0].n);
+        return res.status(409).json({ error: left ? `Only ${left} place(s) left for this schedule.` : 'This schedule is full.' });
+      }
+    }
+    const r = await client.query(
+      `INSERT INTO schedule_rsvps (schedule_id, user_id, owner_id, user_name, barangay, animals, head_count, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'Going')
+       ON CONFLICT (schedule_id, user_id) DO UPDATE SET animals=EXCLUDED.animals, head_count=EXCLUDED.head_count, status='Going', updated_at=NOW()
+       RETURNING status, animals, head_count`,
+      [ev.id, req.user!.id, owner.ids[0] || null, req.user?.username || null, owner.barangay || null, JSON.stringify(animals), animals.length]);
+    const total = await client.query(`SELECT COALESCE(SUM(head_count),0)::int AS n FROM schedule_rsvps WHERE schedule_id=$1 AND status='Going'`, [ev.id]);
+    await client.query('COMMIT');
+    return res.json({ rsvp: r.rows[0], rsvpCount: total.rows[0].n });
+  } catch (err: any) {
+    await client.query('ROLLBACK').catch(() => {});
+    return res.status(500).json({ error: err.message });
+  } finally { client.release(); }
+});
+
+router.delete('/appointment-schedules/:id/rsvp', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const owner = await ownerCtx(req);
+    if (!owner) return res.status(403).json({ error: 'Only pet and livestock owners can RSVP' });
+    await query(`DELETE FROM schedule_rsvps WHERE schedule_id=$1 AND user_id=$2`, [req.params.id, req.user!.id]);
+    const total = await query(`SELECT COALESCE(SUM(head_count),0)::int AS n FROM schedule_rsvps WHERE schedule_id=$1 AND status='Going'`, [req.params.id]);
+    return res.json({ success: true, rsvpCount: total.rows[0].n });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Attendee list — staff only (a BAHW sees just their own barangay's schedules)
+router.get('/appointment-schedules/:id/rsvps', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!STAFF_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Insufficient permissions' });
+    const ev = await loadEvent(req.params.id);
+    if (!ev) return res.status(404).json({ error: 'Schedule not found' });
+    if (req.user?.role === 'bahw' && ev.barangay && String(ev.barangay).toLowerCase() !== String(req.user.barangay || '').toLowerCase())
+      return res.status(403).json({ error: 'Not your barangay' });
+    const r = await query(`SELECT user_name, barangay, animals, head_count, created_at FROM schedule_rsvps WHERE schedule_id=$1 AND status='Going' ORDER BY created_at ASC`, [req.params.id]);
+    return res.json({ rsvps: r.rows, total: r.rows.reduce((n: number, x: any) => n + x.head_count, 0), capacity: ev.capacity ?? null });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3576,25 +3780,29 @@ router.get('/notifications/unread-count', authenticate, async (req: AuthRequest,
 });
 
 // ── Unavailable Blocks ─────────────────────────────────────────────────────────
+// Blocking dates is a veterinary-office function. Owners and BAHWs cannot create or remove blocks;
+// owners only ever *experience* a block as an unavailable slot (see GET /appointment-slots).
 router.get('/unavailable-blocks', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const owner = await ownerCtx(req);
-    const result = owner
-      ? await query('SELECT * FROM unavailable_blocks WHERE user_id = ANY($1) ORDER BY date ASC, time_start ASC', [owner.ids])
-      : await query('SELECT * FROM unavailable_blocks ORDER BY date ASC, time_start ASC');
+    if (!STAFF_ROLES.includes(req.user?.role || '')) return res.json({ blocks: [] });
+    const result = await query('SELECT * FROM unavailable_blocks WHERE date >= CURRENT_DATE - INTERVAL \'1 day\' ORDER BY date ASC, time_start ASC');
     return res.json({ blocks: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/unavailable-blocks', authenticate, async (req: AuthRequest, res: Response) => {
+router.post('/unavailable-blocks', authenticate, requireRole(...VET_ROLES), async (req: AuthRequest, res: Response) => {
   try {
-    const { userId, userName, date, timeStart, timeEnd, reason } = req.body;
+    const { date, timeStart, timeEnd, reason } = req.body || {};
+    const ts = normTime(timeStart), te = normTime(timeEnd);
+    if (!isYmd(date)) return res.status(400).json({ error: 'A valid date is required' });
+    if (date < manilaNow().date) return res.status(400).json({ error: 'Cannot block a date in the past' });
+    if (!SLOTS.includes(ts) || !SLOTS.includes(te) || ts >= te) return res.status(400).json({ error: 'End time must be after start time' });
     const result = await query(
       `INSERT INTO unavailable_blocks (user_id, user_name, date, time_start, time_end, reason)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [userId || req.user?.id, userName || req.user?.username, date, timeStart, timeEnd, reason || null]
+      [req.user!.id, req.user!.username, date, ts, te, reason || null]
     );
     return res.json({ block: result.rows[0] });
   } catch (err: any) {
@@ -3602,11 +3810,9 @@ router.post('/unavailable-blocks', authenticate, async (req: AuthRequest, res: R
   }
 });
 
-router.delete('/unavailable-blocks/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.delete('/unavailable-blocks/:id', authenticate, requireRole(...VET_ROLES), async (req: AuthRequest, res: Response) => {
   try {
-    const owner = await ownerCtx(req);
-    if (owner) await query('DELETE FROM unavailable_blocks WHERE id=$1 AND user_id = ANY($2)', [req.params.id, owner.ids]);
-    else await query('DELETE FROM unavailable_blocks WHERE id=$1', [req.params.id]);
+    await query('DELETE FROM unavailable_blocks WHERE id=$1', [req.params.id]);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });

@@ -381,6 +381,12 @@ export const api = {
     request('/appointment-schedules/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAppointmentSchedule: (id: string) =>
     request('/appointment-schedules/' + id, { method: 'DELETE' }),
+  getAppointmentSlots: (date: string) => request('/appointment-slots?date=' + encodeURIComponent(date)),
+  rsvpSchedule: (id: string, animalIds: string[]) =>
+    request('/appointment-schedules/' + encodeURIComponent(id) + '/rsvp', { method: 'POST', body: JSON.stringify({ animalIds }) }),
+  cancelRsvp: (id: string) =>
+    request('/appointment-schedules/' + encodeURIComponent(id) + '/rsvp', { method: 'DELETE' }),
+  getScheduleRsvps: (id: string) => request('/appointment-schedules/' + encodeURIComponent(id) + '/rsvps'),
 
   // Unavailable blocks
   getUnavailableBlocks: () => request('/unavailable-blocks'),

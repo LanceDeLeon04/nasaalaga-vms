@@ -17,6 +17,7 @@ import { PetPreRegistration } from './PetPreRegistration';
 import { LivestockPreRegistration } from './LivestockPreRegistration';
 import { PetOwnerDashboard } from './PetOwnerDashboard';
 import { LivestockOwnerDashboard } from './LivestockOwnerDashboard';
+import { LostFoundModule } from './LostFoundModule';
 import {
   AnimalCard, CardSkeleton, Chip, PageHeading, Segmented, daysUntil, fmtDate, petToCard, livestockToCard,
 } from './OwnerUI';
@@ -136,7 +137,7 @@ const KIND_LOOK = {
   lost: { Icon: Search, bg: 'var(--o-amber-tint)', fg: 'var(--o-amber)' },
 } as const;
 
-function AttentionList({ items, go, limit }: { items: Attention[]; go: (s: SectionId) => void; limit?: number }) {
+function AttentionList({ items, go, limit }: { items: Attention[]; go: (s: SectionId, tab?: 'pets' | 'livestock') => void; limit?: number }) {
   const shown = limit ? items.slice(0, limit) : items;
   return (
     <ul className="o-rule divide-y">
@@ -145,7 +146,7 @@ function AttentionList({ items, go, limit }: { items: Attention[]; go: (s: Secti
         const lv = LEVEL[a.level];
         return (
           <li key={a.id}>
-            <button onClick={() => go(a.go)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#f7f9f5]">
+            <button onClick={() => go(a.go, a.go === 'lostfound' ? (a.kind === 'lost' && a.species === 'livestock' ? 'livestock' : 'pets') : undefined)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#f7f9f5]">
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: look.bg, color: look.fg }}><look.Icon className="h-5 w-5" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-semibold leading-snug">{a.title}</span>
@@ -177,7 +178,7 @@ function SectionCard({ title, count, action, children }: { title: string; count?
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
-function OwnerOverview({ user, data, hasPets, hasLivestock, go }: { user: User; data: ReturnType<typeof useOwnerData>; hasPets: boolean; hasLivestock: boolean; go: (s: SectionId) => void }) {
+function OwnerOverview({ user, data, hasPets, hasLivestock, go }: { user: User; data: ReturnType<typeof useOwnerData>; hasPets: boolean; hasLivestock: boolean; go: (s: SectionId, tab?: 'pets' | 'livestock') => void }) {
   const { pets, livestock, attention, openReports, loading } = data;
   const activePets = pets.filter(p => !p.is_archived && !/decease|dead/i.test(String(p.status || '')));
   const activeLivestock = livestock.filter(l => String(l.health_status ?? l.healthStatus ?? '') !== 'Dead');
@@ -303,7 +304,7 @@ function OwnerOverview({ user, data, hasPets, hasLivestock, go }: { user: User; 
         )}
 
         {openReports.length > 0 && (
-          <SectionCard title="Open lost reports" count={openReports.length} action={{ label: 'Manage', onClick: () => go('lostfound') }}>
+          <SectionCard title="Open lost reports" count={openReports.length} action={{ label: 'Manage', onClick: () => go('lostfound', hasPets && !openReports.some(r => !data.isLivestockReport(r)) ? 'livestock' : undefined) }}>
             <ul className="o-rule divide-y">
               {openReports.slice(0, 3).map(r => (
                 <li key={r.id} className="flex items-center justify-between gap-3 px-4 py-3">
@@ -332,7 +333,7 @@ function EmptyRoster({ text, cta, onClick }: { text: string; cta: string; onClic
 }
 
 // ── Notifications (pets + livestock in one list) ─────────────────────────────
-function OwnerNotifications({ data, hasPets, hasLivestock, go }: { data: ReturnType<typeof useOwnerData>; hasPets: boolean; hasLivestock: boolean; go: (s: SectionId) => void }) {
+function OwnerNotifications({ data, hasPets, hasLivestock, go }: { data: ReturnType<typeof useOwnerData>; hasPets: boolean; hasLivestock: boolean; go: (s: SectionId, tab?: 'pets' | 'livestock') => void }) {
   const [filter, setFilter] = useState<'all' | 'pet' | 'livestock'>('all');
   const both = hasPets && hasLivestock;
   const list = data.attention.filter(a => filter === 'all' || (a.kind === 'lost' ? a.species === filter : a.kind === filter));
@@ -361,7 +362,7 @@ function OwnerNotifications({ data, hasPets, hasLivestock, go }: { data: ReturnT
 interface NavItem { id: SectionId; label: string; icon: any; badge?: number }
 interface NavGroup { label: string; accent?: string; tint?: string; items: NavItem[] }
 
-function PortalNav({ groups, active, go, onClose }: { groups: NavGroup[]; active: SectionId; go: (s: SectionId) => void; onClose?: () => void }) {
+function PortalNav({ groups, active, go, onClose }: { groups: NavGroup[]; active: SectionId; go: (s: SectionId, tab?: 'pets' | 'livestock') => void; onClose?: () => void }) {
   return (
     <nav aria-label="Owner portal" className="space-y-5 p-3">
       {groups.map(g => (
@@ -390,7 +391,7 @@ function PortalNav({ groups, active, go, onClose }: { groups: NavGroup[]; active
 }
 
 /** Phone-only tab bar: the four places owners go most, plus the full menu. */
-function BottomNav({ items, active, go, onMore }: { items: NavItem[]; active: SectionId; go: (s: SectionId) => void; onMore: () => void }) {
+function BottomNav({ items, active, go, onMore }: { items: NavItem[]; active: SectionId; go: (s: SectionId, tab?: 'pets' | 'livestock') => void; onMore: () => void }) {
   const cell = 'relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold';
   return (
     <nav aria-label="Main" className="owner-bottom-nav o-rule fixed inset-x-0 bottom-0 z-40 flex border-t bg-white lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
@@ -418,7 +419,7 @@ export function OwnerPortal({ user, onLogout }: { user: User; onLogout: () => vo
   const [lfTab, setLfTab] = useState<'pets' | 'livestock'>(hasPets ? 'pets' : 'livestock');
   const data = useOwnerData(user, hasPets, hasLivestock);
 
-  const go = useCallback((s: SectionId) => { setSection(s); setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
+  const go = useCallback((s: SectionId, tab?: 'pets' | 'livestock') => { if (tab) setLfTab(tab); setSection(s); setMenuOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
 
   // Refresh summary data whenever the user returns to a summary page
   useEffect(() => { if (section === 'dashboard' || section === 'notifications') data.reload(); }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -471,20 +472,10 @@ export function OwnerPortal({ user, onLogout }: { user: User; onLogout: () => vo
       case 'livestock': return <LivestockOwnerDashboard user={user} onLogout={onLogout} embedded section="livestock" onNavigate={s => go(LIVESTOCK_NAV[s] || 'dashboard')} />;
       case 'pet-prereg': return <PetPreRegistration ownerId={user.ownerId} ownerEmail={user.email || ''} />;
       case 'livestock-prereg': return <LivestockPreRegistration ownerId={user.ownerId} ownerEmail={user.email || ''} userRole={(user.role as any) || 'livestockManager'} barangay={user.barangay || undefined} />;
-      case 'lostfound': {
-        const tab = hasPets && hasLivestock ? lfTab : hasPets ? 'pets' : 'livestock';
-        return (
-          <div className="space-y-4">
-            {hasPets && hasLivestock && (
-              <Segmented<'pets' | 'livestock'> value={tab} onChange={setLfTab} label="Show lost and found for"
-                options={[{ value: 'pets', label: 'Pets', icon: PawPrint, color: 'var(--o-blue)' }, { value: 'livestock', label: 'Livestock', icon: Beef, color: 'var(--o-field)' }]} />
-            )}
-            {tab === 'pets'
-              ? <PetOwnerDashboard key="lf-pets" user={user} onLogout={onLogout} embedded section="lostfound" onNavigate={s => go(PET_NAV[s] || 'dashboard')} />
-              : <LivestockOwnerDashboard key="lf-ls" user={user} onLogout={onLogout} embedded section="lostfound" onNavigate={s => go(LIVESTOCK_NAV[s] || 'dashboard')} />}
-          </div>
-        );
-      }
+      case 'lostfound': return (
+        <LostFoundModule user={user} hasPets={hasPets} hasLivestock={hasLivestock} pets={data.pets} livestock={data.livestock}
+          tab={lfTab} onTabChange={setLfTab} onChanged={data.reload} />
+      );
       case 'schedule': return <ScheduleModule user={user} />;
       case 'cvoservices': return <CVOServicesShared userRole={user.role as any} />;
       case 'feedback': return <UserFeedback user={user} />;

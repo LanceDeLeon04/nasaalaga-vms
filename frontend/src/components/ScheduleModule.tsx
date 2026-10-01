@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Calendar, Clock, Plus, X, CheckCircle, AlertCircle, Scissors,
   Syringe, Stethoscope, AlertTriangle, ChevronLeft, ChevronRight,
-  MapPin, User, Ban, Check, Eye, Bell, Filter
+  MapPin, User, Ban, Check, Eye, Bell, Filter, Users
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
@@ -30,6 +30,9 @@ interface ScheduleEntry {
   // For admin-created blocks (interventions/outbreaks)
   isAdminCreated?: boolean;
   linkedRecordId?: string; // intervention or outbreak id
+  visibility?: 'public' | 'barangay' | 'staff';
+  rsvpCount?: number;
+  myRsvp?: { status: string; animals: { id: string; name: string }[]; headCount: number };
 }
 
 interface UnavailableBlock {
@@ -83,14 +86,18 @@ function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+function ymdLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getOneWeekMax() {
   const d = new Date();
   d.setDate(d.getDate() + 7);
-  return d.toISOString().split('T')[0];
+  return ymdLocal(d);
 }
 
 function getTodayStr() {
-  return new Date().toISOString().split('T')[0];
+  return ymdLocal(new Date());
 }
 
 // ─── DB → frontend mapper ─────────────────────────────────────────────────────
@@ -118,94 +125,100 @@ function mapDbSchedule(row: any): ScheduleEntry {
     capacity: row.capacity ? Number(row.capacity) : undefined,
     isAdminCreated: row.is_admin_created ?? (!row.requested_by),
     linkedRecordId: row.linked_record_id || undefined,
+    visibility: row.visibility || undefined,
+    rsvpCount: Number(row.rsvp_count || 0),
+    myRsvp: row.my_rsvp ? { status: row.my_rsvp.status, animals: row.my_rsvp.animals || [], headCount: Number(row.my_rsvp.head_count || 0) } : undefined,
+  };
+}
+
+function mapBlock(row: any): UnavailableBlock {
+  return {
+    id: String(row.id),
+    userId: row.user_id ?? row.userId ?? '',
+    userName: row.user_name ?? row.userName ?? '',
+    date: row.date ? String(row.date).split('T')[0] : '',
+    timeStart: String(row.time_start ?? row.timeStart ?? '').replace(/\s*(AM|PM)$/i, ''),
+    timeEnd: String(row.time_end ?? row.timeEnd ?? '').replace(/\s*(AM|PM)$/i, ''),
+    reason: row.reason ?? undefined,
   };
 }
 
 // ─── REQUEST FORM MODAL ───────────────────────────────────────────────────────
+// Personal appointment. Slot availability comes from the server (it counts everyone's bookings and
+// the vets' blocked times), and the server re-checks on submit, so the picker can never lie.
+
+interface OwnedAnimal { id: string; label: string; group: 'pet' | 'livestock' }
+
+interface SlotInfo { slot: string; taken: number; capacity: number; blocked: boolean; past: boolean; available: boolean }
 
 function RequestScheduleModal({
-  user, existingSchedules, unavailableBlocks, onClose, onSave,
+  animals, onClose, onSave,
 }: {
-  user: UserType;
-  existingSchedules: ScheduleEntry[];
-  unavailableBlocks: UnavailableBlock[];
+  animals: OwnedAnimal[];
   onClose: () => void;
-  onSave: (entry: Omit<ScheduleEntry, 'id'>) => void;
+  onSave: (entry: { type: ScheduleType; date: string; timeSlot: string; petId: string; notes: string }) => Promise<boolean>;
 }) {
-  const [form, setForm] = useState({
-    type: 'Checkup' as ScheduleType,
-    date: '',
-    timeSlot: '',
-    petName: '',
-    notes: '',
-  });
+  const [form, setForm] = useState({ type: 'Checkup' as ScheduleType, date: '', timeSlot: '', petId: '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [slots, setSlots] = useState<SlotInfo[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsFailed, setSlotsFailed] = useState(false);
 
-  const maxDate = getOneWeekMax();
   const todayStr = getTodayStr();
+  const maxDate = getOneWeekMax();
+  const hasPets = animals.some(a => a.group === 'pet');
+  // Spay/Neuter is a pet service; livestock can be vaccinated or checked up.
+  const choices = animals.filter(a => form.type !== 'Spay/Neuter' || a.group === 'pet');
+  const types = (['Vaccination', 'Checkup', 'Spay/Neuter'] as ScheduleType[]).filter(t => t !== 'Spay/Neuter' || hasPets);
 
-  // Get taken slots for selected date (max 2 per slot)
-  const takenSlots = (date: string) => {
-    const counts: Record<string, number> = {};
-    existingSchedules.filter(s => s.date === date && s.status !== 'Cancelled').forEach(s => {
-      counts[s.timeSlot] = (counts[s.timeSlot] || 0) + 1;
-    });
-    return counts;
+  const loadSlots = async (date: string) => {
+    setLoadingSlots(true); setSlotsFailed(false);
+    try { const d = await api.getAppointmentSlots(date); setSlots(d.slots || []); }
+    catch { setSlots([]); setSlotsFailed(true); }
+    finally { setLoadingSlots(false); }
   };
 
-  const isUnavailable = (date: string, slot: string) => {
-    const taken = takenSlots(date);
-    if ((taken[slot] || 0) >= 2) return true;
-    return unavailableBlocks.some(b => b.date === date && slot >= b.timeStart && slot < b.timeEnd);
+  const pickDate = (date: string) => {
+    setForm(f => ({ ...f, date, timeSlot: '' }));
+    if (date) loadSlots(date); else setSlots([]);
   };
 
-  const availableSlots = form.date ? TIME_SLOTS.filter(s => !isUnavailable(form.date, s)) : [];
+  const anyOpen = slots.some(s => s.available);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.date || !form.timeSlot) { toast.error('Please select date and time'); return; }
-    if (!form.petName.trim()) { toast.error('Pet name is required'); return; }
+    if (!form.petId) { toast.error('Please choose which animal this is for'); return; }
     setSaving(true);
-    setTimeout(() => {
-      onSave({
-        type: form.type,
-        title: `${form.type} — ${form.petName}`,
-        date: form.date,
-        timeSlot: form.timeSlot,
-        status: 'Pending',
-        requestedBy: user.ownerId || user.email,
-        requestedByName: user.username || user.email,
-        petName: form.petName,
-        notes: form.notes,
-      });
-      setSaving(false);
-      toast.success('Schedule request submitted!');
-      onClose();
-    }, 500);
+    const ok = await onSave(form);
+    setSaving(false);
+    if (ok) onClose();
+    else if (form.date) loadSlots(form.date);   // slot may have just been taken — refresh the picker
   };
+
+  const input = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6] focus:ring-2 focus:ring-[#2B5EA6]/10';
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="bg-gradient-to-r from-[#2B5EA6] to-[#60A85C] px-6 py-4 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] overflow-y-auto">
+        <div className="bg-gradient-to-r from-[#2B5EA6] to-[#60A85C] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-white" />
-            <p className="font-bold text-white">Request Schedule</p>
+            <p className="font-bold text-white">Book an Appointment</p>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Service Type</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['Vaccination','Checkup','Spay/Neuter'] as ScheduleType[]).map(t => {
+            <div className={`grid gap-2 ${types.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {types.map(t => {
                 const cfg = TYPE_CONFIG[t];
                 return (
-                  <button key={t} onClick={() => setForm(f => ({ ...f, type: t }))}
+                  <button key={t} type="button" onClick={() => setForm(f => ({ ...f, type: t, petId: '' }))}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-xs font-bold ${
                       form.type === t ? `border-current ${cfg.bg} ${cfg.color}` : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
-                    {cfg.icon}
-                    {cfg.label}
+                    {cfg.icon}{cfg.label}
                   </button>
                 );
               })}
@@ -213,56 +226,56 @@ function RequestScheduleModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">Pet Name *</label>
-            <input
-              value={form.petName}
-              onChange={e => setForm(f => ({ ...f, petName: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6] focus:ring-2 focus:ring-[#2B5EA6]/10"
-              placeholder="Enter pet name…"
-            />
+            <label htmlFor="appt-animal" className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">For which animal? *</label>
+            <select id="appt-animal" value={form.petId} onChange={e => setForm(f => ({ ...f, petId: e.target.value }))} className={input}>
+              <option value="">Select a registered animal</option>
+              {hasPets && choices.some(a => a.group === 'pet') && (
+                <optgroup label="Pets">{choices.filter(a => a.group === 'pet').map(a => <option key={a.id} value={a.id}>{a.label}</option>)}</optgroup>
+              )}
+              {choices.some(a => a.group === 'livestock') && (
+                <optgroup label="Livestock">{choices.filter(a => a.group === 'livestock').map(a => <option key={a.id} value={a.id}>{a.label}</option>)}</optgroup>
+              )}
+            </select>
+            {choices.length === 0 && <p className="mt-1.5 text-xs text-red-600">No registered animals available for this service. Register one first.</p>}
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
-              Date * <span className="text-gray-400 font-normal normal-case">(max 1 week ahead)</span>
+            <label htmlFor="appt-date" className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
+              Date * <span className="text-gray-400 font-normal normal-case">(up to 1 week ahead)</span>
             </label>
-            <input
-              type="date"
-              min={todayStr}
-              max={maxDate}
-              value={form.date}
-              onChange={e => setForm(f => ({ ...f, date: e.target.value, timeSlot: '' }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6] focus:ring-2 focus:ring-[#2B5EA6]/10"
-            />
+            <input id="appt-date" type="date" min={todayStr} max={maxDate} value={form.date} onChange={e => pickDate(e.target.value)} className={input} />
           </div>
 
           {form.date && (
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">
-                Time Slot * <span className="text-gray-400 font-normal normal-case">(15-min slots, max 2 per slot)</span>
+                Time Slot * <span className="text-gray-400 font-normal normal-case">(15-min slots, {slots[0]?.capacity ?? 2} per slot)</span>
               </label>
-              {availableSlots.length === 0 ? (
+              {loadingSlots ? (
+                <p className="text-sm text-gray-400 py-3">Checking availability…</p>
+              ) : slotsFailed ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700">
+                  Could not load availability. <button type="button" onClick={() => loadSlots(form.date)} className="font-bold underline">Try again</button>
+                </div>
+              ) : !anyOpen ? (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">
                   No available slots on this date. Please choose another date.
                 </div>
               ) : (
-                <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto">
-                  {TIME_SLOTS.map(slot => {
-                    const taken = takenSlots(form.date)[slot] || 0;
-                    const unavail = isUnavailable(form.date, slot);
-                    const selected = form.timeSlot === slot;
+                <div className="grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto" role="group" aria-label="Available time slots">
+                  {slots.map(s => {
+                    const selected = form.timeSlot === s.slot;
                     return (
-                      <button key={slot}
-                        disabled={unavail}
-                        onClick={() => setForm(f => ({ ...f, timeSlot: slot }))}
+                      <button key={s.slot} type="button" disabled={!s.available} aria-pressed={selected}
+                        onClick={() => setForm(f => ({ ...f, timeSlot: s.slot }))}
                         className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                           selected ? 'bg-[#2B5EA6] text-white' :
-                          unavail ? 'bg-gray-100 text-gray-300 cursor-not-allowed line-through' :
-                          taken === 1 ? 'bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100' :
+                          !s.available ? 'bg-gray-100 text-gray-300 cursor-not-allowed line-through' :
+                          s.taken > 0 ? 'bg-yellow-50 border border-yellow-200 text-yellow-700 hover:bg-yellow-100' :
                           'bg-gray-50 border border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-[#2B5EA6]/30'
                         }`}>
-                        {fmt12(slot)}
-                        {taken > 0 && !unavail && <span className="block text-[9px] text-yellow-600">{taken}/2</span>}
+                        {fmt12(s.slot)}
+                        {s.taken > 0 && s.available && <span className="block text-[9px] text-yellow-600">{s.taken}/{s.capacity}</span>}
                       </button>
                     );
                   })}
@@ -272,19 +285,14 @@ function RequestScheduleModal({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">Notes</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6] focus:ring-2 focus:ring-[#2B5EA6]/10 resize-none"
-              placeholder="Any concerns or notes…"
-            />
+            <label htmlFor="appt-notes" className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">Notes</label>
+            <textarea id="appt-notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2}
+              className={`${input} resize-none`} placeholder="Any concerns or notes…" />
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
-            <button onClick={handleSubmit} disabled={saving || !form.date || !form.timeSlot || !form.petName}
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
+            <button type="button" onClick={handleSubmit} disabled={saving || !form.date || !form.timeSlot || !form.petId}
               className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-40 flex items-center justify-center gap-2">
               {saving ? 'Submitting…' : <><Calendar className="w-4 h-4" />Submit Request</>}
             </button>
@@ -295,42 +303,137 @@ function RequestScheduleModal({
   );
 }
 
-// ─── MARK UNAVAILABLE MODAL ───────────────────────────────────────────────────
+// ─── RSVP MODAL ───────────────────────────────────────────────────────────────
+
+function RsvpModal({ schedule, animals, onClose, onSubmit, onCancelRsvp }: {
+  schedule: ScheduleEntry;
+  animals: OwnedAnimal[];
+  onClose: () => void;
+  onSubmit: (animalIds: string[]) => Promise<boolean>;
+  onCancelRsvp: () => Promise<boolean>;
+}) {
+  const going = schedule.myRsvp?.status === 'Going';
+  const [selected, setSelected] = useState<string[]>(going ? (schedule.myRsvp?.animals || []).map(a => a.id) : []);
+  const [busy, setBusy] = useState(false);
+  const left = schedule.capacity ? Math.max(0, schedule.capacity - (schedule.rsvpCount || 0) + (going ? (schedule.myRsvp?.headCount || 0) : 0)) : null;
+  const toggle = (id: string) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const groups: ['pet' | 'livestock', string][] = [['pet', 'Pets'], ['livestock', 'Livestock']];
+
+  const submit = async () => { setBusy(true); const ok = await onSubmit(selected); setBusy(false); if (ok) onClose(); };
+  const cancel = async () => { setBusy(true); const ok = await onCancelRsvp(); setBusy(false); if (ok) onClose(); };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] overflow-y-auto">
+        <div className="bg-gradient-to-r from-[#2B5EA6] to-[#60A85C] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3"><Users className="w-5 h-5 text-white" /><p className="font-bold text-white">{going ? 'Your RSVP' : 'RSVP'}</p></div>
+          <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <p className="font-bold text-gray-900">{schedule.title}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{fmtDate(schedule.date)} · {fmt12(schedule.timeSlot)}{schedule.venue ? ` · ${schedule.venue}` : ''}{schedule.barangay ? ` · ${schedule.barangay}` : ' · City-wide'}</p>
+            {left !== null && <p className={`text-xs font-semibold mt-1 ${left === 0 ? 'text-red-600' : 'text-gray-500'}`}>{left === 0 ? 'Full' : `${left} place${left === 1 ? '' : 's'} left`}</p>}
+          </div>
+
+          <div>
+            <p className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wide">Which animals are you bringing? *</p>
+            {animals.length === 0 ? (
+              <p className="text-sm text-gray-500">You have no registered animals yet.</p>
+            ) : groups.map(([g, label]) => {
+              const list = animals.filter(a => a.group === g);
+              if (!list.length) return null;
+              return (
+                <fieldset key={g} className="mb-3">
+                  <legend className="text-xs font-semibold text-gray-400 mb-1.5">{label}</legend>
+                  <div className="space-y-1.5">
+                    {list.map(a => (
+                      <label key={a.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm cursor-pointer min-h-[44px] ${selected.includes(a.id) ? 'border-[#2B5EA6] bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggle(a.id)} className="h-4 w-4 accent-[#2B5EA6]" />
+                        <span className="font-medium text-gray-800">{a.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              );
+            })}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            {going
+              ? <button type="button" onClick={cancel} disabled={busy} className="flex-1 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-50 disabled:opacity-40">Cancel RSVP</button>
+              : <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Close</button>}
+            <button type="button" onClick={submit} disabled={busy || selected.length === 0}
+              className="flex-1 py-2.5 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85] disabled:opacity-40">
+              {busy ? 'Saving…' : going ? 'Update RSVP' : 'Confirm RSVP'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ATTENDEES MODAL (staff) ──────────────────────────────────────────────────
+
+function AttendeesModal({ schedule, onClose }: { schedule: ScheduleEntry; onClose: () => void }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    api.getScheduleRsvps(schedule.id).then((d: any) => setRows(d.rsvps || [])).catch(() => setFailed(true));
+  }, [schedule.id]);
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] overflow-y-auto">
+        <div className="bg-gradient-to-r from-[#1e4080] to-[#2B5EA6] px-6 py-4 flex items-center justify-between sticky top-0">
+          <div className="flex items-center gap-3"><Users className="w-5 h-5 text-white" /><p className="font-bold text-white">RSVPs · {schedule.title}</p></div>
+          <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5">
+          {failed ? <p className="text-sm text-red-600">Could not load the RSVP list.</p>
+            : rows === null ? <p className="text-sm text-gray-400">Loading…</p>
+            : rows.length === 0 ? <p className="text-sm text-gray-500">No RSVPs yet.</p>
+            : <ul className="divide-y divide-gray-100">{rows.map((r, i) => (
+                <li key={i} className="py-2.5">
+                  <p className="text-sm font-semibold text-gray-800">{r.user_name || 'Owner'}{r.barangay ? <span className="font-normal text-gray-400"> · {r.barangay}</span> : null}</p>
+                  <p className="text-xs text-gray-500">{(r.animals || []).map((a: any) => a.name).join(', ')}</p>
+                </li>))}</ul>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MARK UNAVAILABLE MODAL (vets only) ───────────────────────────────────────
 
 function MarkUnavailableModal({
-  user, onClose, onSave,
+  onClose, onSave,
 }: {
-  user: UserType;
   onClose: () => void;
-  onSave: (block: Omit<UnavailableBlock, 'id'>) => void;
+  onSave: (block: { date: string; timeStart: string; timeEnd: string; reason: string }) => Promise<boolean>;
 }) {
   const [form, setForm] = useState({ date: '', timeStart: '07:00', timeEnd: '17:00', reason: '' });
+  const [saving, setSaving] = useState(false);
   const maxDate = getOneWeekMax();
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.date) { toast.error('Please select a date'); return; }
     if (form.timeStart >= form.timeEnd) { toast.error('End time must be after start time'); return; }
-    onSave({
-      userId: user.ownerId || user.email,
-      userName: user.username || user.email,
-      date: form.date,
-      timeStart: form.timeStart,
-      timeEnd: form.timeEnd,
-      reason: form.reason,
-    });
-    toast.success('Unavailability marked');
-    onClose();
+    setSaving(true);
+    const ok = await onSave(form);
+    setSaving(false);
+    if (ok) onClose();
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div className="bg-gradient-to-r from-gray-600 to-gray-700 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3"><Ban className="w-5 h-5 text-white" /><p className="font-bold text-white">Mark Unavailable</p></div>
-          <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-3"><Ban className="w-5 h-5 text-white" /><p className="font-bold text-white">Block Date / Time</p></div>
+          <button onClick={onClose} aria-label="Close" className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">Mark a time when you cannot attend appointments. This will block those slots from being booked.</p>
+          <p className="text-sm text-gray-500">Mark a time when the veterinary office cannot take appointments. Owners will see those slots as unavailable.</p>
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1.5">Date *</label>
             <input type="date" min={getTodayStr()} max={maxDate} value={form.date} onChange={e => setForm(f => ({...f, date: e.target.value}))}
@@ -360,9 +463,9 @@ function MarkUnavailableModal({
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50">Cancel</button>
-            <button onClick={handleSave}
-              className="flex-1 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-bold hover:bg-gray-800 flex items-center justify-center gap-2">
-              <Ban className="w-4 h-4" />Mark Unavailable
+            <button onClick={handleSave} disabled={saving}
+              className="flex-1 py-2.5 bg-gray-700 text-white rounded-xl text-sm font-bold hover:bg-gray-800 disabled:opacity-40 flex items-center justify-center gap-2">
+              <Ban className="w-4 h-4" />{saving ? 'Saving…' : 'Block'}
             </button>
           </div>
         </div>
@@ -373,10 +476,12 @@ function MarkUnavailableModal({
 
 // ─── ADD ADMIN SCHEDULE MODAL ─────────────────────────────────────────────────
 
-function AddAdminScheduleModal({ onClose, onSave }: {
+function AddAdminScheduleModal({ user, onClose, onSave }: {
+  user: UserType;
   onClose: () => void;
-  onSave: (entry: Omit<ScheduleEntry, 'id'>) => void;
+  onSave: (entry: Omit<ScheduleEntry, 'id'>) => Promise<boolean>;
 }) {
+  const isBahw = user.role === 'bahw';
   const CALACA_BARANGAYS = ['Baclas','Bagong Tubig','Balimbing','Bambang','Bisaya','Cahil','Calantas','Caluangan','Camastilisan','Coral Ni Bacal','Coral Ni Lopez','Dacanlao','Dila','Loma','Lumbang Calzada','Lumbang Na Bata','Lumbang Na Matanda','Madalunot','Makina','Matipok','Munting Coral','Niyugan','Pantay','Poblacion 1','Poblacion 2','Poblacion 3','Poblacion 4','Poblacion 5','Poblacion 6','Puting Bato East','Puting Bato West','Quisumbing','Salong','San Rafael','Sinisian','Taklang Anak','Talisay','Tamayo','Timbain'];
 
   const [form, setForm] = useState({
@@ -384,7 +489,8 @@ function AddAdminScheduleModal({ onClose, onSave }: {
     title: '',
     date: '',
     timeSlot: '08:00',
-    barangay: '',
+    barangay: isBahw ? (user.barangay || '') : '',
+    visibility: '' as '' | 'public' | 'barangay' | 'staff',
     venue: '',
     capacity: '20',
     notes: '',
@@ -397,7 +503,7 @@ function AddAdminScheduleModal({ onClose, onSave }: {
     if (!form.barangay) { setNotifyCount(null); return; }
     setLoadingCount(true);
     fetch(`/api/users?barangay=${encodeURIComponent(form.barangay)}`, {
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('nasaalaga_token') || '') }
+      headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('nasaalaga_token') || '') }
     })
       .then(r => r.json())
       .then(d => setNotifyCount((d.users || []).length))
@@ -405,10 +511,13 @@ function AddAdminScheduleModal({ onClose, onSave }: {
       .finally(() => setLoadingCount(false));
   }, [form.barangay]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.title.trim()) { toast.error('Title is required'); return; }
     if (!form.date) { toast.error('Date is required'); return; }
-    onSave({
+    const visibility = form.visibility || (['Intervention', 'Outbreak'].includes(form.type) ? 'staff' : form.barangay ? 'barangay' : 'public');
+    if (visibility === 'barangay' && !form.barangay) { toast.error('Choose a barangay for a barangay-only schedule'); return; }
+    const ok = await onSave({
+      visibility,
       type: form.type,
       title: form.title,
       date: form.date,
@@ -419,14 +528,9 @@ function AddAdminScheduleModal({ onClose, onSave }: {
       venue: form.venue,
       capacity: parseInt(form.capacity) || 20,
       notes: form.notes,
-      requestedByName: 'Admin',
+      requestedByName: user.username || 'Admin',
     });
-    if (form.barangay && notifyCount && notifyCount > 0) {
-      toast.success(`Schedule added! Notifying ${notifyCount} resident(s) in ${form.barangay}…`);
-    } else {
-      toast.success('Schedule added!');
-    }
-    onClose();
+    if (ok) onClose();
   };
 
   return (
@@ -476,10 +580,10 @@ function AddAdminScheduleModal({ onClose, onSave }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-600 mb-1.5">Barangay</label>
-              <select value={form.barangay} onChange={e => setForm(f => ({...f, barangay: e.target.value}))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6]">
-                <option value="">All / City-wide</option>
-                {CALACA_BARANGAYS.map(b => <option key={b} value={b}>{b}</option>)}
+              <select value={form.barangay} disabled={isBahw} onChange={e => setForm(f => ({...f, barangay: e.target.value}))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6] disabled:bg-gray-50">
+                {!isBahw && <option value="">All / City-wide</option>}
+                {(isBahw ? [user.barangay || ''] : CALACA_BARANGAYS).map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
             <div>
@@ -488,8 +592,19 @@ function AddAdminScheduleModal({ onClose, onSave }: {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6]" />
             </div>
           </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-600 mb-1.5">Who can see this?</label>
+            <select value={form.visibility} onChange={e => setForm(f => ({...f, visibility: e.target.value as any}))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#2B5EA6]">
+              <option value="">Automatic ({['Intervention', 'Outbreak'].includes(form.type) ? 'staff only' : form.barangay ? 'residents of the barangay' : 'public, everyone'})</option>
+              <option value="public">Public — all owners (city-wide)</option>
+              <option value="barangay">Barangay — only residents of the selected barangay</option>
+              <option value="staff">Staff only — hidden from owners</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">Owners can RSVP to public and barangay schedules. Interventions and outbreaks default to staff only.</p>
+          </div>
           {/* Notify preview */}
-          {form.barangay && (
+          {form.barangay && form.visibility !== 'staff' && !['Intervention', 'Outbreak'].includes(form.type) && (
             <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border text-sm ${
               notifyCount && notifyCount > 0
                 ? 'bg-blue-50 border-blue-200 text-blue-800'
@@ -620,7 +735,9 @@ interface ScheduleModuleProps {
 }
 
 export function ScheduleModule({ user }: ScheduleModuleProps) {
+  // isAdmin = anyone on the staff side. isVet = the veterinary office (only they may block dates).
   const isAdmin = ['admin','superadmin','bahw','cvoStaff'].includes(user.role || '');
+  const isVet = ['admin','superadmin','cvoStaff'].includes(user.role || '');
   const isNonAdmin = !isAdmin;
 
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([]);
@@ -632,12 +749,40 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showUnavailableModal, setShowUnavailableModal] = useState(false);
   const [showAdminAddModal, setShowAdminAddModal] = useState(false);
+  const [scope, setScope] = useState<'all' | 'mine' | 'events'>('all');
+  const [animals, setAnimals] = useState<OwnedAnimal[]>([]);
+  const [rsvpFor, setRsvpFor] = useState<ScheduleEntry | null>(null);
+  const [attendeesFor, setAttendeesFor] = useState<ScheduleEntry | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
 
   // ── Fetch from DB ─────────────────────────────────────────────────────────
-  useEffect(() => { fetchSchedules(); fetchUnavailableBlocks(); fetchNotifications(); }, []);
+  useEffect(() => {
+    fetchSchedules(); fetchNotifications();
+    if (isVet) fetchUnavailableBlocks();     // owners never receive block details — they just see slots as unavailable
+    if (isNonAdmin) fetchAnimals();
+  }, []);
+
+  const fetchAnimals = async () => {
+    if (!user.ownerId) return;
+    const a: any = api;
+    const [p, l] = await Promise.allSettled([a.getPets(user.ownerId), a.getLivestock({ ownerId: user.ownerId })]);
+    const out: OwnedAnimal[] = [];
+    if (p.status === 'fulfilled') {
+      for (const x of (p.value?.pets || [])) {
+        if (x.is_archived || /decease|dead/i.test(String(x.status || ''))) continue;
+        out.push({ id: String(x.id), label: `${x.pet_name ?? x.petName ?? 'Pet'} (${x.species ?? 'Pet'})`, group: 'pet' });
+      }
+    }
+    if (l.status === 'fulfilled') {
+      for (const x of (l.value?.livestock || [])) {
+        if (String(x.health_status ?? '') === 'Dead') continue;
+        out.push({ id: String(x.id), label: `${x.animal_type ?? x.type ?? 'Livestock'} (${x.id})`, group: 'livestock' });
+      }
+    }
+    setAnimals(out);
+  };
 
   const fetchSchedules = async () => {
     setLoadingSchedules(true);
@@ -670,7 +815,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const fetchUnavailableBlocks = async () => {
     try {
       const data = await api.getUnavailableBlocks();
-      setUnavailableBlocks(data.blocks || []);
+      setUnavailableBlocks((data.blocks || []).map(mapBlock));
     } catch { /* silent */ }
   };
 
@@ -691,15 +836,19 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
     try { await api.markAllNotificationsRead(); } catch { /* silent */ }
   };
 
-  // Non-admins only see their own schedules
-  const visibleSchedules = isAdmin
-    ? schedules
-    : schedules.filter(s =>
-        s.requestedBy === (user.ownerId || user.email) ||
-        (s.isAdminCreated && (!s.barangay || s.barangay.toLowerCase() === (user.barangay || '').toLowerCase()))
-      );
+  // Owners see exactly two things (the server already enforces this; this is a second line of defence):
+  //   1. their own personal appointments, and
+  //   2. public / their-barangay official schedules (never staff-only ones, never other barangays').
+  const isMine = (s: ScheduleEntry) => !s.isAdminCreated && !!s.requestedBy && [user.ownerId, user.email, user.id].filter(Boolean).includes(s.requestedBy);
+  const isOpenEvent = (s: ScheduleEntry) =>
+    !!s.isAdminCreated && s.visibility !== 'staff' && !['Intervention', 'Outbreak'].includes(s.type) &&
+    (!s.barangay || s.barangay.toLowerCase() === (user.barangay || '').toLowerCase());
+  const visibleSchedules = isAdmin ? schedules : schedules.filter(s => isMine(s) || isOpenEvent(s));
+  const canRsvp = (s: ScheduleEntry) =>
+    isNonAdmin && isOpenEvent(s) && ['Confirmed', 'Scheduled'].includes(s.status) && s.date >= getTodayStr();
 
   const filteredSchedules = visibleSchedules.filter(s =>
+    (isAdmin || scope === 'all' || (scope === 'mine' ? isMine(s) : !isMine(s))) &&
     (filterType === 'all' || s.type === filterType) &&
     (filterStatus === 'all' || s.status === filterStatus) &&
     (selectedDay ? s.date === selectedDay : true)
@@ -712,55 +861,100 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
     s.date >= today && s.date <= nextWeek && s.status !== 'Cancelled'
   ).sort((a,b) => a.date.localeCompare(b.date) || a.timeSlot.localeCompare(b.timeSlot));
 
-  const handleAddSchedule = async (entry: Omit<ScheduleEntry, 'id'>) => {
+  // Staff: create an official schedule / drive. No optimistic "fake save" — if the server refuses, say so.
+  const handleAddSchedule = async (entry: Omit<ScheduleEntry, 'id'>): Promise<boolean> => {
     try {
-      const payload = {
-        scheduleType: entry.type,
-        title: entry.title,
-        date: entry.date,
-        timeSlot: entry.timeSlot,
-        status: entry.status,
-        requestedBy: entry.requestedBy,
-        requestedByName: entry.requestedByName,
-        notes: entry.notes,
-        petName: entry.petName,
-        petId: entry.petId,
-        barangay: entry.barangay,
-        venue: entry.venue,
-        capacity: entry.capacity,
-        isAdminCreated: entry.isAdminCreated ?? true,
-        linkedRecordId: entry.linkedRecordId,
-      };
-      const data = await api.createAppointmentSchedule(payload);
-      const saved = mapDbSchedule(data.schedule || data);
-      setSchedules(prev => [...prev, saved]);
-      // If the backend returned notifiedBarangay, show a success message
-      if (data.notifiedBarangay) {
-        toast.success(`📣 All residents in Barangay ${data.notifiedBarangay} have been notified!`);
-      }
-    } catch {
-      // Optimistic fallback
-      const id = `SCH-${String(schedules.length + 1).padStart(3,'0')}`;
-      setSchedules(prev => [...prev, { ...entry, id }]);
+      const data = await api.createAppointmentSchedule({
+        scheduleType: entry.type, title: entry.title, date: entry.date, timeSlot: entry.timeSlot, status: entry.status,
+        requestedByName: entry.requestedByName, notes: entry.notes, barangay: entry.barangay, venue: entry.venue,
+        capacity: entry.capacity, visibility: entry.visibility, linkedRecordId: entry.linkedRecordId,
+      });
+      setSchedules(prev => [...prev, mapDbSchedule(data.schedule || data)]);
+      toast.success(data.notifiedBarangay ? `📣 Residents of ${data.notifiedBarangay} have been notified` : 'Schedule added');
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not save the schedule');
+      return false;
+    }
+  };
+
+  // Owner: personal appointment. The server owns the rules (window, slot capacity, vet blocks, ownership of the animal).
+  const handleRequest = async (r: { type: ScheduleType; date: string; timeSlot: string; petId: string; notes: string }): Promise<boolean> => {
+    try {
+      const data = await api.createAppointmentSchedule({ scheduleType: r.type, date: r.date, timeSlot: r.timeSlot, petId: r.petId, notes: r.notes });
+      setSchedules(prev => [...prev, mapDbSchedule(data.schedule || data)]);
+      toast.success('Appointment requested. You will be notified once it is confirmed.');
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not book that appointment');
+      return false;
+    }
+  };
+
+  const applyRsvp = (id: string, rsvp: ScheduleEntry['myRsvp'] | undefined, count: number) =>
+    setSchedules(prev => prev.map(x => x.id === id ? { ...x, myRsvp: rsvp, rsvpCount: count } : x));
+
+  const handleRsvp = async (s: ScheduleEntry, animalIds: string[]): Promise<boolean> => {
+    try {
+      const d: any = await api.rsvpSchedule(s.id, animalIds);
+      applyRsvp(s.id, { status: d.rsvp.status, animals: d.rsvp.animals || [], headCount: Number(d.rsvp.head_count || animalIds.length) }, Number(d.rsvpCount || 0));
+      toast.success("You're on the list! See you there.");
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not save your RSVP');
+      return false;
+    }
+  };
+
+  const handleCancelRsvp = async (s: ScheduleEntry): Promise<boolean> => {
+    try {
+      const d: any = await api.cancelRsvp(s.id);
+      applyRsvp(s.id, undefined, Number(d.rsvpCount || 0));
+      toast.success('RSVP cancelled');
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not cancel your RSVP');
+      return false;
     }
   };
 
   const handleStatusChange = async (id: string, status: ScheduleEntry['status']) => {
-    // Optimistic update
-    setSchedules(prev => prev.map(s => s.id === id ? { ...s, status } : s));
-    toast.success(`Schedule marked as ${status}`);
+    const prev = schedules;
+    setSchedules(p => p.map(s => s.id === id ? { ...s, status } : s));   // optimistic…
     try {
-      // Try appointment_schedules first, fallback to vaccination_schedules
-      await api.updateAppointmentSchedule(id, { status }).catch(() =>
-        api.updateSchedule(id, { status })
-      );
-    } catch { /* already updated optimistically */ }
+      // Owners can only cancel their own booking; staff may update either kind of schedule.
+      await api.updateAppointmentSchedule(id, { status }).catch((e: any) => {
+        if (id.startsWith('SCH-') && isAdmin) return api.updateSchedule(id, { status });   // legacy barangay drive
+        throw e;
+      });
+      toast.success(`Schedule marked as ${status}`);
+    } catch (e: any) {
+      setSchedules(prev);                                                  // …and rolled back if the server said no
+      toast.error(e?.message || 'Could not update the schedule');
+    }
+  };
+
+  // Vets only
+  const handleAddBlock = async (b: { date: string; timeStart: string; timeEnd: string; reason: string }): Promise<boolean> => {
+    try {
+      const d: any = await api.createUnavailableBlock(b);
+      setUnavailableBlocks(prev => [...prev, mapBlock(d.block)]);
+      toast.success('Time blocked. Owners can no longer book it.');
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not block that time');
+      return false;
+    }
   };
 
   const handleDeleteUnavail = async (id: string) => {
-    setUnavailableBlocks(prev => prev.filter(b => b.id !== id));
-    toast.success('Unavailability removed');
-    try { await api.deleteUnavailableBlock(id); } catch { /* silent */ }
+    try {
+      await api.deleteUnavailableBlock(id);
+      setUnavailableBlocks(prev => prev.filter(b => b.id !== id));
+      toast.success('Block removed');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not remove the block');
+    }
   };
 
   // Loading state used in header badge
@@ -784,7 +978,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
             <p className="text-white/80 text-sm">
               {isAdmin
                 ? 'Manage all appointments, vaccination drives, interventions, and outbreaks'
-                : 'Your upcoming appointments and schedule requests (max 1 week ahead)'}
+                : 'Your appointments, plus public and barangay schedules you can RSVP to'}
             </p>
           </div>
           <div className="flex gap-2 flex-wrap items-center">
@@ -796,16 +990,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
               )}
             </button>
             {isNonAdmin && (
-              <>
-                <button onClick={() => setShowRequestModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-[#2B5EA6] rounded-xl text-sm font-bold hover:bg-blue-50 transition-all shadow">
-                  <Plus className="w-4 h-4" />Request Schedule
-                </button>
-                <button onClick={() => setShowUnavailableModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white rounded-xl text-sm font-bold hover:bg-white/30 transition-all">
-                  <Ban className="w-4 h-4" />Mark Unavailable
-                </button>
-              </>
+              <button onClick={() => setShowRequestModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-[#2B5EA6] rounded-xl text-sm font-bold hover:bg-blue-50 transition-all shadow">
+                <Plus className="w-4 h-4" />Book Appointment
+              </button>
             )}
             {isAdmin && (
               <button onClick={() => setShowAdminAddModal(true)}
@@ -925,10 +1113,18 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
             <X className="w-3 h-3" /> {fmtDate(selectedDay)}
           </button>
         )}
-        {isAdmin && (
+        {isNonAdmin && (
+          <div role="group" aria-label="Show" className="flex bg-gray-100 rounded-xl p-1">
+            {([['all', 'All'], ['mine', 'My appointments'], ['events', 'Drives & events']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setScope(v)} aria-pressed={scope === v}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${scope === v ? 'bg-white text-[#2B5EA6] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{label}</button>
+            ))}
+          </div>
+        )}
+        {isVet && (
           <button onClick={() => setShowUnavailableModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 ml-auto">
-            <Ban className="w-3.5 h-3.5" />Mark Unavailable
+            <Ban className="w-3.5 h-3.5" />Block Date / Time
           </button>
         )}
       </div>
@@ -955,7 +1151,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
             <div className="p-12 text-center">
               <Calendar className="w-10 h-10 text-gray-200 mx-auto mb-3" />
               <p className="text-gray-400 text-sm">No schedules found</p>
-              {isNonAdmin && <button onClick={() => setShowRequestModal(true)} className="mt-3 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85]">Request a Schedule</button>}
+              {isNonAdmin && <button onClick={() => setShowRequestModal(true)} className="mt-3 px-4 py-2 bg-[#2B5EA6] text-white rounded-xl text-sm font-bold hover:bg-[#234a85]">Book an Appointment</button>}
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -983,6 +1179,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                             </span>
                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${stCfg.bg} ${stCfg.text}`}>{s.status}</span>
                             {s.isAdminCreated && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-500">Official</span>}
+                            {s.isAdminCreated && s.visibility === 'staff' && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-800 text-white">Staff only</span>}
+                            {isNonAdmin && s.isAdminCreated && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700">{s.barangay ? `Your barangay` : 'Public'}</span>}
+                            {isNonAdmin && isMine(s) && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-[#2B5EA6]">My appointment</span>}
+                            {s.myRsvp?.status === 'Going' && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">✓ Going</span>}
                           </div>
                           <p className="font-bold text-gray-900 text-sm mb-0.5">{s.title}</p>
                           <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
@@ -992,8 +1192,34 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                             {s.requestedByName && isAdmin && <span className="flex items-center gap-1"><User className="w-3 h-3" />{s.requestedByName}</span>}
                             {s.petName && <span className="flex items-center gap-1">🐾 {s.petName}</span>}
                           </div>
+                          {s.isAdminCreated && s.capacity ? (
+                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><Users className="w-3 h-3" />{s.rsvpCount || 0} / {s.capacity} RSVP'd</p>
+                          ) : null}
+                          {s.myRsvp?.status === 'Going' && s.myRsvp.animals.length > 0 && (
+                            <p className="text-xs text-green-700 mt-1">Bringing: {s.myRsvp.animals.map(a => a.name).join(', ')}</p>
+                          )}
                           {s.notes && <p className="text-xs text-gray-400 mt-1 italic">{s.notes}</p>}
                         </div>
+
+                        {/* Owner RSVP */}
+                        {canRsvp(s) && (() => {
+                          const full = !!s.capacity && (s.rsvpCount || 0) >= s.capacity && s.myRsvp?.status !== 'Going';
+                          return (
+                            <button onClick={() => setRsvpFor(s)} disabled={full}
+                              className={`shrink-0 px-3 py-2 text-xs font-bold rounded-lg flex items-center gap-1 min-h-[36px] ${
+                                s.myRsvp?.status === 'Going' ? 'bg-green-100 text-green-700 hover:bg-green-200' :
+                                full ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#2B5EA6] text-white hover:bg-[#234a85]'}`}>
+                              <Users className="w-3.5 h-3.5" />{s.myRsvp?.status === 'Going' ? 'Edit RSVP' : full ? 'Full' : 'RSVP'}
+                            </button>
+                          );
+                        })()}
+                        {/* Staff: who is coming */}
+                        {isAdmin && s.isAdminCreated && (
+                          <button onClick={() => setAttendeesFor(s)}
+                            className="shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 flex items-center gap-1 self-start">
+                            <Users className="w-3 h-3" />RSVPs{s.rsvpCount ? ` (${s.rsvpCount})` : ''}
+                          </button>
+                        )}
 
                         {/* Admin actions */}
                         {isAdmin && (
@@ -1019,7 +1245,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                           </div>
                         )}
                         {/* Non-admin cancel own pending */}
-                        {isNonAdmin && s.status === 'Pending' && s.requestedBy === (user.ownerId || user.email) && (
+                        {isNonAdmin && isMine(s) && (s.status === 'Pending' || s.status === 'Confirmed') && (
                           <button onClick={() => handleStatusChange(s.id, 'Cancelled')}
                             className="shrink-0 px-3 py-1.5 bg-red-50 text-red-500 text-xs font-bold rounded-lg hover:bg-red-100 flex items-center gap-1">
                             <X className="w-3 h-3" />Cancel
@@ -1035,21 +1261,20 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
       )}
 
       {/* Unavailable blocks (user's own or all for admin) */}
-      {unavailableBlocks.length > 0 && (
+      {isVet && unavailableBlocks.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <Ban className="w-4 h-4 text-gray-500" />
-            <p className="font-bold text-gray-800 text-sm">Marked Unavailable</p>
+            <p className="font-bold text-gray-800 text-sm">Blocked Dates &amp; Times</p>
           </div>
           <div className="divide-y divide-gray-50">
             {unavailableBlocks
-              .filter(b => isAdmin || ((b as any).userId ?? (b as any).user_id) === (user.ownerId || user.email))
               .map(b => (
                 <div key={b.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-800 text-sm">{fmtDate(b.date)}</p>
                     <p className="text-xs text-gray-500">{fmt12(b.timeStart)} – {fmt12(b.timeEnd)}{b.reason ? ` · ${b.reason}` : ''}</p>
-                    {isAdmin && <p className="text-xs text-gray-400">{b.userName}</p>}
+                    <p className="text-xs text-gray-400">{b.userName}</p>
                   </div>
                   <button onClick={() => handleDeleteUnavail(b.id)}
                     className="p-1.5 bg-red-50 text-red-400 rounded-lg hover:bg-red-100 transition-colors">
@@ -1064,29 +1289,34 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
       {/* Modals */}
       {showRequestModal && (
         <RequestScheduleModal
-          user={user}
-          existingSchedules={schedules}
-          unavailableBlocks={unavailableBlocks}
+          animals={animals}
           onClose={() => setShowRequestModal(false)}
-          onSave={handleAddSchedule}
+          onSave={handleRequest}
         />
       )}
-      {showUnavailableModal && (
+      {showUnavailableModal && isVet && (
         <MarkUnavailableModal
-          user={user}
           onClose={() => setShowUnavailableModal(false)}
-          onSave={(block) => {
-            const id = `UNAVAIL-${Date.now()}`;
-            setUnavailableBlocks(prev => [...prev, { ...block, id }]);
-          }}
+          onSave={handleAddBlock}
         />
       )}
-      {showAdminAddModal && (
+      {showAdminAddModal && isAdmin && (
         <AddAdminScheduleModal
+          user={user}
           onClose={() => setShowAdminAddModal(false)}
           onSave={handleAddSchedule}
         />
       )}
+      {rsvpFor && (
+        <RsvpModal
+          schedule={schedules.find(x => x.id === rsvpFor.id) || rsvpFor}
+          animals={animals}
+          onClose={() => setRsvpFor(null)}
+          onSubmit={ids => handleRsvp(rsvpFor, ids)}
+          onCancelRsvp={() => handleCancelRsvp(rsvpFor)}
+        />
+      )}
+      {attendeesFor && <AttendeesModal schedule={attendeesFor} onClose={() => setAttendeesFor(null)} />}
     </div>
   );
 }

@@ -1094,6 +1094,37 @@ export async function migrateBudget() {
       );
     `);
 
+    // Who may see an admin-created schedule: 'public' (everyone), 'barangay' (residents of that barangay), 'staff' (CVO/BAHW only)
+    await client.query(`ALTER TABLE appointment_schedules ADD COLUMN IF NOT EXISTS visibility VARCHAR(20)`);
+    await client.query(`
+      UPDATE appointment_schedules SET visibility = CASE
+        WHEN schedule_type IN ('Intervention','Outbreak') THEN 'staff'
+        WHEN COALESCE(barangay,'') <> '' THEN 'barangay'
+        ELSE 'public' END
+      WHERE visibility IS NULL AND is_admin_created = TRUE
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_appt_date_slot ON appointment_schedules (date, time_slot)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_unavail_date ON unavailable_blocks (date)`);
+
+    // RSVPs — an owner confirms they will bring their animals to a drive/mass schedule
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schedule_rsvps (
+        id SERIAL PRIMARY KEY,
+        schedule_id VARCHAR(50) NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        owner_id VARCHAR(255),
+        user_name VARCHAR(255),
+        barangay VARCHAR(255),
+        animals JSONB NOT NULL DEFAULT '[]',
+        head_count INTEGER NOT NULL DEFAULT 1,
+        status VARCHAR(20) NOT NULL DEFAULT 'Going',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (schedule_id, user_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_rsvp_schedule ON schedule_rsvps (schedule_id, status)`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS budget_ai_recommendations (
         id VARCHAR(50) PRIMARY KEY,
