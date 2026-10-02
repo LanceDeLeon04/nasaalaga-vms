@@ -23,7 +23,7 @@ import {
   Clock, Users, Package, Target, Plus, X, Edit3, ExternalLink,
   BarChart3, Calendar, Trash2, Save, ArrowRight, RefreshCw,
   FileText, FlaskConical, CheckSquare, Hash, Lock, AlertCircle,
-  TrendingUp, Info,
+  TrendingUp, Info, Sparkles,
 } from 'lucide-react';
 import { api } from '../lib/api';
 
@@ -159,11 +159,13 @@ function Toast({ msg, sub, onDone }: { msg: string; sub?: string; onDone: () => 
 
 // ── Alert Detail Modal ────────────────────────────────────────────────────────
 
-function AlertDetailModal({ alert, onClose, onCreateIntervention, onNavigateOutbreak }: {
+function AlertDetailModal({ alert, onClose, onCreateIntervention, onUsePlan, onNavigateOutbreak, autoSuggest }: {
   alert: SmartAlert;
   onClose: () => void;
   onCreateIntervention: (a: SmartAlert) => void;
+  onUsePlan: (a: SmartAlert, plan: AiPlan, source: AiResult['source']) => void;
   onNavigateOutbreak: () => void;
+  autoSuggest?: boolean;
 }) {
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -222,6 +224,9 @@ function AlertDetailModal({ alert, onClose, onCreateIntervention, onNavigateOutb
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <AiSuggestionPanel alert={alert} autoStart={autoSuggest}
+            canUse={!alert.isOutbreak && !alert.interventionId}
+            onUse={(plan, source) => onUsePlan(alert, plan, source)} />
           {loading && (
             <div className="flex items-center justify-center py-12 gap-3 text-gray-400">
               <RefreshCw className="w-5 h-5 animate-spin" />
@@ -556,6 +561,151 @@ function AlertDetailModal({ alert, onClose, onCreateIntervention, onNavigateOutb
         </div>
       </div>
     </div>
+  );
+}
+
+// ── AI plan suggestion (Claude) ───────────────────────────────────────────────
+
+interface AiPlan {
+  title: string; goal: string; durationDays: number; priority: 'urgent' | 'high' | 'routine';
+  staffNeeded: number; staffNotes: string;
+  deliverables: { label: string; type: DeliverableType; target?: number; unit?: string }[];
+  resources: { name: string; quantity: number; unit: string }[];
+  rationale: string; cautions: string[];
+}
+interface AiResult { suggestion: AiPlan; source: 'claude' | 'rule-based'; note?: string; generatedAt: string }
+
+const PRIORITY_STYLE: Record<AiPlan['priority'], string> = {
+  urgent: 'bg-red-100 text-red-700', high: 'bg-orange-100 text-orange-700', routine: 'bg-blue-100 text-blue-700',
+};
+
+function AiSuggestionPanel({ alert, canUse, autoStart, onUse }: {
+  alert: SmartAlert; canUse: boolean; autoStart?: boolean;
+  onUse: (plan: AiPlan, source: AiResult['source']) => void;
+}) {
+  const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [result, setResult] = useState<AiResult | null>(null);
+  const [error, setError] = useState('');
+
+  const run = useCallback(async (regenerate = false) => {
+    setState('loading'); setError('');
+    try {
+      const r = await api.suggestIntervention({
+        id: alert.id, type: alert.type, severity: alert.severity, barangay: alert.barangay,
+        message: alert.message, metric: alert.metric, sourceId: alert.sourceId, isOutbreak: alert.isOutbreak,
+      }, regenerate);
+      setResult(r); setState('done');
+    } catch (e: any) { setError(e.message || 'Could not get a suggestion'); setState('error'); }
+  }, [alert]);
+
+  useEffect(() => { if (autoStart) run(); /* eslint-disable-next-line */ }, []);
+
+  const plan = result?.suggestion;
+  const endDate = plan ? new Date(Date.now() + plan.durationDays * 86400000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : '';
+
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-4">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-violet-600 flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-white" /></div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-violet-900">Suggested intervention plan</p>
+          <p className="text-[11px] text-violet-700/70">Claude reads this alert, the barangay's recent cases and your current stock.</p>
+        </div>
+        {state === 'idle' && (
+          <button onClick={() => run()} className="flex items-center gap-1.5 text-xs px-3.5 py-2 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-colors shadow-sm whitespace-nowrap">
+            <Sparkles className="w-3.5 h-3.5" /> Suggest a plan
+          </button>
+        )}
+      </div>
+
+      {state === 'loading' && (
+        <div className="flex items-center gap-2.5 mt-4 text-violet-700 text-sm">
+          <RefreshCw className="w-4 h-4 animate-spin" /> Reviewing the alert and your stock…
+        </div>
+      )}
+
+      {state === 'error' && (
+        <div className="mt-3 bg-white border border-red-200 rounded-xl p-3 text-sm text-red-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" /><span className="flex-1">{error}</span>
+          <button onClick={() => run(true)} className="text-xs font-bold underline">Try again</button>
+        </div>
+      )}
+
+      {state === 'done' && plan && result && (
+        <div className="mt-4 space-y-3">
+          {result.source === 'rule-based' ? (
+            <div className="text-[11px] bg-amber-100 text-amber-800 rounded-lg px-3 py-2 font-semibold">
+              Standard template — not generated by Claude. {result.note}
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-violet-600 text-white rounded-full px-2.5 py-0.5"><Sparkles className="w-3 h-3" /> Generated by Claude</span>
+          )}
+
+          <div className="bg-white rounded-xl p-4 space-y-3 border border-violet-100">
+            <div>
+              <p className="font-bold text-gray-900 text-sm">{plan.title}</p>
+              <p className="text-sm text-gray-600 mt-1">{plan.goal}</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className={`px-2.5 py-1 rounded-full font-bold ${PRIORITY_STYLE[plan.priority]}`}>{plan.priority.toUpperCase()}</span>
+              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">⏱ {plan.durationDays} day{plan.durationDays !== 1 ? 's' : ''} · ends {endDate}</span>
+              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-semibold">👥 {plan.staffNeeded} staff</span>
+            </div>
+            {plan.staffNotes && <p className="text-xs text-gray-500">{plan.staffNotes}</p>}
+
+            {plan.deliverables.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Deliverables</p>
+                <ul className="space-y-1">
+                  {plan.deliverables.map((d, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      {d.type === 'number' ? <Hash className="w-3.5 h-3.5 mt-0.5 text-violet-500 flex-shrink-0" /> : <CheckSquare className="w-3.5 h-3.5 mt-0.5 text-violet-500 flex-shrink-0" />}
+                      <span>{d.label}{d.type === 'number' && d.target ? <strong className="text-gray-900"> — target {d.target}{d.unit ? ` ${d.unit}` : ''}</strong> : null}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Resources from current stock</p>
+              {plan.resources.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {plan.resources.map((r, i) => <span key={i} className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg px-2.5 py-1 font-semibold">{r.quantity} {r.unit} · {r.name}</span>)}
+                </div>
+              ) : <p className="text-xs text-gray-400">No matching items in stock were suggested.</p>}
+            </div>
+
+            {plan.rationale && (
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Why this plan</p>
+                <p className="text-sm text-gray-600">{plan.rationale}</p>
+              </div>
+            )}
+            {plan.cautions.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest mb-1">Check before using</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-xs text-amber-900">{plan.cautions.map((c, i) => <li key={i}>{c}</li>)}</ul>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11px] text-gray-500">AI suggestions can be wrong. Review and edit the plan, and let a veterinarian confirm any clinical decision.</p>
+          <div className="flex gap-2 flex-wrap">
+            {canUse ? (
+              <button onClick={() => onUse(plan, result.source)} className="flex items-center gap-1.5 text-sm px-4 py-2.5 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 transition-colors">
+                <Plus className="w-4 h-4" /> Use this plan
+              </button>
+            ) : alert.isOutbreak ? (
+              <span className="text-xs text-gray-500 self-center">Declared outbreaks are managed in Outbreak Monitoring — use this plan as guidance there.</span>
+            ) : null}
+            <button onClick={() => run(true)} className="flex items-center gap-1.5 text-sm px-4 py-2.5 bg-white border border-violet-200 text-violet-700 rounded-xl font-semibold hover:bg-violet-50 transition-colors">
+              <RefreshCw className="w-4 h-4" /> Regenerate
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1025,10 +1175,10 @@ function InterventionCard({ iv, eligibleStaff, onUpdate, onNavigateOutbreak }: {
 
 // ── Alert Card ────────────────────────────────────────────────────────────────
 
-function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOutbreak, onViewDetail }: {
+function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOutbreak, onViewDetail, onSuggest }: {
   alert: SmartAlert; hasIntervention: boolean;
   onCreateIntervention: (a: SmartAlert) => void; onNavigateOutbreak: () => void;
-  onViewDetail: (a: SmartAlert) => void;
+  onViewDetail: (a: SmartAlert) => void; onSuggest: (a: SmartAlert) => void;
 }) {
   const c = SEV_COLORS[alert.severity];
   const Icon = ALERT_TYPE_ICONS[alert.type];
@@ -1068,6 +1218,12 @@ function AlertCard({ alert, hasIntervention, onCreateIntervention, onNavigateOut
                 <Plus className="w-3.5 h-3.5" /> Create Intervention
               </button>
             )}
+            {!hasIntervention && (
+              <button onClick={e => { e.stopPropagation(); onSuggest(alert); }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-violet-100 text-violet-700 rounded-xl font-bold hover:bg-violet-200 transition-colors">
+                <Sparkles className="w-3.5 h-3.5" /> Suggest with Claude
+              </button>
+            )}
             <span className="flex items-center gap-1 text-xs text-gray-400 ml-auto">
               <Info className="w-3 h-3" /> Tap to view details
             </span>
@@ -1090,6 +1246,7 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
   const [interventions, setInterventions] = useState<Intervention[]>([]);
   const [eligibleStaff, setEligibleStaff] = useState<StaffMember[]>([]);
   const [selectedAlert, setSelectedAlert] = useState<SmartAlert | null>(null);
+  const [autoSuggest, setAutoSuggest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; sub?: string } | null>(null);
   const [filterStatus, setFilterStatus] = useState<IStatus | 'all'>('all');
@@ -1272,26 +1429,33 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
 
   // ── Create intervention from alert ───────────────────────────────────────
 
-  const createIntervention = async (alert: SmartAlert) => {
+  const createIntervention = async (alert: SmartAlert, plan?: AiPlan, planSource?: AiResult['source']) => {
     const today = toDateInput(new Date());
-    const end = toDateInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    const end = toDateInput(new Date(Date.now() + (plan?.durationDays ?? 7) * 24 * 60 * 60 * 1000));
     const iv: Intervention = {
       id: newId('INT'),
       alertId: alert.id,
-      title: `[${alert.type.toUpperCase()}] ${alert.message.slice(0, 80)}`,
+      title: plan ? `[${alert.type.toUpperCase()}] ${plan.title}`.slice(0, 140) : `[${alert.type.toUpperCase()}] ${alert.message.slice(0, 80)}`,
       barangay: alert.barangay,
       type: alert.type,
       severity: alert.severity,
       status: 'pending',
-      goal: '',
+      goal: plan?.goal || '',
       accomplishment: '',
       progressPct: 0,
       startDate: today,
       endDate: end,
       deployedStaff: [],
-      deployedResources: [],
-      deliverables: [],
-      notes: '',
+      deployedResources: plan ? plan.resources.map(r => ({ name: r.name, quantity: r.quantity, unit: r.unit })) : [],
+      deliverables: plan ? plan.deliverables.map(d => d.type === 'number'
+        ? { id: newId('DLV'), label: d.label, type: 'number' as const, current: 0, target: d.target || 1, unit: d.unit || '' }
+        : { id: newId('DLV'), label: d.label, type: 'checkbox' as const, checked: false }) : [],
+      notes: plan ? [
+        planSource === 'claude' ? 'Plan suggested by Claude and reviewed by staff before use.' : 'Started from a standard template.',
+        `Staff needed: ${plan.staffNeeded}${plan.staffNotes ? ' — ' + plan.staffNotes : ''}`,
+        plan.rationale ? `Why: ${plan.rationale}` : '',
+        plan.cautions.length ? `Check: ${plan.cautions.join('; ')}` : '',
+      ].filter(Boolean).join('\n') : '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isOutbreak: alert.isOutbreak,
@@ -1488,7 +1652,8 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
                       hasIntervention={alertsWithIntervention.has(alert.id)}
                       onCreateIntervention={createIntervention}
                       onNavigateOutbreak={onNavigateOutbreak || (() => {})}
-                      onViewDetail={setSelectedAlert}
+                      onViewDetail={(a) => { setAutoSuggest(false); setSelectedAlert(a); }}
+                      onSuggest={(a) => { setAutoSuggest(true); setSelectedAlert(a); }}
                     />
                   ))}
                 </div>
@@ -1550,9 +1715,12 @@ export function SmartAlertsInterventions({ onNavigateOutbreak }: SmartAlertsInte
       </div>
       {selectedAlert && (
         <AlertDetailModal
+          key={selectedAlert.id + (autoSuggest ? ':ai' : '')}
           alert={selectedAlert}
+          autoSuggest={autoSuggest}
           onClose={() => setSelectedAlert(null)}
           onCreateIntervention={(a) => { setSelectedAlert(null); createIntervention(a); }}
+          onUsePlan={(a, plan, source) => { setSelectedAlert(null); createIntervention(a, plan, source); }}
           onNavigateOutbreak={() => { setSelectedAlert(null); if (onNavigateOutbreak) onNavigateOutbreak(); }}
         />
       )}

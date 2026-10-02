@@ -4,6 +4,7 @@ import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '..
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { createBackup, normalizeFrequency } from '../services/backup';
+import { suggestIntervention, AlertInput, SuggestionResult } from '../services/interventionAI';
 import { STAFF_ONLY_TYPES, syncIntervention, syncOutbreak, syncOutbreaksBySource, syncOrder, syncDeployment, syncObservation, removeLinked } from '../services/scheduleSync';
 
 const router = Router();
@@ -2784,6 +2785,53 @@ RECOMMENDATIONS:
     return res.json({ text, source: 'rule-based' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AI intervention suggestions for Smart Alerts ──────────────────────────
+// Claude proposes a plan from the alert + real data gathered server-side. Nothing is saved here;
+// a person reviews it and chooses "Use this plan" in the UI. Falls back to a labelled template.
+const AI_ROLES = ['admin', 'superadmin', 'cvoStaff', 'bahw', 'cityHealth'];
+const aiHits = new Map<string, number[]>();                              // per-user rate limit (protects API spend)
+const aiCache = new Map<string, { at: number; result: SuggestionResult }>();   // reopening the same alert is free
+const AI_CACHE_MS = 10 * 60 * 1000;
+router.post('/ai/suggest-intervention', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!AI_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Insufficient permissions' });
+    const b = req.body?.alert || {};
+    const TYPES = ['outbreak', 'mortality', 'medicine', 'vaccination', 'inventory'];
+    const SEV = ['high', 'medium', 'low'];
+    if (!TYPES.includes(b.type) || !SEV.includes(b.severity) || typeof b.message !== 'string' || !b.message.trim() || typeof b.barangay !== 'string') {
+      return res.status(400).json({ error: 'A valid alert (type, severity, barangay, message) is required' });
+    }
+    // A BAHW may only ask about their own barangay
+    if (req.user?.role === 'bahw' && req.user?.barangay && b.barangay !== 'CVO Central' && b.barangay.toLowerCase() !== String(req.user.barangay).toLowerCase()) {
+      return res.status(403).json({ error: 'You can only request suggestions for your own barangay' });
+    }
+    const alert: AlertInput = {
+      id: typeof b.id === 'string' ? b.id.slice(0, 80) : undefined, type: b.type, severity: b.severity,
+      barangay: b.barangay.slice(0, 80), message: b.message.slice(0, 500),
+      metric: typeof b.metric === 'string' ? b.metric.slice(0, 160) : undefined,
+      sourceId: typeof b.sourceId === 'string' ? b.sourceId.slice(0, 60) : undefined, isOutbreak: !!b.isOutbreak,
+    };
+
+    const key = `${alert.type}|${alert.severity}|${alert.barangay}|${alert.message}`;
+    const cached = aiCache.get(key);
+    if (cached && Date.now() - cached.at < AI_CACHE_MS && !req.body?.regenerate) return res.json({ success: true, ...cached.result, cached: true });
+
+    const uid = String(req.user?.id || req.user?.username || 'anon');
+    const now = Date.now();
+    const recent = (aiHits.get(uid) || []).filter(t => now - t < 60_000);
+    if (recent.length >= 8) return res.status(429).json({ error: 'Too many suggestion requests. Please wait a minute and try again.' });
+    aiHits.set(uid, [...recent, now]);
+
+    const result = await suggestIntervention(alert);
+    if (result.source === 'claude') aiCache.set(key, { at: now, result });   // never cache a fallback — retry should reach Claude
+    if (aiCache.size > 200) aiCache.delete(aiCache.keys().next().value as string);
+    return res.json({ success: true, ...result });
+  } catch (err: any) {
+    console.error('suggest-intervention failed:', err);
+    return res.status(500).json({ error: 'Could not generate a suggestion' });
   }
 });
 

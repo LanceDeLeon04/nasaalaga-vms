@@ -365,6 +365,8 @@ export const api = {
   // AI proxy — routes through backend to avoid CORS
   aiAnalyze: (prompt: string) =>
     request('/ai/analyze', { method: 'POST', body: JSON.stringify({ prompt }) }),
+  suggestIntervention: (alert: any, regenerate = false) =>
+    request('/ai/suggest-intervention', { method: 'POST', body: JSON.stringify({ alert, regenerate }) }),
 
   // Appointment Schedules (new full-featured scheduling system)
   getAppointmentSchedules: (params?: { requestedBy?: string; status?: string; type?: string }) => {
