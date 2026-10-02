@@ -131,7 +131,13 @@ export function GuestDashboard({ user, onLogout }: Props) {
 
   useEffect(() => {
     fetch('/api/lost-found').then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(d => setReports(d.reports || [])).catch(() => setFailed(true)).finally(() => setLoading(false));
+      .then(d => setReports((d.reports || []).map((r: any): Report => ({
+        id: r.id, petId: r.pet_id ?? r.petId ?? '', petName: r.pet_name ?? r.petName ?? '', species: r.species ?? '',
+        breed: r.breed ?? '', color: r.color ?? '', type: r.type ?? 'Lost', reportedBy: r.reported_by ?? r.reportedBy ?? '',
+        contactNumber: r.contact_number ?? r.contactNumber ?? '', lastSeenLocation: r.last_seen_location ?? r.lastSeenLocation ?? '',
+        barangay: r.barangay ?? '', dateReported: r.date_reported ?? r.dateReported ?? '', description: r.description ?? '',
+        status: r.status ?? 'Open', photo: r.photo ?? undefined,
+      })))).catch(() => setFailed(true)).finally(() => setLoading(false));
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);

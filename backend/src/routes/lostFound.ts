@@ -4,7 +4,8 @@ import { authenticate, optionalAuthenticate, AuthRequest } from '../middleware/a
 
 const router = Router();
 
-router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
+// Public board: guests (no token) may read reports; signed-in users keep their existing role scoping.
+router.get('/', optionalAuthenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { type, ownerId } = req.query;
     const conditions: string[] = [];
@@ -31,7 +32,9 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       params
     );
 
-    return res.json({ reports: result.rows });
+    // Guests never receive internal owner identifiers.
+    const rows = req.user ? result.rows : result.rows.map((r: any) => { const { owner_id, ...pub } = r; return pub; });
+    return res.json({ reports: rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
