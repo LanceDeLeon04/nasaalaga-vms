@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { sendVaccinationScheduleEmails } from '../services/email';
 import { createBackup, normalizeFrequency } from '../services/backup';
 import { suggestIntervention, AlertInput, SuggestionResult } from '../services/interventionAI';
+import { notifyMassSchedule, notifyAppointmentOwner } from '../services/scheduleNotify';
 import { STAFF_ONLY_TYPES, syncIntervention, syncOutbreak, syncOutbreaksBySource, syncOrder, syncDeployment, syncObservation, removeLinked } from '../services/scheduleSync';
 
 const router = Router();
@@ -325,17 +326,34 @@ router.get('/schedules', optionalAuthenticate, async (req: AuthRequest, res: Res
 
 router.put('/schedules/:id', authenticate, requireRole('admin', 'superadmin', 'cvoStaff', 'bahw'), async (req: AuthRequest, res: Response) => {
   try {
-    const { status, registered, notes } = req.body;
+    const { status, registered, notes, date, timeStart, timeEnd, venue } = req.body;
+    const prev = (await query(`SELECT * FROM vaccination_schedules WHERE id=$1`, [req.params.id])).rows[0];
     const sets: string[] = [];
     const vals: any[] = [];
     let i = 1;
     if (status !== undefined)     { sets.push(`status=$${i++}`);     vals.push(status); }
     if (registered !== undefined) { sets.push(`registered=$${i++}`); vals.push(registered); }
     if (notes !== undefined)      { sets.push(`notes=$${i++}`);      vals.push(notes); }
+    if (date !== undefined)       { sets.push(`date=$${i++}`);       vals.push(date); }
+    if (timeStart !== undefined)  { sets.push(`time_start=$${i++}`); vals.push(timeStart); }
+    if (timeEnd !== undefined)    { sets.push(`time_end=$${i++}`);   vals.push(timeEnd); }
+    if (venue !== undefined)      { sets.push(`venue=$${i++}`);      vals.push(venue); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     vals.push(req.params.id);
     const result = await query(`UPDATE vaccination_schedules SET ${sets.join(',')} WHERE id=$${i} RETURNING *`, vals);
-    return res.json({ schedule: result.rows[0] });
+    const now = result.rows[0];
+    if (prev && now && VAX_NOTIFY_ROLES.includes(req.user?.role || '')) {
+      const cancelled = prev.status !== 'Cancelled' && now.status === 'Cancelled';
+      const moved = now.status !== 'Cancelled' && (String(prev.date).slice(0, 10) !== String(now.date).slice(0, 10) || prev.time_start !== now.time_start || (prev.venue || '') !== (now.venue || ''));
+      if (cancelled || moved) {
+        await notifyMassSchedule(now.id, {
+          kind: cancelled ? 'cancelled' : 'rescheduled', scheduleType: 'Vaccination', barangay: now.barangay,
+          date: String(now.date).slice(0, 10), timeStart: now.time_start, timeEnd: now.time_end, venue: now.venue,
+          oldDate: String(prev.date).slice(0, 10), oldTime: prev.time_start,
+        });
+      }
+    }
+    return res.json({ schedule: now });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -355,26 +373,15 @@ router.post('/schedules', authenticate, requireRole('admin', 'superadmin', 'cvoS
        VALUES ($1,$2,$3,$4,$5,$6,$7,0,'Scheduled',$8) RETURNING *`,
       [newId, d.barangay, d.date, d.timeStart, d.timeEnd, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
     );
-    // City-vet-side schedules notify every resident account registered in that barangay.
+    // City-vet-side schedules notify every resident (in-app + email); blank barangay = city-wide.
     let notification: { recipients: number } | undefined;
     if (VAX_NOTIFY_ROLES.includes(req.user?.role || '')) {
-      const rec = await query(
-        `SELECT DISTINCT LOWER(email) AS email FROM users
-          WHERE LOWER(TRIM(barangay)) = LOWER(TRIM($1)) AND role = ANY($2)
-            AND verified IS NOT FALSE AND email IS NOT NULL AND email <> ''`,
-        [d.barangay, ['petOwner', 'livestockManager', 'owner', 'both']]
-      );
-      const emails = rec.rows.map((r: any) => r.email);
-      notification = { recipients: emails.length };
-      if (emails.length) {
-        const row = result.rows[0];
-        // Fire and forget: the request must not wait on dozens of SMTP sends.
-        sendVaccinationScheduleEmails(emails, {
-          barangay: d.barangay, date: String(d.date).slice(0, 10),
-          timeStart: d.timeStart, timeEnd: d.timeEnd, venue: d.venue,
-        }).then(r => query(`UPDATE vaccination_schedules SET notified_count=$1, notified_at=NOW() WHERE id=$2`, [r.sent, row.id]).catch(() => {}))
-          .catch(e => console.error('[Email] vaccination notice error:', e.message));
-      }
+      const row = result.rows[0];
+      notification = await notifyMassSchedule(row.id, {
+        kind: 'new', scheduleType: 'Vaccination', barangay: d.barangay, date: String(d.date).slice(0, 10),
+        timeStart: d.timeStart, timeEnd: d.timeEnd, venue: d.venue,
+      });
+      query(`UPDATE vaccination_schedules SET notified_count=$1, notified_at=NOW() WHERE id=$2`, [notification.recipients, row.id]).catch(() => {});
     }
     return res.json({ schedule: result.rows[0], notification });
   } catch (err: any) {
@@ -3674,27 +3681,14 @@ router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res
     );
     const saved = result.rows[0];
 
-    // Notify residents of that barangay — only for schedules they are allowed to see
+    // Every mass schedule (any type, incl. Spay/Neuter) notifies residents in-app + email.
+    // No barangay = city-wide. Staff-only schedules are never announced.
     let notified = 0;
-    if (barangay && visibility !== 'staff') {
-      try {
-        const targetUsers = await query(`SELECT id FROM users WHERE LOWER(barangay) = LOWER($1)`, [barangay]);
-        const dateStr = new Date(d.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
-        const [hh, mm] = timeSlot.split(':').map(Number);
-        const fmtTime = `${hh % 12 || 12}:${String(mm).padStart(2, '0')} ${hh >= 12 ? 'PM' : 'AM'}`;
-        const message = `A ${scheduleType} schedule has been set for Barangay ${barangay} on ${dateStr} at ${fmtTime}${d.venue ? ' at ' + d.venue : ''}. Open Schedule to RSVP and bring your pets/livestock.`;
-        for (const u of targetUsers.rows) {
-          await query(
-            `INSERT INTO user_notifications (id, user_id, type, title, message, barangay, schedule_id, is_read, created_at)
-             VALUES ($1,$2,'schedule',$3,$4,$5,$6,false,NOW())`,
-            [shortId('NOTIF'), u.id, `📅 ${scheduleType} — ${barangay}`, message, barangay, id]);
-          notified++;
-        }
-      } catch (notifErr) {
-        console.error('⚠ Notification fanout error:', notifErr);   // non-fatal: the schedule is saved
-      }
+    if (visibility !== 'staff' && !STAFF_ONLY_TYPES.includes(scheduleType) && saved.status !== 'Cancelled') {
+      const n = await notifyMassSchedule(id, { kind: 'new', scheduleType, barangay, date: d.date, timeStart: timeSlot, venue: d.venue });
+      notified = n.recipients;
     }
-    return res.json({ schedule: saved, notifiedBarangay: notified > 0 ? barangay : null });
+    return res.json({ schedule: saved, notifiedBarangay: notified > 0 ? (barangay || 'All barangays') : null, notifiedCount: notified });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3716,7 +3710,8 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
       return res.json({ schedule: r.rows[0] });
     }
     if (!STAFF_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Insufficient permissions' });
-    const linked = await query(`SELECT source_type FROM appointment_schedules WHERE id=$1`, [req.params.id]);
+    const linked = await query(`SELECT * FROM appointment_schedules WHERE id=$1`, [req.params.id]);
+    const before = linked.rows[0];
     if (linked.rows[0]?.source_type) return res.status(409).json({ error: 'This entry mirrors another record and is managed there. Edit it from its own module and the calendar updates automatically.' });
 
     const sets: string[] = []; const vals: any[] = []; let i = 1;
@@ -3734,7 +3729,27 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
     if (req.user?.role === 'bahw') { vals.push(req.user.barangay || '__none__'); where += ` AND LOWER(COALESCE(barangay,''))=LOWER($${i++})`; }
     const result = await query(`UPDATE appointment_schedules SET ${sets.join(',')} WHERE ${where} RETURNING *`, vals);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
-    return res.json({ schedule: result.rows[0] });
+    const after = result.rows[0];
+    // Notify on cancel / reschedule (date, time or venue changed)
+    if (before) {
+      const cancelled = before.status !== 'Cancelled' && after.status === 'Cancelled';
+      const moved = after.status !== 'Cancelled' && (String(before.date).slice(0, 10) !== String(after.date).slice(0, 10) || before.time_slot !== after.time_slot || (before.venue || '') !== (after.venue || ''));
+      if (cancelled || moved) {
+        const kind = cancelled ? 'cancelled' : 'rescheduled';
+        if (after.is_admin_created) {
+          if (after.visibility !== 'staff' && !STAFF_ONLY_TYPES.includes(after.schedule_type)) {
+            await notifyMassSchedule(after.id, {
+              kind, scheduleType: after.schedule_type, barangay: after.barangay, date: String(after.date).slice(0, 10),
+              timeStart: after.time_slot, venue: after.venue,
+              oldDate: String(before.date).slice(0, 10), oldTime: before.time_slot,
+            });
+          }
+        } else if (after.requested_by) {
+          await notifyAppointmentOwner(after, kind);
+        }
+      }
+    }
+    return res.json({ schedule: after });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3747,6 +3762,11 @@ router.delete('/appointment-schedules/:id', authenticate, async (req: AuthReques
     else if (VET_ROLES.includes(req.user?.role || '')) {
       const linked = await query(`SELECT source_type FROM appointment_schedules WHERE id=$1`, [req.params.id]);
       if (linked.rows[0]?.source_type) return res.status(409).json({ error: 'This entry mirrors another record. Delete or change it from its own module.' });
+      const row = (await query(`SELECT * FROM appointment_schedules WHERE id=$1`, [req.params.id])).rows[0];
+      if (row && row.is_admin_created && row.status !== 'Cancelled' && row.status !== 'Completed' && row.visibility !== 'staff'
+          && !STAFF_ONLY_TYPES.includes(row.schedule_type) && String(row.date).slice(0, 10) >= manilaNow().date) {
+        await notifyMassSchedule(row.id, { kind: 'cancelled', scheduleType: row.schedule_type, barangay: row.barangay, date: String(row.date).slice(0, 10), timeStart: row.time_slot, venue: row.venue });
+      }
       await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
     }
     else return res.status(403).json({ error: 'Insufficient permissions' });

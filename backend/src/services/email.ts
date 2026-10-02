@@ -324,3 +324,72 @@ export async function sendVaccinationScheduleEmails(emails: string[], s: VaxSche
   console.log(`[Email] Vaccination notice for ${s.barangay}: ${sent} sent, ${failed} failed`);
   return { sent, failed, total: list.length, fallbackMode: false };
 }
+
+
+// ── Generic mass-schedule notice (new / rescheduled / cancelled) ─────────────
+export type ScheduleNoticeKind = 'new' | 'rescheduled' | 'cancelled';
+
+export interface ScheduleNoticeInfo {
+  kind: ScheduleNoticeKind;
+  scheduleType: string;        // Vaccination, Spay/Neuter, Checkup, ...
+  barangay?: string | null;    // empty = city-wide
+  date: string;                // YYYY-MM-DD (new date when rescheduled)
+  timeStart?: string;
+  timeEnd?: string;
+  venue?: string | null;
+  oldDate?: string;            // rescheduled only
+  oldTime?: string;
+}
+
+export function scheduleNoticeText(s: ScheduleNoticeInfo) {
+  const where = s.barangay ? `Barangay ${s.barangay}` : 'all barangays (city-wide)';
+  const time = s.timeStart ? ` at ${fmtTime(s.timeStart)}${s.timeEnd ? ` – ${fmtTime(s.timeEnd)}` : ''}` : '';
+  const venue = s.venue ? ` Venue: ${s.venue}.` : '';
+  if (s.kind === 'cancelled') {
+    return {
+      title: `❌ ${s.scheduleType} CANCELLED — ${s.barangay || 'City-wide'}`,
+      message: `The ${s.scheduleType} schedule for ${where} on ${fmtDate(s.date)}${time} has been cancelled. We apologize for the inconvenience; a new schedule will be announced.`,
+    };
+  }
+  if (s.kind === 'rescheduled') {
+    const was = s.oldDate ? ` (was ${fmtDate(s.oldDate)}${s.oldTime ? ' ' + fmtTime(s.oldTime) : ''})` : '';
+    return {
+      title: `🔄 ${s.scheduleType} RESCHEDULED — ${s.barangay || 'City-wide'}`,
+      message: `The ${s.scheduleType} schedule for ${where} has moved to ${fmtDate(s.date)}${time}${was}.${venue}`,
+    };
+  }
+  return {
+    title: `📅 ${s.scheduleType} — ${s.barangay || 'City-wide'}`,
+    message: `A ${s.scheduleType} schedule has been set for ${where} on ${fmtDate(s.date)}${time}.${venue} Open Schedule to RSVP and bring your pets/livestock.`,
+  };
+}
+
+function buildScheduleNoticeHtml(s: ScheduleNoticeInfo) {
+  const t = scheduleNoticeText(s);
+  const color = s.kind === 'cancelled' ? '#dc2626' : s.kind === 'rescheduled' ? '#d97706' : '#2B5EA6';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:24px 12px;background:#f4f7fb;font-family:Arial,sans-serif;">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;">
+<tr><td style="background:${color};padding:24px 28px;color:#fff;font-size:20px;font-weight:700;">${esc(t.title)}</td></tr>
+<tr><td style="padding:26px 28px;color:#334155;font-size:15px;line-height:1.6;">${esc(t.message)}
+<p style="color:#94a3b8;font-size:12px;margin:22px 0 0;">Calaca City Veterinary Office · NASaAlaga. Automated message; please do not reply.</p></td></tr></table></body></html>`;
+}
+
+/** Individually addressed (no shared To/BCC). Throttled, never throws. */
+export async function sendScheduleNoticeEmails(emails: string[], s: ScheduleNoticeInfo) {
+  const transporter = createTransporter();
+  const list = Array.from(new Set(emails.map(e => e.trim().toLowerCase()).filter(Boolean)));
+  if (!transporter) {
+    console.warn(`[Email] GMAIL not configured — ${s.kind} ${s.scheduleType} notice NOT sent to ${list.length} recipients`);
+    return { sent: 0, failed: 0, total: list.length, fallbackMode: true };
+  }
+  const html = buildScheduleNoticeHtml(s);
+  const subject = scheduleNoticeText(s).title;
+  let sent = 0, failed = 0;
+  for (const to of list) {
+    try { await transporter.sendMail({ from: `"NASaAlaga - Calaca CVO" <${process.env.GMAIL_USER}>`, to, subject, html }); sent++; }
+    catch (err: any) { failed++; console.error(`[Email] ❌ schedule notice to ${to} failed:`, err.message); }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return { sent, failed, total: list.length, fallbackMode: false };
+}
