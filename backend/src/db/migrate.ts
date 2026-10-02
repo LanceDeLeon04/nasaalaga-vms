@@ -506,6 +506,8 @@ export const createTables = async () => {
     // Patch vaccination_schedules columns
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notes TEXT`);
     await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Scheduled'`);
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notified_count INTEGER`);
+    await client.query(`ALTER TABLE vaccination_schedules ADD COLUMN IF NOT EXISTS notified_at TIMESTAMPTZ`);
 
     // Livestock stats by barangay table
     await client.query(`

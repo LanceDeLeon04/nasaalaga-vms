@@ -1934,6 +1934,11 @@ export function PetRegistration({ userRole, initialTab }: { userRole?: string; i
         timeStart: schForm.time, venue: schForm.location, capacity: +schForm.capacity||100,
       });
       if (res.schedule) setSchedules(prev => [...prev, res.schedule]);
+      if (res.notification) {
+        alert(res.notification.recipients > 0
+          ? `Schedule saved. Emailing ${res.notification.recipients} resident${res.notification.recipients === 1 ? '' : 's'} in Brgy. ${schForm.barangay}.`
+          : `Schedule saved. No registered residents with an email were found in Brgy. ${schForm.barangay}, so no email was sent.`);
+      }
       setSchForm({ barangay:"",date:"",time:"",location:"",capacity:"100" });
       setShowScheduleAdd(false);
     } catch(e:any) { alert("Error: " + e.message); }

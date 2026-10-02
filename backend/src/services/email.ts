@@ -249,3 +249,78 @@ export async function sendPreRegEmail(
   }
 }
 
+
+// ── Mass vaccination schedule notice ────────────────────────────────────────
+export interface VaxScheduleInfo {
+  barangay: string;
+  date: string;          // YYYY-MM-DD
+  timeStart?: string;    // HH:mm
+  timeEnd?: string;
+  venue?: string;
+}
+
+const esc = (s: string) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+function fmtDate(ymd: string) {
+  const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return String(ymd);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+function fmtTime(t?: string) {
+  if (!t) return '';
+  const [h, mi] = t.split(':').map(Number);
+  if (isNaN(h)) return t;
+  return `${((h + 11) % 12) + 1}:${String(mi || 0).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+function buildVaxNoticeHtml(s: VaxScheduleInfo) {
+  const time = s.timeStart ? `${fmtTime(s.timeStart)}${s.timeEnd ? ` – ${fmtTime(s.timeEnd)}` : ' onwards'}` : 'See venue for time';
+  const row = (k: string, v: string) =>
+    `<tr><td style="padding:8px 0;color:#64748b;font-size:14px;width:90px;vertical-align:top;">${k}</td><td style="padding:8px 0;color:#1e293b;font-size:15px;font-weight:600;">${esc(v)}</td></tr>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;padding:32px 16px;"><tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
+<tr><td style="background:linear-gradient(135deg,#2B5EA6,#60A85C);padding:30px 32px;text-align:center;">
+<div style="font-size:30px;">💉🐾</div>
+<h1 style="color:#fff;margin:6px 0 0;font-size:22px;">Mass Vaccination Schedule</h1>
+<p style="color:rgba(255,255,255,.85);margin:6px 0 0;font-size:13px;">Calaca City Veterinary Office</p></td></tr>
+<tr><td style="padding:30px 32px;">
+<p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 18px;">Good day! A mass anti-rabies vaccination for dogs and cats has been scheduled in <strong>Barangay ${esc(s.barangay)}</strong>.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fb;border-radius:12px;padding:10px 18px;">
+${row('Date', fmtDate(s.date))}${row('Time', time)}${row('Venue', s.venue || 'To be announced')}</table>
+<p style="color:#334155;font-size:14px;line-height:1.6;margin:20px 0 6px;"><strong>Please bring:</strong></p>
+<ul style="color:#475569;font-size:14px;line-height:1.7;margin:0 0 18px;padding-left:20px;">
+<li>Your pet, leashed or in a carrier</li><li>A valid ID</li><li>The pet's vaccination record card, if any</li></ul>
+<p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:0;">You are receiving this because your NASaAlaga account is registered in Barangay ${esc(s.barangay)}. This is an automated message; please do not reply.</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
+/**
+ * Sends the schedule notice to every recipient individually (no shared To/BCC list, so addresses
+ * are never exposed to each other). Throttled to stay friendly with Gmail limits. Never throws.
+ */
+export async function sendVaccinationScheduleEmails(emails: string[], s: VaxScheduleInfo) {
+  const transporter = createTransporter();
+  const list = Array.from(new Set(emails.map(e => e.trim().toLowerCase()).filter(Boolean)));
+  if (!transporter) {
+    console.warn(`[Email] GMAIL_USER/GMAIL_APP_PASSWORD not set — vaccination notice for ${s.barangay} NOT sent to ${list.length} recipients`);
+    return { sent: 0, failed: 0, total: list.length, fallbackMode: true };
+  }
+  const html = buildVaxNoticeHtml(s);
+  const subject = `💉 Mass Vaccination in Brgy. ${s.barangay} — ${fmtDate(s.date)}`;
+  let sent = 0, failed = 0;
+  for (const to of list) {
+    try {
+      await transporter.sendMail({ from: `"NASaAlaga - Calaca CVO" <${process.env.GMAIL_USER}>`, to, subject, html });
+      sent++;
+    } catch (err: any) {
+      failed++;
+      console.error(`[Email] ❌ Vaccination notice to ${to} failed:`, err.message);
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  console.log(`[Email] Vaccination notice for ${s.barangay}: ${sent} sent, ${failed} failed`);
+  return { sent, failed, total: list.length, fallbackMode: false };
+}

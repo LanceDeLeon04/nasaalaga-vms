@@ -3,6 +3,7 @@ import pool, { query } from '../db';
 import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { sendVaccinationScheduleEmails } from '../services/email';
 import { createBackup, normalizeFrequency } from '../services/backup';
 import { suggestIntervention, AlertInput, SuggestionResult } from '../services/interventionAI';
 import { STAFF_ONLY_TYPES, syncIntervention, syncOutbreak, syncOutbreaksBySource, syncOrder, syncDeployment, syncObservation, removeLinked } from '../services/scheduleSync';
@@ -340,6 +341,9 @@ router.put('/schedules/:id', authenticate, requireRole('admin', 'superadmin', 'c
   }
 });
 
+// Roles whose new vaccination schedules trigger a barangay-wide email (BAHW schedules do not).
+const VAX_NOTIFY_ROLES = ['admin', 'superadmin', 'cvoStaff'];
+
 router.post('/schedules', authenticate, requireRole('admin', 'superadmin', 'cvoStaff', 'bahw'), async (req: AuthRequest, res: Response) => {
   try {
     const d = req.body;
@@ -351,7 +355,28 @@ router.post('/schedules', authenticate, requireRole('admin', 'superadmin', 'cvoS
        VALUES ($1,$2,$3,$4,$5,$6,$7,0,'Scheduled',$8) RETURNING *`,
       [newId, d.barangay, d.date, d.timeStart, d.timeEnd, d.venue, d.capacity || 50, d.createdBy || req.user?.username]
     );
-    return res.json({ schedule: result.rows[0] });
+    // City-vet-side schedules notify every resident account registered in that barangay.
+    let notification: { recipients: number } | undefined;
+    if (VAX_NOTIFY_ROLES.includes(req.user?.role || '')) {
+      const rec = await query(
+        `SELECT DISTINCT LOWER(email) AS email FROM users
+          WHERE LOWER(TRIM(barangay)) = LOWER(TRIM($1)) AND role = ANY($2)
+            AND verified IS NOT FALSE AND email IS NOT NULL AND email <> ''`,
+        [d.barangay, ['petOwner', 'livestockManager', 'owner', 'both']]
+      );
+      const emails = rec.rows.map((r: any) => r.email);
+      notification = { recipients: emails.length };
+      if (emails.length) {
+        const row = result.rows[0];
+        // Fire and forget: the request must not wait on dozens of SMTP sends.
+        sendVaccinationScheduleEmails(emails, {
+          barangay: d.barangay, date: String(d.date).slice(0, 10),
+          timeStart: d.timeStart, timeEnd: d.timeEnd, venue: d.venue,
+        }).then(r => query(`UPDATE vaccination_schedules SET notified_count=$1, notified_at=NOW() WHERE id=$2`, [r.sent, row.id]).catch(() => {}))
+          .catch(e => console.error('[Email] vaccination notice error:', e.message));
+      }
+    }
+    return res.json({ schedule: result.rows[0], notification });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
