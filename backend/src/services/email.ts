@@ -21,67 +21,10 @@ function createTransporter() {
     // server is already accepting traffic, so a dead SMTP path should fail
     // fast and log clearly instead of hanging on nodemailer's long defaults
     // (connectionTimeout defaults to 2 minutes).
-    connectionTimeout: 6000,
-    greetingTimeout: 6000,
-    socketTimeout: 6000,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
-}
-
-// ── Delivery: Gmail SMTP first, Brevo HTTPS API as fallback ───────────────
-// Railway Free/Hobby plans block outbound SMTP, so Gmail may time out there.
-// If BREVO_API_KEY is set, we fall back to Brevo's HTTPS API (port 443).
-// After an SMTP failure we skip SMTP for a few minutes so users don't wait
-// for the timeout on every request.
-const SMTP_COOLDOWN_MS = 5 * 60 * 1000;
-let smtpSkipUntil = 0;
-
-function emailConfigured() {
-  return !!process.env.BREVO_API_KEY || !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD);
-}
-
-async function sendViaBrevo(msg: { to: string; subject: string; html: string; text?: string }) {
-  const fromEmail = process.env.MAIL_FROM || process.env.GMAIL_USER;
-  if (!fromEmail) throw new Error('MAIL_FROM (or GMAIL_USER) must be set for Brevo');
-  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': process.env.BREVO_API_KEY as string,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({
-      sender: { name: 'NASaAlaga - Calaca CVO', email: fromEmail },
-      to: [{ email: msg.to }],
-      subject: msg.subject,
-      htmlContent: msg.html,
-      textContent: msg.text,
-    }),
-  });
-  if (!res.ok) throw new Error(`Brevo ${res.status}: ${await res.text()}`);
-}
-
-async function deliver(msg: { to: string; subject: string; html: string; text?: string }) {
-  const transporter = createTransporter();
-  const hasBrevo = !!process.env.BREVO_API_KEY;
-
-  if (transporter && Date.now() >= smtpSkipUntil) {
-    try {
-      await transporter.sendMail({
-        from: `"NASaAlaga - Calaca CVO" <${process.env.GMAIL_USER}>`,
-        ...msg,
-      });
-      return;
-    } catch (err: any) {
-      console.error('[Email] ❌ Gmail SMTP failed:', err.message);
-      if (!hasBrevo) throw err;
-      smtpSkipUntil = Date.now() + SMTP_COOLDOWN_MS;
-      console.warn('[Email] ↪ Falling back to Brevo API (SMTP skipped for 5 min)');
-    }
-  }
-
-  if (!hasBrevo) throw new Error('No email provider available');
-  await sendViaBrevo(msg);
-  console.log('[Email] ✅ Sent via Brevo');
 }
 
 // ── OTP Email Template ─────────────────────────────────────────────────────
@@ -181,16 +124,17 @@ export interface SendOtpResult {
 }
 
 export async function sendOtpEmail(toEmail: string, otp: string): Promise<SendOtpResult> {
-  // No email provider configured → fallback mode
-  if (!emailConfigured()) {
+  const transporter = createTransporter();
+
+  // No Gmail credentials configured → fallback mode
+  if (!transporter) {
     console.warn('[Email] GMAIL_USER or GMAIL_APP_PASSWORD not set — running in fallback mode');
     console.log(`[Email] OTP for ${toEmail}: ${otp}`);
     return { sent: false, fallbackMode: true, otp };
   }
 
   try {
-    const { subject, html, text } = buildOtpEmail(otp, toEmail);
-    await deliver({ to: toEmail, subject, html, text });
+    await transporter.sendMail(buildOtpEmail(otp, toEmail));
     console.log(`[Email] ✅ OTP sent to ${toEmail}`);
     return { sent: true, fallbackMode: false };
   } catch (err: any) {
@@ -210,10 +154,6 @@ export async function sendOtpEmail(toEmail: string, otp: string): Promise<SendOt
 export async function verifyEmailConnection(): Promise<void> {
   const transporter = createTransporter();
   if (!transporter) {
-    if (process.env.BREVO_API_KEY) {
-      console.log('[Email] ✅ Gmail not configured — using Brevo API');
-      return;
-    }
     console.warn('[Email] ⚠️  Gmail not configured — OTP will be shown in console/response (dev mode)');
     console.warn('[Email]    Add GMAIL_USER and GMAIL_APP_PASSWORD to backend/.env to enable email');
     return;
@@ -224,10 +164,6 @@ export async function verifyEmailConnection(): Promise<void> {
   } catch (err: any) {
     console.error('[Email] ❌ Gmail connection failed:', err.message);
     console.error('[Email]    Check GMAIL_USER and GMAIL_APP_PASSWORD in backend/.env');
-    if (process.env.BREVO_API_KEY) {
-      console.warn('[Email] ↪ BREVO_API_KEY is set — OTP emails will fall back to Brevo');
-      smtpSkipUntil = Date.now() + SMTP_COOLDOWN_MS;
-    }
   }
 }
 
@@ -239,6 +175,7 @@ export async function sendPreRegEmail(
   preRegNumber: string,
   expiresAt: Date
 ): Promise<{ sent: boolean; fallbackMode: boolean }> {
+  const transporter = createTransporter();
   const expiryStr = expiresAt.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 
   const html = `
@@ -293,12 +230,13 @@ export async function sendPreRegEmail(
 </body>
 </html>`;
 
-  if (!emailConfigured()) {
+  if (!transporter) {
     console.log(`[Email] Pre-reg confirmation for ${toEmail}: ${preRegNumber}`);
     return { sent: false, fallbackMode: true };
   }
   try {
-    await deliver({
+    await transporter.sendMail({
+      from: `"NASaAlaga - Calaca CVO" <${process.env.GMAIL_USER}>`,
       to: toEmail,
       subject: `🐾 NASaAlaga — Pet Pre-Registration Confirmed: ${preRegNumber}`,
       html,
@@ -310,3 +248,4 @@ export async function sendPreRegEmail(
     return { sent: false, fallbackMode: true };
   }
 }
+

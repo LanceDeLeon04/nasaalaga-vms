@@ -108,6 +108,7 @@ export async function endSession(opts: { keepOffline: boolean }) {
   const store = ss();
   store?.removeItem(USER_KEY);
   store?.removeItem(TOKEN_KEY);
+  store?.removeItem('nasaalaga_privacy_ack'); // next sign-in shows the Data Privacy Notice again
   if (!opts.keepOffline) {
     try { ls()?.removeItem(MIRROR_KEY); } catch { /* ignore */ }
     try { await dbClear('responses'); } catch { /* ignore */ }

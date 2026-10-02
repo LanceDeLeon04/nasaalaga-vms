@@ -7,9 +7,12 @@ import { GuestDashboard } from './GuestDashboard';
 import { CityHealthDashboard } from './CityHealthDashboard';
 import type { User } from '../App';
 import { endSession, hasPendingFor } from '../offline';
+import { DataPrivacyNotice, hasAcceptedPrivacy, recordPrivacyAcceptance } from './DataPrivacyGate';
 
 export function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
+  // Data Privacy Notice must be accepted before any dashboard is rendered (every login, every role).
+  const [privacyOk, setPrivacyOk] = useState<boolean>(() => hasAcceptedPrivacy());
   const navigate = useNavigate();
 
   const loadUserFromStorage = () => {
@@ -50,6 +53,15 @@ export function Dashboard() {
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
+    );
+  }
+
+  if (!privacyOk) {
+    return (
+      <DataPrivacyNotice
+        onAccept={() => { recordPrivacyAcceptance(); setPrivacyOk(true); }}
+        onDecline={handleLogout}
+      />
     );
   }
 

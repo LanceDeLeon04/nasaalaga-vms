@@ -7,6 +7,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import type { UserRole } from "../App";
 import { getOfflineSessionInfo, restoreOfflineSession, useOffline } from "../offline";
+import { clearPrivacyAck } from "./DataPrivacyGate";
 
 /* ──────────────────────────────────────────────────────────────
    SLIDES
@@ -586,6 +587,9 @@ function ScannerModal({
 ────────────────────────────────────────────────────────────── */
 export function Login() {
   const navigate = useNavigate();
+
+  // Being on the login screen means nobody is signed in: the next sign-in must show the privacy notice again.
+  useEffect(() => { clearPrivacyAck(); }, []);
 
   /* auth state */
   const [email,    setEmail]    = useState("");
