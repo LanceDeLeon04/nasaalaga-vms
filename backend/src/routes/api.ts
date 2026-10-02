@@ -3,7 +3,6 @@ import pool, { query } from '../db';
 import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { sendVaccinationScheduleEmails } from '../services/email';
 import { createBackup, normalizeFrequency } from '../services/backup';
 import { suggestIntervention, AlertInput, SuggestionResult } from '../services/interventionAI';
 import { notifyMassSchedule, notifyAppointmentOwner } from '../services/scheduleNotify';
