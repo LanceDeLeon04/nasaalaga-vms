@@ -1417,6 +1417,7 @@ if (isMain) {
     .then(() => migrateBackups())
     .then(() => migratePetArchive())
     .then(() => migrateIdempotency())
+    .then(() => migrateScheduleLinks())
     .then(() => {
       console.log('Migration complete');
       process.exit(0);
@@ -1661,4 +1662,31 @@ export async function migrateIdempotency() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created ON idempotency_keys(created_at);`);
+}
+
+// ── Single-calendar rule: every dated admin record is mirrored into appointment_schedules ──
+// source_* columns identify the record a calendar row mirrors (see services/scheduleSync.ts).
+export async function migrateScheduleLinks() {
+  const client = await pool.connect();
+  try {
+    await client.query(`ALTER TABLE appointment_schedules ADD COLUMN IF NOT EXISTS source_type VARCHAR(30)`);
+    await client.query(`ALTER TABLE appointment_schedules ADD COLUMN IF NOT EXISTS source_id VARCHAR(100)`);
+    await client.query(`ALTER TABLE appointment_schedules ADD COLUMN IF NOT EXISTS source_kind VARCHAR(30)`);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_appt_source
+      ON appointment_schedules (source_type, source_id, source_kind) WHERE source_type IS NOT NULL
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_appt_source ON appointment_schedules (source_type, source_id)`);
+    // The two source tables that had no schedulable date
+    await client.query(`ALTER TABLE pending_orders ADD COLUMN IF NOT EXISTS expected_delivery_date DATE`);
+    await client.query(`ALTER TABLE deployments ADD COLUMN IF NOT EXISTS scheduled_date DATE`);
+    // Titles for mirrored rows can be long (item names, diseases)
+    await client.query(`ALTER TABLE appointment_schedules ALTER COLUMN title TYPE VARCHAR(255)`);
+    console.log('✅ Schedule link columns ready');
+  } catch (err) {
+    console.error('❌ Schedule link migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+  }
 }

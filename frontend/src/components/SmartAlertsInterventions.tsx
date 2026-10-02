@@ -776,6 +776,7 @@ function InterventionModal({ iv, eligibleStaff, onSave, onClose, onNavigateOutbr
               <input type="date" className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 value={draft.endDate} onChange={e => patch({ endDate: e.target.value })} />
             </div>
+            <p className="col-span-2 text-[11px] text-gray-400 -mt-2">Both dates are plotted on the Schedule calendar automatically.</p>
           </div>
 
           {/* Deliverables */}

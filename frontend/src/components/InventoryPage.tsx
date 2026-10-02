@@ -507,6 +507,7 @@ function AddOrderModal({ prefill, medicines, officeSupplies, supplies, suppliers
   const [selectedExisting,setSelectedExisting]=useState<any>(null);
   const [qty,setQty]=useState(prefill?.quantity||1);
   const [notes,setNotes]=useState(prefill?.notes||'');
+  const [expectedDate,setExpectedDate]=useState<string>(prefill?.expectedDeliveryDate||'');
   const [programId,setProgramId]=useState(prefill?.programId||'');
   const [lineItemId,setLineItemId]=useState(prefill?.lineItemId||'');
   const [supplierId,setSupplierId]=useState(prefill?.supplierId||'');
@@ -535,10 +536,10 @@ function AddOrderModal({ prefill, medicines, officeSupplies, supplies, suppliers
   const handleSave=()=>{
     if(productMode==='existing'){
       if(!selectedExisting){toast.error('Select an existing product');return;}
-      onSave({itemName:selectedExisting.name,itemType:selectedExisting._type,category:selectedExisting.category,unit:unitLabel,unitCost:activeUnitCost,quantity:qty,supplierId,programId,lineItemId,notes,existingItemId:selectedExisting.id,dosesPerContainer:activeDPC,totalDoses,source:'order'});
+      onSave({itemName:selectedExisting.name,itemType:selectedExisting._type,category:selectedExisting.category,unit:unitLabel,unitCost:activeUnitCost,quantity:qty,supplierId,programId,lineItemId,notes,existingItemId:selectedExisting.id,dosesPerContainer:activeDPC,totalDoses,source:'order',expectedDeliveryDate:expectedDate||null});
     }else{
       if(!newProdForm.name.trim()){toast.error('Product name required');return;}
-      onSave({itemName:newProdForm.name,itemType:'medicine',category:newProdForm.category,unit:unitLabel,unitCost:newProdForm.unitCost,quantity:qty,supplierId:newProdForm.supplierId||supplierId,programId:newProdForm.programId||programId,lineItemId:newProdForm.lineItemId||lineItemId,notes,newProductDetails:newProdForm,dosesPerContainer:newProdForm.dosesPerContainer,totalDoses,source:'order'});
+      onSave({itemName:newProdForm.name,itemType:'medicine',category:newProdForm.category,unit:unitLabel,unitCost:newProdForm.unitCost,quantity:qty,supplierId:newProdForm.supplierId||supplierId,programId:newProdForm.programId||programId,lineItemId:newProdForm.lineItemId||lineItemId,notes,newProductDetails:newProdForm,dosesPerContainer:newProdForm.dosesPerContainer,totalDoses,source:'order',expectedDeliveryDate:expectedDate||null});
     }
   };
   return(
@@ -688,6 +689,10 @@ function AddOrderModal({ prefill, medicines, officeSupplies, supplies, suppliers
           )}
 
           <BudgetCheck programs={programs} programId={productMode==='existing'?programId:newProdForm.programId} lineItemId={productMode==='existing'?lineItemId:newProdForm.lineItemId} orderCost={totalCost}/>
+
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">Expected Delivery Date</label>
+            <input type="date" value={expectedDate} onChange={e=>setExpectedDate(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"/>
+            <p className="text-[11px] text-gray-400 mt-1">Shows on the Schedule calendar so the delivery isn't missed.</p></div>
 
           <div><label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
             <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any notes for this order..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none"/></div>
@@ -2098,18 +2103,18 @@ export function InventoryPage({ userRole, currentUser }: Props) {
           <div className="p-6 space-y-4">
             <div className="flex flex-col sm:flex-row gap-3 items-center">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search orders..." className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm outline-none"/></div>
-              <select value={orderFilter} onChange={e=>setOrderFilter(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none"><option value="all">All Orders</option><option value="pending">Pending</option><option value="received">Received</option></select>
+              <select value={orderFilter} onChange={e=>setOrderFilter(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none"><option value="all">All Orders</option><option value="pending">Pending</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
               {canEdit&&(<button onClick={()=>{setAddOrderPrefill(null);setShowAddOrderModal(true);}} className="flex items-center gap-2 bg-[#2B5EA6] text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-[#2B5EA6]/90"><Plus className="w-4 h-4"/>Add Order</button>)}
             </div>
             {filteredOrders.length===0?(
               <div className="text-center py-16 text-gray-400"><ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-30"/><p className="font-semibold">No orders found</p><p className="text-sm mt-1">Create an order using "New Order" above</p></div>
             ):(
               <div className="space-y-3">{filteredOrders.map(order=>(
-                <div key={order.id} className={`rounded-2xl border p-5 flex flex-col sm:flex-row sm:items-center gap-4 ${order.status==='received'?'bg-green-50 border-green-100':'bg-white border-gray-100 shadow-sm'}`}>
+                <div key={order.id} className={`rounded-2xl border p-5 flex flex-col sm:flex-row sm:items-center gap-4 ${order.status==='received'?'bg-green-50 border-green-100':order.status==='cancelled'?'bg-gray-50 border-gray-200 opacity-70':'bg-white border-gray-100 shadow-sm'}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${order.item_type==='medicine'?'bg-blue-100 text-blue-700':order.item_type==='supply'?'bg-green-100 text-green-700':'bg-amber-100 text-amber-700'}`}>{order.item_type}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${order.status==='pending'?'bg-orange-100 text-orange-700':'bg-green-100 text-green-700'}`}>{order.status==='pending'?'⏳ Pending':'✅ Received'}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${order.status==='pending'?'bg-orange-100 text-orange-700':order.status==='cancelled'?'bg-gray-200 text-gray-600':'bg-green-100 text-green-700'}`}>{order.status==='pending'?'⏳ Pending':order.status==='cancelled'?'✖ Cancelled':'✅ Received'}</span>
                     </div>
                     <p className="font-bold text-gray-900 text-base">{order.item_name}</p>
                     <div className="flex flex-wrap gap-3 mt-1.5 text-sm text-gray-500">
@@ -2118,6 +2123,22 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                       {order.doses_per_container>1&&<span className="text-teal-600 font-semibold">~{(order.quantity*(order.doses_per_container||1)).toLocaleString()} {order.unit_type==='Box'?'tablets':'doses'}</span>}
                       <span>Supplier: <strong className="text-gray-800">{order.supplier_name||'—'}</strong></span>
                     </div>
+                    {order.status!=='cancelled'&&(()=>{
+                      const exp:string=order.expected_delivery_date?String(order.expected_delivery_date).slice(0,10):'';
+                      const late=!!exp&&order.status==='pending'&&exp<new Date().toLocaleDateString('en-CA');
+                      return(
+                        <div className="flex items-center gap-2 mt-1.5 text-sm">
+                          <span className="text-gray-500">Expected delivery:</span>
+                          {canEdit&&order.status==='pending'?(
+                            <input type="date" value={exp} aria-label="Expected delivery date"
+                              onChange={async e=>{try{await api.updatePendingOrder(order.id,{expectedDeliveryDate:e.target.value||null});await loadData();toast.success(e.target.value?'Delivery date saved — shown on the Schedule':'Delivery date cleared');}catch(err:any){toast.error(err.message||'Could not save the date');}}}
+                              className={`border rounded-lg px-2 py-1 text-xs outline-none ${late?'border-red-300 text-red-600 bg-red-50':'border-gray-200 text-gray-700'}`}/>
+                          ):(<strong className="text-gray-800">{exp?new Date(exp+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}):'—'}</strong>)}
+                          {late&&<span className="text-[11px] font-bold text-red-600">Overdue</span>}
+                          {!exp&&order.status==='pending'&&<span className="text-[11px] text-gray-400">Set a date to put it on the Schedule</span>}
+                        </div>
+                      );
+                    })()}
                     {order.notes&&<p className="text-xs text-gray-400 mt-1 italic">{order.notes}</p>}
                     <p className="text-xs text-gray-300 mt-1">Created: {new Date(order.created_at).toLocaleDateString('en-PH')} by {order.created_by}</p>
                     {order.status==='received'&&order.received_at&&<p className="text-xs text-green-600 mt-0.5">Received: {new Date(order.received_at).toLocaleDateString('en-PH')} by {order.received_by}</p>}
@@ -2125,7 +2146,7 @@ export function InventoryPage({ userRole, currentUser }: Props) {
                   {canEdit&&order.status==='pending'&&(
                     <div className="flex gap-2 flex-shrink-0">
                       <button onClick={()=>setShowReceiveModal(order)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-green-700 shadow"><CheckSquare className="w-4 h-4"/>Receive</button>
-                      <button onClick={async()=>{if(confirm('Cancel this order?')){await api.updatePendingOrder(order.id,{...order,status:'cancelled'});loadData();}}} className="p-2 hover:bg-red-100 rounded-xl text-red-500"><Trash2 className="w-4 h-4"/></button>
+                      <button onClick={async()=>{if(confirm('Cancel this order?')){await api.updatePendingOrder(order.id,{status:'cancelled'});loadData();}}} className="p-2 hover:bg-red-100 rounded-xl text-red-500"><Trash2 className="w-4 h-4"/></button>
                     </div>
                   )}
                 </div>

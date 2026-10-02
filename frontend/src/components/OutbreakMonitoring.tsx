@@ -438,6 +438,7 @@ function UpdateModal({ record, onClose, onSave, isAdmin }: {
               <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Target Resolution Date</label>
               <input type="date" value={form.resolve_date} onChange={e => setForm(p => ({ ...p, resolve_date: e.target.value }))}
                 style={{ width: '100%', height: 40, border: '1.5px solid #e5e7eb', borderRadius: 9, padding: '0 10px', fontSize: 13.5, background: '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 0' }}>Plotted on the Schedule calendar automatically.</p>
             </div>
             <div style={{ gridColumn: '1/-1' }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>Timetable / Action Plan</label>

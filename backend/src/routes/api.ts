@@ -4,6 +4,7 @@ import { authenticate, requireRole, optionalAuthenticate, AuthRequest } from '..
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { createBackup, normalizeFrequency } from '../services/backup';
+import { STAFF_ONLY_TYPES, syncIntervention, syncOutbreak, syncOutbreaksBySource, syncOrder, syncDeployment, syncObservation, removeLinked } from '../services/scheduleSync';
 
 const router = Router();
 
@@ -817,7 +818,7 @@ router.put('/rules/:ruleId', authenticate, async (req: AuthRequest, res: Respons
 // ── Deployments (DB-backed, persistent) ──────────────────────────────────
 router.get('/deployments', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query('SELECT * FROM deployments ORDER BY created_at DESC');
+    const result = await query(`SELECT *, to_char(scheduled_date,'YYYY-MM-DD') AS scheduled_date FROM deployments ORDER BY created_at DESC`);
     return res.json({ success: true, deployments: result.rows });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -831,12 +832,14 @@ router.post('/deployments', authenticate, async (req: AuthRequest, res: Response
     const count = parseInt(countResult.rows[0].count);
     const newId = `DEP-${String(count + 1).padStart(3, '0')}`;
     const result = await query(
-      `INSERT INTO deployments (id, barangay, priority, urgency, reason, staff_needed, medicine_vaccines, medicine_antibiotics, medicine_vitamins, equipment, estimated_duration, target_animals, risk_score, status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14) RETURNING *`,
+      `INSERT INTO deployments (id, barangay, priority, urgency, reason, staff_needed, medicine_vaccines, medicine_antibiotics, medicine_vitamins, equipment, estimated_duration, target_animals, risk_score, status, created_by, scheduled_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,$15) RETURNING *`,
       [newId, d.barangay, d.priority || 1, d.urgency || 'Within 1 Week', d.reason, d.staffNeeded || 1,
        d.medicineEstimate?.vaccines || 0, d.medicineEstimate?.antibiotics || 0, d.medicineEstimate?.vitamins || 0,
-       d.equipmentNeeded || [], d.estimatedDuration || '1 day', d.targetAnimals || 0, d.riskScore || 0, req.user?.username]
+       d.equipmentNeeded || [], d.estimatedDuration || '1 day', d.targetAnimals || 0, d.riskScore || 0, req.user?.username,
+       isYmd(d.scheduledDate) ? d.scheduledDate : null]
     );
+    await syncDeployment(newId);
     return res.json({ success: true, deployment: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -852,9 +855,12 @@ router.put('/deployments/:id', authenticate, async (req: AuthRequest, res: Respo
       `UPDATE deployments SET status=$1, deployed_staff=$2, notes=$3,
        deployed_at=CASE WHEN $1='deployed' AND deployed_at IS NULL THEN NOW() ELSE deployed_at END,
        completed_at=CASE WHEN $1='completed' AND completed_at IS NULL THEN NOW() ELSE completed_at END,
+       scheduled_date=CASE WHEN $5::boolean THEN $6::date ELSE scheduled_date END,
        updated_at=NOW() WHERE id=$4 RETURNING *`,
-      [d.status, d.deployedStaff || [], d.notes, req.params.id]
+      [d.status, d.deployedStaff || [], d.notes, req.params.id,
+       d.scheduledDate !== undefined, isYmd(d.scheduledDate) ? d.scheduledDate : null]
     );
+    await syncDeployment(req.params.id);
     return res.json({ success: true, deployment: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -865,6 +871,7 @@ router.delete('/deployments/:id', authenticate, async (req: AuthRequest, res: Re
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     await query('DELETE FROM deployments WHERE id=$1', [req.params.id]);
+    await removeLinked('deployment', req.params.id);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1326,6 +1333,7 @@ router.post('/biting-incidents', authenticate, async (req: AuthRequest, res: Res
     if (d.petId) {
       await query(`UPDATE pets SET vaccination_status='Observation - Biting Incident' WHERE id=$1`, [d.petId]);
     }
+    await syncObservation(id);
     return res.json({ success: true, incident: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1351,6 +1359,7 @@ router.put('/biting-incidents/:id', authenticate, async (req: AuthRequest, res: 
        d.confirmedRabies||false, d.vaccinated||false, d.remarks||null,
        d.observationUpdate||null, d.status||'Open', d.humanStatus||null, req.params.id]
     );
+    await syncObservation(req.params.id);
     return res.json({ success: true, incident: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1362,6 +1371,7 @@ router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, re
   try {
     const { justification } = req.body || {};
     await query(`DELETE FROM biting_incidents WHERE id=$1`, [req.params.id]);
+    await removeLinked('observation', req.params.id);
     // Always audit log deletions; include justification when provided
     await query(
       `INSERT INTO audit_logs (user_id, username, user_role, action, resource, resource_id, details, ip_address)
@@ -1380,7 +1390,8 @@ router.delete('/biting-incidents/:id', authenticate, async (req: AuthRequest, re
 router.delete('/outbreaks/by-incident/:incidentId', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    await query(`DELETE FROM outbreak_records WHERE source_id=$1`, [req.params.incidentId]);
+    const gone = await query(`DELETE FROM outbreak_records WHERE source_id=$1 RETURNING id`, [req.params.incidentId]);
+    for (const row of gone.rows) await removeLinked('outbreak', row.id);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1407,6 +1418,7 @@ router.patch('/outbreaks/by-incident/:incidentId', authenticate, async (req: Aut
        WHERE source_id=$3`,
       [status || 'Resolved', updateNote, req.params.incidentId]
     );
+    await syncOutbreaksBySource(req.params.incidentId);
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1500,6 +1512,7 @@ router.post('/outbreaks', authenticate, async (req: AuthRequest, res: Response) 
       [id, d.type, d.disease, d.barangay, d.source_id||null, d.cases||1, d.lat, d.lng, d.radius_km||10,
        d.status||'Active', d.severity||'High', d.pet_name||null, d.owner_name||null, initUpdate]
     );
+    await syncOutbreak(result.rows[0].id);
     return res.json({ success: true, outbreak: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1540,6 +1553,7 @@ router.put('/outbreaks/:id', authenticate, async (req: AuthRequest, res: Respons
        ...archiveParam, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    await syncOutbreak(req.params.id);               // target resolution date / status → calendar
     return res.json({ success: true, outbreak: result.rows[0] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1566,6 +1580,7 @@ router.delete('/outbreaks/:id', authenticate, async (req: AuthRequest, res: Resp
     // Hard delete
     const result = await query(`DELETE FROM outbreak_records WHERE id=$1 RETURNING id`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Record not found' });
+    await removeLinked('outbreak', req.params.id);
 
     return res.json({ success: true, message: `Outbreak record ${req.params.id} permanently deleted.` });
   } catch (err: any) {
@@ -2438,7 +2453,8 @@ router.delete('/inventory/office-supplies/:id', authenticate, async (req: AuthRe
 router.get('/inventory/pending-orders', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(`
-      SELECT po.*, s.name as supplier_name, s.contact_person, s.phone as supplier_phone
+      SELECT po.*, to_char(po.expected_delivery_date,'YYYY-MM-DD') AS expected_delivery_date,
+             s.name as supplier_name, s.contact_person, s.phone as supplier_phone
       FROM pending_orders po
       LEFT JOIN suppliers s ON po.supplier_id = s.id
       ORDER BY po.created_at DESC
@@ -2454,12 +2470,14 @@ router.post('/inventory/pending-orders', authenticate, async (req: AuthRequest, 
     const id = `PO-${Date.now()}`;
     const result = await query(
       `INSERT INTO pending_orders (id, item_name, item_type, category, quantity, unit, unit_cost, supplier_id,
-        program_id, line_item_id, fiscal_year, notes, status, created_by, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14) RETURNING *`,
+        program_id, line_item_id, fiscal_year, notes, status, created_by, source, expected_delivery_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14,$15) RETURNING *`,
       [id, d.itemName, d.itemType||'medicine', d.category||'', d.quantity, d.unit||'vials',
        d.unitCost||0, d.supplierId||null, d.programId||null, d.lineItemId||null,
-       d.fiscalYear||new Date().getFullYear(), d.notes||'', req.user?.username, d.source||'manual']
+       d.fiscalYear||new Date().getFullYear(), d.notes||'', req.user?.username, d.source||'manual',
+       isYmd(String(d.expectedDeliveryDate||'').slice(0,10)) ? String(d.expectedDeliveryDate).slice(0,10) : null]
     );
+    await syncOrder(id);                              // expected delivery → Schedule calendar
     return res.json({ success: true, order: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2467,13 +2485,26 @@ router.post('/inventory/pending-orders', authenticate, async (req: AuthRequest, 
 router.put('/inventory/pending-orders/:id', authenticate, async (req: AuthRequest, res: Response) => {
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
-    const d = req.body;
+    const d = req.body || {};
+    // Accept both camelCase (forms) and snake_case (a row spread back from the list, e.g. "cancel order");
+    // anything not supplied keeps its current value instead of being blanked.
+    const pick = (camel: string, snake: string) => (d[camel] !== undefined ? d[camel] : d[snake]);
+    const hasDate = d.expectedDeliveryDate !== undefined || d.expected_delivery_date !== undefined;
+    const rawDate = String(pick('expectedDeliveryDate', 'expected_delivery_date') || '').slice(0, 10);
     const result = await query(
-      `UPDATE pending_orders SET item_name=$1,item_type=$2,category=$3,quantity=$4,unit=$5,unit_cost=$6,
-       supplier_id=$7,program_id=$8,line_item_id=$9,notes=$10,status=$11,updated_at=NOW() WHERE id=$12 RETURNING *`,
-      [d.itemName,d.itemType||'medicine',d.category||'',d.quantity,d.unit||'vials',d.unitCost||0,
-       d.supplierId||null,d.programId||null,d.lineItemId||null,d.notes||'',d.status||'pending',req.params.id]
+      `UPDATE pending_orders SET item_name=COALESCE($1,item_name), item_type=COALESCE($2,item_type), category=COALESCE($3,category),
+       quantity=COALESCE($4,quantity), unit=COALESCE($5,unit), unit_cost=COALESCE($6,unit_cost),
+       supplier_id=COALESCE($7,supplier_id), program_id=COALESCE($8,program_id), line_item_id=COALESCE($9,line_item_id),
+       notes=COALESCE($10,notes), status=COALESCE($11,status),
+       expected_delivery_date=CASE WHEN $13::boolean THEN $14::date ELSE expected_delivery_date END,
+       updated_at=NOW() WHERE id=$12 RETURNING *`,
+      [pick('itemName','item_name') ?? null, pick('itemType','item_type') ?? null, pick('category','category') ?? null,
+       pick('quantity','quantity') ?? null, pick('unit','unit') ?? null, pick('unitCost','unit_cost') ?? null,
+       pick('supplierId','supplier_id') || null, pick('programId','program_id') || null, pick('lineItemId','line_item_id') || null,
+       pick('notes','notes') ?? null, d.status ?? null, req.params.id, hasDate, isYmd(rawDate) ? rawDate : null]
     );
+    if (!result.rows.length) return res.status(404).json({ error: 'Order not found' });
+    await syncOrder(req.params.id);
     return res.json({ success: true, order: result.rows[0] });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2482,6 +2513,7 @@ router.delete('/inventory/pending-orders/:id', authenticate, async (req: AuthReq
   if (!['admin','superadmin'].includes(req.user?.role || '')) return res.status(403).json({ error: 'Forbidden' });
   try {
     await query('DELETE FROM pending_orders WHERE id=$1', [req.params.id]);
+    await removeLinked('order', req.params.id);
     return res.json({ success: true });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
 });
@@ -2612,6 +2644,7 @@ router.post('/inventory/pending-orders/:id/receive', authenticate, async (req: A
 
     // Mark order as received
     await query(`UPDATE pending_orders SET status='received', received_at=NOW(), received_by=$1, updated_at=NOW() WHERE id=$2`, [req.user?.username, orderId]);
+    await syncOrder(orderId);
 
     return res.json({ success: true, message: 'Order received and inventory updated' });
   } catch (err: any) { return res.status(500).json({ error: err.message }); }
@@ -3333,6 +3366,7 @@ router.post('/interventions', authenticate, async (req: AuthRequest, res: Respon
        JSON.stringify(deployed_staff || []), JSON.stringify(deployed_resources || []),
        JSON.stringify(deliverables || []), notes || '', is_outbreak || false, disease_event_id || null]
     );
+    await syncIntervention(result.rows[0].id);       // plot start + target end on the Schedule calendar
     res.status(201).json(result.rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3364,6 +3398,7 @@ router.put('/interventions/:id', authenticate, async (req: AuthRequest, res: Res
        closed_at || null, approved_at || null, completed_at || null]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    await syncIntervention(id);
     res.json(result.rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3373,6 +3408,7 @@ router.put('/interventions/:id', authenticate, async (req: AuthRequest, res: Res
 router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     await query('DELETE FROM intervention_tickets WHERE id=$1', [req.params.id]);
+    await removeLinked('intervention', req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3389,7 +3425,7 @@ router.delete('/interventions/:id', authenticate, async (req: AuthRequest, res: 
 const STAFF_ROLES = ['admin', 'superadmin', 'cvoStaff', 'bahw'];   // run schedules, confirm / complete bookings
 const VET_ROLES   = ['admin', 'superadmin', 'cvoStaff'];           // only vets may block dates
 const OWNER_BOOKABLE_TYPES = ['Vaccination', 'Checkup', 'Spay/Neuter'];
-const NON_RSVP_TYPES = ['Intervention', 'Outbreak'];
+const NON_RSVP_TYPES = STAFF_ONLY_TYPES;   // Intervention, Outbreak, Delivery, Deployment, Observation — staff-only, no RSVP
 const SLOT_CAPACITY = 2;       // max personal appointments per 15-min slot
 const BOOKING_WINDOW_DAYS = 7;
 
@@ -3454,17 +3490,19 @@ router.get('/appointment-schedules', authenticate, async (req: AuthRequest, res:
     vals.push(rsvpUser);   // $1 — used only by the my_rsvp subquery
 
     if (owner) {
-      vals.push(owner.ids); vals.push(owner.barangay || '__none__');
+      vals.push(owner.ids); vals.push(owner.barangay || '__none__'); vals.push(STAFF_ONLY_TYPES);
       conds.push(`(
         (COALESCE(is_admin_created,false) = false AND requested_by = ANY($2))
         OR (is_admin_created = true
+            AND source_type IS NULL
             AND COALESCE(visibility, CASE WHEN COALESCE(barangay,'')<>'' THEN 'barangay' ELSE 'public' END) <> 'staff'
-            AND schedule_type NOT IN ('Intervention','Outbreak')
+            AND schedule_type <> ALL($4::text[])
             AND (COALESCE(barangay,'')='' OR LOWER(barangay)=LOWER($3)))
       )`);
     } else if (req.user?.role === 'bahw') {
       vals.push(req.user.barangay || '__none__');
-      conds.push(`(COALESCE(barangay,'')='' OR LOWER(barangay)=LOWER($${vals.length}))`);
+      // BAHWs see their barangay's items + city-wide drives, but never supply deliveries (inventory is CVO-only)
+      conds.push(`(COALESCE(barangay,'')='' OR LOWER(barangay)=LOWER($${vals.length})) AND schedule_type <> 'Delivery'`);
     } else if (!STAFF_ROLES.includes(req.user?.role || '')) {
       return res.json({ schedules: [] });
     }
@@ -3548,7 +3586,7 @@ router.post('/appointment-schedules', authenticate, async (req: AuthRequest, res
     if (role === 'bahw' && !barangay) return res.status(400).json({ error: 'Your account has no barangay assigned' });
     const visibility: string = ['public', 'barangay', 'staff'].includes(d.visibility)
       ? d.visibility
-      : (['Intervention', 'Outbreak'].includes(scheduleType) ? 'staff' : barangay ? 'barangay' : 'public');
+      : (STAFF_ONLY_TYPES.includes(scheduleType) ? 'staff' : barangay ? 'barangay' : 'public');
     if (visibility === 'barangay' && !barangay) return res.status(400).json({ error: 'Choose a barangay for a barangay-only schedule' });
     const title = d.title || `${scheduleType} — ${barangay || 'CVO'}`;
     const id = shortId('APPT');
@@ -3605,6 +3643,8 @@ router.put('/appointment-schedules/:id', authenticate, async (req: AuthRequest, 
       return res.json({ schedule: r.rows[0] });
     }
     if (!STAFF_ROLES.includes(req.user?.role || '')) return res.status(403).json({ error: 'Insufficient permissions' });
+    const linked = await query(`SELECT source_type FROM appointment_schedules WHERE id=$1`, [req.params.id]);
+    if (linked.rows[0]?.source_type) return res.status(409).json({ error: 'This entry mirrors another record and is managed there. Edit it from its own module and the calendar updates automatically.' });
 
     const sets: string[] = []; const vals: any[] = []; let i = 1;
     const map: Record<string, string> = {
@@ -3631,7 +3671,11 @@ router.delete('/appointment-schedules/:id', authenticate, async (req: AuthReques
   try {
     const owner = await ownerCtx(req);
     if (owner) await query(`DELETE FROM appointment_schedules WHERE id=$1 AND requested_by = ANY($2) AND COALESCE(is_admin_created,false)=false AND status='Cancelled'`, [req.params.id, owner.ids]);
-    else if (VET_ROLES.includes(req.user?.role || '')) await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    else if (VET_ROLES.includes(req.user?.role || '')) {
+      const linked = await query(`SELECT source_type FROM appointment_schedules WHERE id=$1`, [req.params.id]);
+      if (linked.rows[0]?.source_type) return res.status(409).json({ error: 'This entry mirrors another record. Delete or change it from its own module.' });
+      await query('DELETE FROM appointment_schedules WHERE id=$1', [req.params.id]);
+    }
     else return res.status(403).json({ error: 'Insufficient permissions' });
     await query('DELETE FROM schedule_rsvps WHERE schedule_id=$1 AND NOT EXISTS (SELECT 1 FROM appointment_schedules WHERE id=$1)', [req.params.id]).catch(() => {});
     return res.json({ success: true });

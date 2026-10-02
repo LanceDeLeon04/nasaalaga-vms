@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Calendar, Clock, Plus, X, CheckCircle, AlertCircle, Scissors,
   Syringe, Stethoscope, AlertTriangle, ChevronLeft, ChevronRight,
-  MapPin, User, Ban, Check, Eye, Bell, Filter, Users
+  MapPin, User, Ban, Check, Eye, Bell, Filter, Users, Truck, Send, PawPrint, RefreshCw, Link2, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
@@ -10,7 +10,11 @@ import type { User as UserType } from '../App';
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-type ScheduleType = 'Vaccination' | 'Spay/Neuter' | 'Checkup' | 'Intervention' | 'Outbreak';
+type ScheduleType = 'Vaccination' | 'Spay/Neuter' | 'Checkup' | 'Intervention' | 'Outbreak' | 'Delivery' | 'Deployment' | 'Observation';
+
+// Records that live in other admin modules and are mirrored onto this calendar automatically.
+// The calendar row is rewritten from its source on every save, so it is read-only here.
+type SourceType = 'intervention' | 'outbreak' | 'order' | 'deployment' | 'observation';
 
 interface ScheduleEntry {
   id: string;
@@ -30,6 +34,8 @@ interface ScheduleEntry {
   // For admin-created blocks (interventions/outbreaks)
   isAdminCreated?: boolean;
   linkedRecordId?: string; // intervention or outbreak id
+  sourceType?: SourceType; // set when this row mirrors a record managed in another module
+  sourceId?: string;
   visibility?: 'public' | 'barangay' | 'staff';
   rsvpCount?: number;
   myRsvp?: { status: string; animals: { id: string; name: string }[]; headCount: number };
@@ -64,6 +70,32 @@ const TYPE_CONFIG: Record<ScheduleType, { color: string; bg: string; icon: React
   Checkup:      { color: 'text-green-700',  bg: 'bg-green-100',  icon: <Stethoscope className="w-3.5 h-3.5"/>, label: 'Checkup'   },
   Intervention: { color: 'text-orange-700', bg: 'bg-orange-100', icon: <AlertTriangle className="w-3.5 h-3.5"/>, label: 'Intervention'},
   Outbreak:     { color: 'text-red-700',    bg: 'bg-red-100',    icon: <AlertCircle className="w-3.5 h-3.5" />, label: 'Outbreak'  },
+  Delivery:     { color: 'text-teal-700',   bg: 'bg-teal-100',   icon: <Truck className="w-3.5 h-3.5" />,       label: 'Delivery'  },
+  Deployment:   { color: 'text-indigo-700', bg: 'bg-indigo-100', icon: <Send className="w-3.5 h-3.5" />,        label: 'Deployment'},
+  Observation:  { color: 'text-amber-700',  bg: 'bg-amber-100',  icon: <PawPrint className="w-3.5 h-3.5" />,    label: 'Observation'},
+};
+
+/** Types staff may add by hand. The rest only ever arrive from their own module. */
+const MANUAL_TYPES: ScheduleType[] = ['Vaccination', 'Spay/Neuter', 'Checkup', 'Intervention', 'Outbreak'];
+/** What owners can ever see (the server enforces this too). */
+const OWNER_TYPES: ScheduleType[] = ['Vaccination', 'Spay/Neuter', 'Checkup'];
+
+/** Where each mirrored record is edited — `view` is the admin sidebar view to open. */
+const SOURCE_INFO: Record<SourceType, { label: string; view: string }> = {
+  intervention: { label: 'Smart Alerts & Interventions', view: 'dashboard' },
+  outbreak:     { label: 'Outbreak Monitoring',          view: 'outbreak'  },
+  order:        { label: 'Inventory › Orders',           view: 'inventory' },
+  deployment:   { label: 'Resource Deployment',          view: 'dashboard' },
+  observation:  { label: 'Biting Incidents',             view: 'rabies'    },
+};
+
+/** Plain-language status for mirrored rows (the stored value is still Pending/Confirmed/Completed/Cancelled). */
+const LINKED_STATUS_LABEL: Record<SourceType, Partial<Record<ScheduleEntry['status'], string>>> = {
+  intervention: { Pending: 'Pending', Confirmed: 'In progress', Completed: 'Done' },
+  outbreak:     { Confirmed: 'Active', Completed: 'Resolved' },
+  order:        { Confirmed: 'Awaiting delivery', Completed: 'Delivered', Cancelled: 'Cancelled' },
+  deployment:   { Pending: 'Pending', Confirmed: 'Deployed', Completed: 'Done' },
+  observation:  { Confirmed: 'Under observation', Completed: 'Closed' },
 };
 
 const STATUS_CONFIG = {
@@ -100,6 +132,12 @@ function getTodayStr() {
   return ymdLocal(new Date());
 }
 
+function addDaysStr(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return ymdLocal(d);
+}
+
 // ─── DB → frontend mapper ─────────────────────────────────────────────────────
 
 function mapDbSchedule(row: any): ScheduleEntry {
@@ -125,6 +163,8 @@ function mapDbSchedule(row: any): ScheduleEntry {
     capacity: row.capacity ? Number(row.capacity) : undefined,
     isAdminCreated: row.is_admin_created ?? (!row.requested_by),
     linkedRecordId: row.linked_record_id || undefined,
+    sourceType: (row.source_type || undefined) as SourceType | undefined,
+    sourceId: row.source_id || undefined,
     visibility: row.visibility || undefined,
     rsvpCount: Number(row.rsvp_count || 0),
     myRsvp: row.my_rsvp ? { status: row.my_rsvp.status, animals: row.my_rsvp.animals || [], headCount: Number(row.my_rsvp.head_count || 0) } : undefined,
@@ -544,7 +584,7 @@ function AddAdminScheduleModal({ user, onClose, onSave }: {
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-2">Schedule Type</label>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(TYPE_CONFIG) as ScheduleType[]).map(t => {
+              {MANUAL_TYPES.map(t => {
                 const cfg = TYPE_CONFIG[t];
                 return (
                   <button key={t} onClick={() => setForm(f => ({ ...f, type: t }))}
@@ -556,6 +596,10 @@ function AddAdminScheduleModal({ user, onClose, onSave }: {
                 );
               })}
             </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Interventions, outbreak target dates, expected deliveries, deployments and rabies observation periods are
+              added to this calendar automatically when you save them in their own pages. Use this form for everything else.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1.5">Title *</label>
@@ -652,10 +696,12 @@ function AddAdminScheduleModal({ user, onClose, onSave }: {
 
 // ─── CALENDAR VIEW ────────────────────────────────────────────────────────────
 
-function CalendarView({ schedules, onDayClick, isAdmin }: {
+function CalendarView({ schedules, onDayClick, isAdmin, isOverdue, legendTypes }: {
   schedules: ScheduleEntry[];
   onDayClick: (date: string) => void;
   isAdmin: boolean;
+  isOverdue: (s: ScheduleEntry) => boolean;
+  legendTypes: ScheduleType[];
 }) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -696,6 +742,7 @@ function CalendarView({ schedules, onDayClick, isAdmin }: {
             const isToday = today.getFullYear() === viewYear && today.getMonth() === viewMonth && today.getDate() === day;
             const isPast  = new Date(viewYear, viewMonth, day) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
             const typeSet = [...new Set(ds.map(s => s.type))];
+            const hasOverdue = ds.some(isOverdue);
             return (
               <button key={day} onClick={() => ds.length > 0 && onDayClick(dateStr)}
                 className={`min-h-[56px] rounded-xl p-1 border text-left transition-all ${
@@ -703,11 +750,15 @@ function CalendarView({ schedules, onDayClick, isAdmin }: {
                   ds.length ? 'border-gray-200 bg-white hover:bg-gray-50 cursor-pointer' :
                   isPast ? 'border-transparent bg-gray-50/50' : 'border-transparent hover:bg-gray-50'
                 }`}>
-                <p className={`text-xs font-bold mb-1 ${isToday ? 'text-[#2B5EA6]' : isPast ? 'text-gray-300' : 'text-gray-600'}`}>{day}</p>
+                <p className={`text-xs font-bold mb-1 flex items-center gap-1 ${isToday ? 'text-[#2B5EA6]' : isPast && !hasOverdue ? 'text-gray-300' : 'text-gray-600'}`}>
+                  {day}
+                  {hasOverdue && <span className="w-1.5 h-1.5 rounded-full bg-red-500" title="Overdue item" />}
+                </p>
                 <div className="space-y-0.5">
                   {typeSet.slice(0,3).map(t => {
                     const cfg = TYPE_CONFIG[t];
-                    return <div key={t} className={`w-full rounded text-[8px] font-bold px-1 py-0.5 truncate ${cfg.bg} ${cfg.color}`}>{cfg.label}</div>;
+                    const n = ds.filter(s => s.type === t).length;
+                    return <div key={t} className={`w-full rounded text-[8px] font-bold px-1 py-0.5 truncate ${cfg.bg} ${cfg.color}`}>{cfg.label}{n > 1 ? ` ×${n}` : ''}</div>;
                   })}
                   {typeSet.length > 3 && <div className="text-[8px] text-gray-400 font-bold px-1">+{typeSet.length - 3}</div>}
                 </div>
@@ -717,11 +768,12 @@ function CalendarView({ schedules, onDayClick, isAdmin }: {
         </div>
         {/* Legend */}
         <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
-          {(Object.entries(TYPE_CONFIG) as [ScheduleType, typeof TYPE_CONFIG[ScheduleType]][]).map(([t, cfg]) => (
+          {legendTypes.map(t => { const cfg = TYPE_CONFIG[t]; return (
             <div key={t} className="flex items-center gap-1.5">
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
             </div>
-          ))}
+          ); })}
+          {isAdmin && <div className="flex items-center gap-1.5 text-[10px] text-gray-500"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Overdue</div>}
         </div>
       </div>
     </div>
@@ -762,6 +814,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
     fetchSchedules(); fetchNotifications();
     if (isVet) fetchUnavailableBlocks();     // owners never receive block details — they just see slots as unavailable
     if (isNonAdmin) fetchAnimals();
+    // Interventions, outbreaks, orders… are saved in other pages and mirrored here, so re-sync when the user comes back.
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchSchedules(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   const fetchAnimals = async () => {
@@ -847,6 +903,17 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   const canRsvp = (s: ScheduleEntry) =>
     isNonAdmin && isOpenEvent(s) && ['Confirmed', 'Scheduled'].includes(s.status) && s.date >= getTodayStr();
 
+  const availableTypes: ScheduleType[] = isAdmin ? (Object.keys(TYPE_CONFIG) as ScheduleType[]) : OWNER_TYPES;
+  const isLinked = (s: ScheduleEntry) => !!s.sourceType;
+  // Staff-only: something dated in the past that is still open (not done, not cancelled).
+  const isOverdue = (s: ScheduleEntry) => isAdmin && s.date < getTodayStr() && (s.status === 'Pending' || s.status === 'Confirmed');
+  const statusLabel = (s: ScheduleEntry) => (s.sourceType && LINKED_STATUS_LABEL[s.sourceType][s.status]) || s.status;
+  const goToSource = (t: SourceType) => {
+    // Reuses the dashboard's existing cross-module navigation request
+    sessionStorage.setItem('nasaalaga_nav_request', JSON.stringify({ view: SOURCE_INFO[t].view }));
+    window.dispatchEvent(new Event('nasaalaga_nav_request'));
+  };
+
   const filteredSchedules = visibleSchedules.filter(s =>
     (isAdmin || scope === 'all' || (scope === 'mine' ? isMine(s) : !isMine(s))) &&
     (filterType === 'all' || s.type === filterType) &&
@@ -856,9 +923,9 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
 
   // Upcoming (next 7 days)
   const today = getTodayStr();
-  const nextWeek = getOneWeekMax();
+  const nextWeek = isAdmin ? addDaysStr(14) : getOneWeekMax();
   const upcomingSchedules = visibleSchedules.filter(s =>
-    s.date >= today && s.date <= nextWeek && s.status !== 'Cancelled'
+    s.date >= today && s.date <= nextWeek && s.status !== 'Cancelled' && s.status !== 'Completed'
   ).sort((a,b) => a.date.localeCompare(b.date) || a.timeSlot.localeCompare(b.timeSlot));
 
   // Staff: create an official schedule / drive. No optimistic "fake save" — if the server refuses, say so.
@@ -919,6 +986,8 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   };
 
   const handleStatusChange = async (id: string, status: ScheduleEntry['status']) => {
+    const target = schedules.find(x => x.id === id);
+    if (target?.sourceType) { toast.error(`This is managed in ${SOURCE_INFO[target.sourceType].label}. Change it there.`); return; }
     const prev = schedules;
     setSchedules(p => p.map(s => s.id === id ? { ...s, status } : s));   // optimistic…
     try {
@@ -963,6 +1032,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
   // Stats
   const totalUpcoming = upcomingSchedules.length;
   const totalPending  = visibleSchedules.filter(s => s.status === 'Pending').length;
+  const totalOverdue  = visibleSchedules.filter(isOverdue).length;
   const totalToday    = visibleSchedules.filter(s => s.date === today).length;
   const unreadNotifCount = notifications.filter(n => !n.is_read).length;
 
@@ -977,7 +1047,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
             </h2>
             <p className="text-white/80 text-sm">
               {isAdmin
-                ? 'Manage all appointments, vaccination drives, interventions, and outbreaks'
+                ? 'One calendar for everything: appointments, drives, interventions, outbreak target dates, deliveries, deployments and observation periods'
                 : 'Your appointments, plus public and barangay schedules you can RSVP to'}
             </p>
           </div>
@@ -1039,11 +1109,12 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
       )}
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className={`grid gap-3 ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
         {[
           { label:'Today', value: totalToday,    color:'text-[#2B5EA6]', bg:'bg-blue-50',   border:'border-blue-200',  icon:<Clock className="w-4 h-4" /> },
-          { label:'This Week', value: totalUpcoming, color:'text-green-700',bg:'bg-green-50', border:'border-green-200', icon:<Calendar className="w-4 h-4" /> },
+          { label: isAdmin ? 'Next 14 Days' : 'This Week', value: totalUpcoming, color:'text-green-700',bg:'bg-green-50', border:'border-green-200', icon:<Calendar className="w-4 h-4" /> },
           { label:'Pending',   value: totalPending,  color:'text-yellow-700',bg:'bg-yellow-50',border:'border-yellow-200',icon:<Bell className="w-4 h-4" /> },
+          ...(isAdmin ? [{ label:'Overdue', value: totalOverdue, color:'text-red-700', bg:'bg-red-50', border:'border-red-200', icon:<AlertTriangle className="w-4 h-4" /> }] : []),
         ].map(s => (
           <div key={s.label} className={`${s.bg} border ${s.border} rounded-2xl p-4 flex items-center gap-3`}>
             <div className={`${s.color}`}>{s.icon}</div>
@@ -1060,10 +1131,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
             <Bell className="w-4 h-4 text-[#2B5EA6]" />
-            <p className="font-bold text-gray-800 text-sm">Upcoming This Week</p>
+            <p className="font-bold text-gray-800 text-sm">{isAdmin ? 'Upcoming — Next 14 Days' : 'Upcoming This Week'}</p>
           </div>
           <div className="divide-y divide-gray-50">
-            {upcomingSchedules.slice(0,5).map(s => {
+            {upcomingSchedules.slice(0,8).map(s => {
               const cfg = TYPE_CONFIG[s.type];
               const stCfg = STATUS_CONFIG[s.status];
               return (
@@ -1073,8 +1144,8 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                     <p className="font-semibold text-gray-800 text-sm truncate">{s.title}</p>
                     <p className="text-xs text-gray-500">{fmtDate(s.date)} · {fmt12(s.timeSlot)}{s.petName ? ` · ${s.petName}` : ''}</p>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stCfg.bg} ${stCfg.text}`}>{s.status}</span>
-                  {isAdmin && s.status === 'Pending' && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${stCfg.bg} ${stCfg.text}`}>{statusLabel(s)}</span>
+                  {isAdmin && s.status === 'Pending' && !isLinked(s) && (
                     <button onClick={() => handleStatusChange(s.id, 'Confirmed')}
                       className="p-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors" title="Confirm">
                       <Check className="w-3.5 h-3.5" />
@@ -1100,7 +1171,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
         <select value={filterType} onChange={e => setFilterType(e.target.value as any)}
           className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white outline-none">
           <option value="all">All Types</option>
-          {(Object.keys(TYPE_CONFIG) as ScheduleType[]).map(t => <option key={t} value={t}>{t}</option>)}
+          {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
           className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white outline-none">
@@ -1121,12 +1192,18 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
             ))}
           </div>
         )}
-        {isVet && (
-          <button onClick={() => setShowUnavailableModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 ml-auto">
-            <Ban className="w-3.5 h-3.5" />Block Date / Time
+        <div className="flex items-center gap-2 ml-auto">
+          <button onClick={() => fetchSchedules()} title="Refresh" aria-label="Refresh schedules"
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200">
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />Refresh
           </button>
-        )}
+          {isVet && (
+            <button onClick={() => setShowUnavailableModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200">
+              <Ban className="w-3.5 h-3.5" />Block Date / Time
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Calendar */}
@@ -1135,6 +1212,8 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
           schedules={filteredSchedules}
           onDayClick={(date) => { setSelectedDay(date); setActiveView('list'); }}
           isAdmin={isAdmin}
+          isOverdue={isOverdue}
+          legendTypes={availableTypes}
         />
       )}
 
@@ -1177,8 +1256,10 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                             <span className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full ${cfg.bg} ${cfg.color}`}>
                               {cfg.icon}{cfg.label}
                             </span>
-                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${stCfg.bg} ${stCfg.text}`}>{s.status}</span>
-                            {s.isAdminCreated && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-500">Official</span>}
+                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${stCfg.bg} ${stCfg.text}`}>{statusLabel(s)}</span>
+                            {isOverdue(s) && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-600 text-white">Overdue</span>}
+                            {isLinked(s) && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-600 flex items-center gap-1"><Link2 className="w-2.5 h-2.5" />Auto-synced</span>}
+                            {s.isAdminCreated && !isLinked(s) && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-500">Official</span>}
                             {s.isAdminCreated && s.visibility === 'staff' && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-800 text-white">Staff only</span>}
                             {isNonAdmin && s.isAdminCreated && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700">{s.barangay ? `Your barangay` : 'Public'}</span>}
                             {isNonAdmin && isMine(s) && <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-[#2B5EA6]">My appointment</span>}
@@ -1199,6 +1280,16 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                             <p className="text-xs text-green-700 mt-1">Bringing: {s.myRsvp.animals.map(a => a.name).join(', ')}</p>
                           )}
                           {s.notes && <p className="text-xs text-gray-400 mt-1 italic">{s.notes}</p>}
+                          {s.sourceType && (
+                            <p className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
+                              <Link2 className="w-3 h-3" />Managed in {SOURCE_INFO[s.sourceType].label}
+                              {isVet && (
+                                <button onClick={() => goToSource(s.sourceType!)} className="inline-flex items-center gap-1 font-bold text-[#2B5EA6] hover:underline">
+                                  Open<ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </p>
+                          )}
                         </div>
 
                         {/* Owner RSVP */}
@@ -1214,7 +1305,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                           );
                         })()}
                         {/* Staff: who is coming */}
-                        {isAdmin && s.isAdminCreated && (
+                        {isAdmin && s.isAdminCreated && !isLinked(s) && (
                           <button onClick={() => setAttendeesFor(s)}
                             className="shrink-0 px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-200 flex items-center gap-1 self-start">
                             <Users className="w-3 h-3" />RSVPs{s.rsvpCount ? ` (${s.rsvpCount})` : ''}
@@ -1222,7 +1313,7 @@ export function ScheduleModule({ user }: ScheduleModuleProps) {
                         )}
 
                         {/* Admin actions */}
-                        {isAdmin && (
+                        {isAdmin && !isLinked(s) && (
                           <div className="flex flex-col gap-1.5 shrink-0">
                             {s.status === 'Pending' && (
                               <button onClick={() => handleStatusChange(s.id, 'Confirmed')}

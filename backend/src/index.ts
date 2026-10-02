@@ -15,7 +15,8 @@ import { optionalAuthenticate } from './middleware/auth';
 import { idempotency } from './middleware/idempotency';
 import { startBackupScheduler, stopBackupScheduler } from './services/backup';
 import { startPetArchiveScheduler, stopPetArchiveScheduler } from './services/petArchive';
-import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups, migratePetArchive, migrateIdempotency } from './db/migrate';
+import { createTables, migrateBudget, migrateInventoryV2, migrateLivestockPreReg, migrateProfileColumns, migrateInventoryV3, migrateDispatch, migrateInventoryDosage, migrateInventoryLotColumns, migrateNotifications, migrateOfficeBudgetColumns, migrateBackups, migratePetArchive, migrateIdempotency, migrateScheduleLinks } from './db/migrate';
+import { backfillScheduleLinks } from './services/scheduleSync';
 
 dotenv.config();
 
@@ -88,6 +89,9 @@ const runMigrations = async () => {
   await migrateBackups();
   await migratePetArchive();
   await migrateIdempotency();
+  await migrateScheduleLinks();
+  // Best-effort catch-up so existing records appear on the calendar; never blocks startup.
+  await backfillScheduleLinks().catch((e) => console.error('⚠ Schedule backfill failed:', e));
 };
 
 async function start() {
